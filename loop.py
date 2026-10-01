@@ -36,7 +36,7 @@ import uia
 import verification as verif
 from actions import execute
 from obs import capture_for_vision
-from planner import MiniCPMPlanner, PlannerDecision
+from planner import MiniCPMPlanner, PlannerDecision, strip_type_prefix
 from schemas import Action, Decision
 from uia import active_window_snapshot, focused_value
 from vocaela import VocaelaAdapter, visual_to_action
@@ -205,6 +205,22 @@ def _app_bootstrap(
 
 # --- UIA por nome ------------------------------------------------------------
 def _resolve_uia(
+    items: list[dict], target: str, wrect: tuple | None, state_title: str = ""
+) -> tuple[Action | None, str]:
+    """Como `_resolve_uia_exact`, tolerando o prefixo de tipo (`Button:Salvar` -> `Salvar`).
+
+    O nome literal tem prioridade; só em miss simples tenta sem o prefixo. Ambíguo continua
+    ambíguo (nunca adivinha).
+    """
+    result = _resolve_uia_exact(items, target, wrect, state_title)
+    if result[0] is None and not result[1]:
+        bare = strip_type_prefix(target)
+        if bare != (target or "").strip():
+            return _resolve_uia_exact(items, bare, wrect, state_title)
+    return result
+
+
+def _resolve_uia_exact(
     items: list[dict], target: str, wrect: tuple | None, state_title: str = ""
 ) -> tuple[Action | None, str]:
     """Encontra elemento pelo NOME na janela ativa -> (click no centro, "").
@@ -578,6 +594,10 @@ def _ask_planner(
     except Exception:
         task_summary = ""
     last_result = str(ctx.get("last_result", ""))[:600]
+    # Escalada opcional (planner.escalate_thinking): raciocínio só quando há erro/repetição
+    # pendente, onde vale pagar a latência. Desligado por padrão até medir no loop real.
+    extra = {"think": True} if last_error and cfg.get("planner", {}).get(
+        "escalate_thinking") else {}
     try:
         return planner.next_action(
             goal=instruction,
@@ -589,6 +609,7 @@ def _ask_planner(
             skill_context=skill_context,
             task_summary=task_summary,
             last_result=last_result,
+            **extra,
         )
     except TypeError:
         # Compat: planner fake/mock sem os kwargs novos.

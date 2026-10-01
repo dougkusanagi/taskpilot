@@ -32,6 +32,9 @@ DEFAULTS: dict = {
         "model": "MiniCPM5-2B",
         "temperature": 0.1,
         "timeout_s": 90,
+        # Liga o raciocínio só quando há erro/repetição pendente (custa latência).
+        # Desligado até medir no loop real (R3).
+        "escalate_thinking": False,
     },
     "vision": {
         "provider": "llama.cpp",

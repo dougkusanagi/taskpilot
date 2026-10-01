@@ -196,6 +196,10 @@ def build_unified_prompt(
     )
 
 
+# Orçamento de saída quando o raciocínio é ligado (escalada); o padrão sem thinking é 256.
+THINK_MAX_TOKENS = 1536
+
+
 def planner_params_for(profile: str, cfg: dict) -> dict:
     """Parâmetros por modelo/perfil (sem temperatura universal imposta)."""
     pc = cfg.get("planner", {})
@@ -338,6 +342,24 @@ def build_prompt(
     )
 
 
+# Tipos UIA que o prompt mostra como prefixo `tipo:nome`. Modelos pequenos copiam o rótulo
+# inteiro ("Button:Salvar") como alvo; o nome acessível nunca inclui o tipo.
+_UIA_TYPE_PREFIX = re.compile(
+    r"^(?:button|edit|text|hyperlink|listitem|list|menuitem|menu|checkbox|radiobutton|"
+    r"combobox|tabitem|tab|treeitem|tree|document|pane|window|image|group|toolbar|"
+    r"splitbutton|slider|spinner|statusbar|titlebar|header|headeritem|dataitem|custom)"
+    r"\s*:\s*(?P<name>\S.*)$",
+    re.IGNORECASE,
+)
+
+
+def strip_type_prefix(target: str) -> str:
+    """`Button:Salvar` -> `Salvar`; qualquer outro texto volta igual (sem espaços nas pontas)."""
+    text = (target or "").strip()
+    m = _UIA_TYPE_PREFIX.match(text)
+    return m.group("name").strip() if m else text
+
+
 def extract_json(text: str) -> dict:
     """Extrai UM objeto JSON mesmo com fences/noise ao redor. Erro se inválido."""
     t = text.strip()
@@ -391,6 +413,7 @@ class MiniCPMPlanner:
         skill_context: str = "",
         task_summary: str = "",
         last_result: str = "",
+        think: bool = False,
     ) -> tuple[PlannerDecision, float]:
         """Uma decisão do planner. Retorna (decisão, planner_ms). Só texto."""
         user = build_prompt(
@@ -422,10 +445,11 @@ class MiniCPMPlanner:
             # (llama-server honra `response_format`; quem ignorar cai no
             # `extract_json` abaixo como fallback).
             "response_format": planner_response_format(),
-            # reasoning hibrido do MiniCPM5: modo rapido (sem thinking);
-            # thinking consome tokens/latencia sem ajudar em decisao curta.
-            "chat_template_kwargs": {"enable_thinking": False},
-            "max_tokens": 256,
+            # reasoning hibrido: modo rapido (sem thinking) por padrao; thinking
+            # consome tokens/latencia sem ajudar em decisao curta. So liga em
+            # escalada (think=True: erro/repeticao), com orcamento maior.
+            "chat_template_kwargs": {"enable_thinking": think},
+            "max_tokens": THINK_MAX_TOKENS if think else 256,
         }
         t0 = time.perf_counter()
         try:
@@ -460,6 +484,7 @@ class QwenVLPlanner(MiniCPMPlanner):
         skill_context: str = "",
         task_summary: str = "",
         last_result: str = "",
+        think: bool = False,
     ) -> tuple[PlannerDecision, float]:
         from obs import capture_for_vision
 
@@ -499,8 +524,10 @@ class QwenVLPlanner(MiniCPMPlanner):
             ],
             "temperature": self.temperature,
             "response_format": planner_response_format(),
-            "max_tokens": 256,
+            "max_tokens": THINK_MAX_TOKENS if think else 256,
         }
+        if think:  # sem override no caminho normal: o perfil unificado segue como estava
+            payload["chat_template_kwargs"] = {"enable_thinking": True}
         t0 = time.perf_counter()
         try:
             import http_pool as _pool

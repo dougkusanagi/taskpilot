@@ -118,6 +118,17 @@ class TestAmbiguity(unittest.TestCase):
         self.assertIsNotNone(act)
         self.assertEqual((act.x, act.y), (35, 20))
 
+    def test_prefixo_de_tipo_copiado_do_prompt_e_tolerado(self):
+        act, note = loop._resolve_uia(self.ITEMS[:1], "Button:Salvar", None)
+        self.assertIsNotNone(act)
+        self.assertEqual((act.x, act.y), (35, 20))
+        self.assertEqual(note, "")
+
+    def test_prefixo_nao_desfaz_ambiguidade(self):
+        act, note = loop._resolve_uia(self.ITEMS, "Button:Salvar", None)
+        self.assertIsNone(act)
+        self.assertTrue(note.startswith("alvo ambíguo"))
+
     def test_uia_click_ambiguo_vira_erro_ao_modelo(self):
         orig = loop.active_window_snapshot
         loop.active_window_snapshot = lambda: (self.ITEMS, "App", None)
