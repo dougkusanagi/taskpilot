@@ -184,7 +184,7 @@ O prompt pede uma decisão final JSON; se o servidor separar reasoning, ele
 fica preservado na resposta bruta. Um bloco `<think>` fechado antes do JSON
 também é aceito e marcado como formato tolerante, distinto de JSON puro.
 
-`--thinking on` ou `off` envia `chat_template_kwargs.enable_thinking`.
+`--thinking on` ou `off` envia `chat_template_kwargs.enable_thinking`; `off` envia também `reasoning_effort: "none"`, que é o que o LM Studio de fato respeita (verificado em 01/10: sem ele, `qwen3.5-4b` seguia raciocinando).
 É uma solicitação; o servidor/modelo pode ignorá-la. Não interpretar o flag
 como comprovação de que thinking foi ativado/desativado.
 

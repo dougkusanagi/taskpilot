@@ -301,6 +301,7 @@ class TestModelBench(unittest.TestCase):
         self.assertEqual(len(payloads), 1)
         self.assertEqual(payloads[0]["response_format"]["type"], "json_schema")
         self.assertFalse(payloads[0]["chat_template_kwargs"]["enable_thinking"])
+        self.assertEqual(payloads[0]["reasoning_effort"], "none")
         self.assertEqual(rows[0]["error_kind"], "infra")
 
     def test_cli_writes_portable_bundle_and_refuses_overwrite(self):

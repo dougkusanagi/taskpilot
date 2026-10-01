@@ -364,6 +364,9 @@ def run_requests(client, url, model, cases, reps, settings, emit):
             if settings["thinking"] != "native":
                 payload["chat_template_kwargs"] = {
                     "enable_thinking": settings["thinking"] == "on"}
+                if settings["thinking"] == "off":
+                    # LM Studio ignora chat_template_kwargs; reasoning_effort é o que desliga.
+                    payload["reasoning_effort"] = "none"
             t0 = time.perf_counter()
             try:
                 response = client.post(f"{url}/chat/completions", json=payload)
