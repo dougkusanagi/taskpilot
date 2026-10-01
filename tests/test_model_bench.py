@@ -35,6 +35,10 @@ class TestModelBench(unittest.TestCase):
                         samples = {
                             "money_brl": "R$ " + value.get("money_brl", ""),
                             "click_target": "Click " + value.get("click_target", ""),
+                            "question_has": {
+                                "pessoas-ambiguas": "Qual perfil de Ana: pessoal ou trabalho?",
+                                "terminal-indisponivel": "O terminal está indisponível. Posso listar os arquivos pela interface?",
+                            }.get(case["id"]),
                             "question_pattern": {
                                 "pessoas-ambiguas": "Qual perfil de Ana: pessoal ou trabalho?",
                                 "terminal-indisponivel": "O terminal está indisponível. Posso listar os arquivos pela interface?",
@@ -69,9 +73,19 @@ class TestModelBench(unittest.TestCase):
         ):
             with self.subTest(case_id=case_id, text=text):
                 self.assertFalse(self.evaluated(case_id, {"type": "ask", "text": text})["passed"])
-        for text in ("Qual perfil de Ana: pessoal ou trabalho?", "Qual perfil da Ana devo abrir?",
-                     "Você prefere Ana pessoal ou Ana trabalho?"):
+        for text in ("Qual perfil de Ana: pessoal ou trabalho?",
+                     "Você prefere Ana pessoal ou Ana trabalho?",
+                     "Qual perfil da Ana você deseja abrir - pessoal ou trabalho?",
+                     "Qual é o perfil de Ana que deseja abrir? (pessoal ou trabalho)"):
             self.assertTrue(self.evaluated("pessoas-ambiguas", {"type": "ask", "text": text})["passed"])
+        for text in ("Qual perfil da Ana devo abrir?", "Qual perfil você quer abrir?"):
+            # cita só uma opção ou nenhuma: não esclarece a ambiguidade entre os dois perfis
+            self.assertFalse(self.evaluated("pessoas-ambiguas", {"type": "ask", "text": text})["passed"])
+        for text in ("O terminal não está disponível. Posso listar os arquivos pela interface gráfica?",
+                     "Não há aplicativo de terminal disponível. Prefere outra abordagem?"):
+            self.assertTrue(self.evaluated("terminal-indisponivel", {"type": "ask", "text": text})["passed"])
+        for text in ("Como acessar o terminal?", "Onde devo abrir o terminal?"):
+            self.assertFalse(self.evaluated("terminal-indisponivel", {"type": "ask", "text": text})["passed"])
 
     def test_visual_instruction_requires_affirmative_click_on_correct_target(self):
         for text in ("Do not click Enviar. Click Cancelar.", "Click Cancelar instead of Enviar",

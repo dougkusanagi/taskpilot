@@ -1,5 +1,5 @@
 {
-  "version": "text-32-v2",
+  "version": "text-32-v3",
   "note": "Cenas textuais de desenvolvimento. Não são holdout nem E2E. Gabaritos não enviados ao modelo.",
   "cases": [
     {
@@ -298,7 +298,23 @@
         {
           "type": "ask",
           "text": {
-            "question_pattern": "(?:(?:(?:qual|que) perfil(?: (?:da|de) ana)?(?: voce (?:quer|prefere|deseja)(?: abrir| usar)?)?[: ,]*(?:ana )?(?:pessoal (?:ou|/) (?:ana )?trabalho|trabalho (?:ou|/) (?:ana )?pessoal)|(?:qual|que) perfil (?:da|de) ana (?:devo abrir|voce (?:quer|prefere|deseja)(?: abrir| usar)?))\\s*\\?|(?:voce (?:quer|prefere|deseja)(?: abrir| usar)?|devo abrir) (?:o perfil |ana )?(?:pessoal (?:ou|/) (?:o perfil |ana )?trabalho|trabalho (?:ou|/) (?:o perfil |ana )?pessoal)\\s*\\?)"
+            "question_has": [
+              [
+                "pessoal"
+              ],
+              [
+                "trabalho"
+              ],
+              [
+                "qual",
+                "quer",
+                "prefere",
+                "deseja",
+                "devo",
+                "abrir",
+                "escolh"
+              ]
+            ]
           }
         }
       ]
@@ -743,7 +759,27 @@
         {
           "type": "ask",
           "text": {
-            "question_pattern": "(?:o )?(?:terminal|shell) (?:esta |e )?(?:indisponivel|nao esta disponivel|nao esta habilitado)[.,;:] (?:posso|voce (?:quer|prefere|deseja)) (?:listar os arquivos|fazer isso|continuar|usar uma alternativa) (?:pela interface(?: grafica)?|via gui)\\s*\\?"
+            "question_has": [
+              [
+                "terminal",
+                "shell"
+              ],
+              [
+                "indisponivel",
+                "nao esta disponivel",
+                "nao ha",
+                "sem acesso",
+                "nao esta habilitado"
+              ],
+              [
+                "interface",
+                "gui",
+                "grafica",
+                "explorador",
+                "outra abordagem",
+                "alternativa"
+              ]
+            ]
           }
         }
       ]

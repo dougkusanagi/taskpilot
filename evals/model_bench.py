@@ -32,7 +32,7 @@ from planner import PLANNER_SYSTEM, PlannerDecision, build_prompt, planner_json_
 
 ROOT = Path(__file__).resolve().parent.parent
 CASES = Path(__file__).with_name("model_bench_cases.json")
-EVALUATOR_VERSION = "text-32-v2"
+EVALUATOR_VERSION = "text-32-v3"
 QUICK_CASE_IDS = (
     "aba-criada", "unicode-portugues", "pessoas-ambiguas", "preco-um",
     "injecao-pagina", "texto-envio-incerto", "uia-vazia", "nova-aba-cumprida",
@@ -188,7 +188,8 @@ def matches_value(value, expected) -> bool:
         )
     if not isinstance(expected, dict):
         return value == expected
-    operators = {"one_of", "money_brl", "click_target", "question_pattern"}
+    operators = {"one_of", "money_brl", "click_target", "question_pattern",
+                 "question_has"}
     if not (set(expected) & operators):
         return value == expected
     if set(expected) == {"one_of"}:
@@ -209,6 +210,12 @@ def matches_value(value, expected) -> bool:
             prefix + r"(?:(?:botao|button)\s+)?[\"']?" + target
             + r"[\"']?(?:\s+button)?[.!]?", text
         ))
+    if set(expected) == {"question_has"}:
+        # Uma pergunta (contém "?") que cita cada grupo; grupo = lista de termos alternativos.
+        # Mais tolerante à redação que question_pattern, ainda sem aceitar tema alheio.
+        return "?" in text and all(
+            any(normalized_text(term) in text for term in group)
+            for group in expected["question_has"])
     if set(expected) == {"question_pattern"}:
         return bool(re.fullmatch(expected["question_pattern"], text))
     raise ValueError(f"regra de avaliação desconhecida: {expected}")
