@@ -8,11 +8,11 @@ Na mesma máquina onde o LM Studio está instalado, execute:
 # Inicia/reutiliza o servidor e lista model keys dos arquivos baixados
 uv run python -m evals.model_bench --lmstudio --list
 
-# Smoke: todos os arquivos cujo model key contém minicpm
-uv run python -m evals.model_bench --lmstudio --limit 2 --reps 1
+# Smoke (4 cenas, 1 repetição): todos os arquivos cujo model key contém minicpm
+uv run python -m evals.model_bench --lmstudio --quick --yes
 
 # Rodada completa: todos os MiniCPM baixados, sequencialmente
-uv run python -m evals.model_bench --lmstudio
+uv run python -m evals.model_bench --lmstudio --yes
 
 # Outra família, ou arquivos exatos retornados pela listagem
 uv run python -m evals.model_bench --lmstudio --match qwen
@@ -28,13 +28,13 @@ e não no WSL. A instalação deve ter runtime e modelos disponíveis previament
 
 Se a porta não responder, inicia o daemon e o servidor em localhost; um servidor
 existente é reutilizado. O servidor permanece disponível ao terminar.
-**Este modo descarrega todos os modelos residentes antes de cada teste** para
+**Este modo descarrega todos os modelos residentes antes de cada teste** (pede confirmação; `--yes` aceita sem perguntar) para
 isolar memória e carrega somente o arquivo selecionado. Não o use simultaneamente
 com chats ou outros clientes do LM Studio. Descarrega o modelo do teste ao terminar,
 inclusive em interrupção. Não restaura os modelos que estavam carregados antes.
 
 Configuração inicial comum: contexto **8192**, `max_tokens=2048`, temperatura
-**0,1**, thinking **native**, três repetições e formatos **schema + prompt**.
+**0,1**, thinking **native**, três repetições e formato **schema** (`--format both` mede também o contrato só-prompt).
 Offload padrão **auto**: omite o override da CLI e deixa o LM Studio determinar
 GPU conforme seus guardrails. `--gpu max` solicita todas as camadas; `--gpu off`
 permite uma comparação em CPU. Não altera guardrails ou muda contexto quando
@@ -97,7 +97,7 @@ API. Consulte os IDs reais primeiro, na raiz do projeto:
 uv run python -m evals.model_bench --list
 ```
 
-Copie o `id` correspondente ao modelo. Se o servidor exigir autenticação,
+`--model` aceita o ID exato ou um trecho único dele (`--model qwen`); sem `--model`, só funciona se o servidor anunciar um modelo. Se o servidor exigir autenticação,
 esta versão do runner não envia token; use o servidor local sem esse
 requisito para o experimento. O runner recusa URLs fora de loopback.
 
@@ -106,7 +106,7 @@ requisito para o experimento. O runner recusa URLs fora de loopback.
 Substitua `ID_EXATO_DA_API` pelo ID retornado em `--list`:
 
 ```powershell
-uv run python -m evals.model_bench --model "ID_EXATO_DA_API" --limit 2 --reps 1
+uv run python -m evals.model_bench --model "ID_EXATO_DA_API" --quick
 ```
 
 Esse smoke faz uma chamada de aquecimento e duas decisões. Confirma
@@ -126,7 +126,8 @@ uv run python -m evals.model_bench --model "ID_EXATO_DA_API" --reps 3 --format b
 (`schema`) e JSON pedido somente no prompt (`prompt`). São 192 decisões
 avaliadas por modelo, além de dois aquecimentos. Para uma primeira rodada
 mais curta, use `--format schema`: 96 decisões mais um aquecimento.
-A saída informa o progresso de cada chamada; não há inferências concorrentes.
+A saída informa o progresso e o tempo restante estimado; não há inferências concorrentes.
+Cinco falhas de infraestrutura seguidas (servidor caído, modelo não carregado) abortam o grupo em vez de esperar todos os timeouts.
 
 Repita para os três rótulos da captura:
 
@@ -175,7 +176,7 @@ timeouts entram como falhas e não são reexecutados automaticamente.
 A execução cria um diretório novo em `runs/model-bench-.../` e imprime
 o caminho absoluto para `resultado.zip`. Esse ZIP contém:
 
-- `relatorio.md`: tabela de acertos, formato e latências por modelo/contrato.
+- `relatorio.md`: tabela de acertos, formato e latências por modelo/contrato, acertos por categoria e cenas que falharam em todas as repetições.
 - `summary.json`: parâmetros, hashes, sistema, aquecimentos, erros e métricas.
 - `rows.jsonl`: decisão completa, resposta bruta, reasoning se retornado,
   tokens/finish_reason se fornecidos pelo servidor, erros e tempo por tentativa.

@@ -5,6 +5,7 @@ import argparse
 import json
 import shutil
 import subprocess
+import sys
 import time
 import zipfile
 from datetime import datetime, timezone
@@ -117,13 +118,18 @@ def main(argv=None):
     ap.add_argument('--out', type=Path)
     ap.add_argument('--reps', type=int, default=3)
     ap.add_argument('--limit', type=int, default=0)
-    ap.add_argument('--format', choices=('schema', 'prompt', 'both'), default='both')
+    ap.add_argument('--yes', action='store_true',
+                    help='aceita descarregar TODOS os modelos residentes do LM Studio')
+    ap.add_argument('--quick', action='store_true', help='smoke: 4 cenas, 1 repetição')
+    ap.add_argument('--format', choices=('schema', 'prompt', 'both'), default='schema')
     ap.add_argument('--thinking', choices=('native', 'on', 'off'), default='native')
     ap.add_argument('--max-tokens', type=int, default=2048)
     ap.add_argument('--temperature', type=float, default=.1)
     ap.add_argument('--timeout', type=float, default=180)
     ap.add_argument('--notes', default='')
     args = ap.parse_args(argv)
+    if args.quick:
+        args.limit, args.reps = args.limit or 4, 1
     if args.context < args.max_tokens + 2048 or args.max_tokens < 1 or args.reps < 1 \
             or args.limit < 0 or args.timeout <= 0:
         ap.error('Reserve ao menos max-tokens + 2048 de contexto; parâmetros devem ser positivos')
@@ -152,6 +158,11 @@ def main(argv=None):
         if not selected:
             raise ValueError('Nenhum modelo corresponde ao filtro; use --lmstudio --list')
         print('Modelos selecionados: ' + ', '.join(key for key, _ in selected), flush=True)
+        if not args.yes:
+            print('Este modo descarrega TODOS os modelos residentes do LM Studio '
+                  '(não são recarregados depois).', flush=True)
+            if not sys.stdin.isatty() or input('Continuar? [s/N] ').strip().lower() != 's':
+                raise ValueError('Cancelado; use --yes para aceitar sem perguntar.')
         directory.mkdir(parents=True, exist_ok=False)
         created = True
         metadata['inventory'] = [info for _, info in available]

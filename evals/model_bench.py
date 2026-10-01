@@ -203,14 +203,18 @@ def summarize(rows: list[dict], planned: int) -> dict:
         group = by_category.setdefault(row["category"], {"attempts": 0, "passed": 0})
         group["attempts"] += 1
         group["passed"] += bool(row.get("passed"))
+    per_case = {}
+    for row in rows:
+        per_case.setdefault(row.get("case_id", "?"), []).append(bool(row.get("passed")))
+    always_failed = sorted(c for c, v in per_case.items() if not any(v))
     denom = max(planned, len(rows))
-    counts = {k: sum(r.get("error_kind") == k for r in rows)
+    counts ={k: sum(r.get("error_kind") == k for r in rows)
               for k in ("semantic", "format", "truncated", "infra")}
     return {"planned": planned, "attempted": len(rows), "not_attempted": max(0, planned-len(rows)),
             "passed": passed, "success_rate": passed / denom if denom else 0,
             "format_rate": formats / denom if denom else 0,
             "pure_json_count": sum(bool(r.get("pure_json")) for r in rows),
-            "errors": counts, "by_category": by_category,
+            "errors": counts, "always_failed": always_failed, "by_category": by_category,
             "latency_ms": {"p50": percentile(elapsed, .5), "p95": percentile(elapsed, .95)},
             "complete": len(rows) == planned,
             "note": "Probes textuais de desenvolvimento; sem aprovação de E2E, visão ou 6 GB."}
@@ -234,8 +238,37 @@ def get_models(client: httpx.Client, url: str) -> list[dict]:
     return response.json()["data"]
 
 
+def resolve_models(requested: list[str] | None, available: list[str]) -> list[str]:
+    """ID exato ou trecho único; sem --model só vale com um único modelo anunciado."""
+    if not requested:
+        if len(available) == 1:
+            return list(available)
+        raise ValueError("vários modelos no servidor; escolha com --model (veja --list):\n  "
+                         + "\n  ".join(available))
+    chosen = []
+    for name in requested:
+        if name in available:
+            chosen.append(name)
+            continue
+        hits = [m for m in available if name.casefold() in m.casefold()]
+        if len(hits) != 1:
+            problem = "nenhuma correspondência" if not hits else "ambíguo entre " + ", ".join(hits)
+            raise ValueError(f"--model {name!r}: {problem}; disponíveis: {available}")
+        chosen.append(hits[0])
+    return chosen
+
+
+def format_eta(seconds: float) -> str:
+    seconds = int(seconds)
+    return f"{seconds // 60}m{seconds % 60:02d}s" if seconds >= 60 else f"{seconds}s"
+
+
+MAX_CONSECUTIVE_INFRA = 5
+
+
 def run_requests(client, url, model, cases, reps, settings, emit):
     rows = []
+    infra_streak = 0
     for rep in range(reps):
         # Rotaciona casos para reduzir viés de ordem entre repetições.
         shift = rep % len(cases)
@@ -266,6 +299,11 @@ def run_requests(client, url, model, cases, reps, settings, emit):
                        requested_model=model, settings=settings)
             rows.append(row)
             emit(row)
+            infra_streak = infra_streak + 1 if row["error_kind"] == "infra" else 0
+            if infra_streak >= MAX_CONSECUTIVE_INFRA:
+                print(f"Abortando {model}: {infra_streak} falhas de infraestrutura seguidas "
+                      f"({row['errors'][0][:200]})", flush=True)
+                return rows
     return rows
 
 
@@ -285,6 +323,18 @@ def write_report(directory: Path, manifest: dict, groups: list[dict]) -> None:
                      f"{s['attempted']}/{s['planned']} | {s['success_rate']:.1%} | "
                      f"{s['format_rate']:.1%} | {s['latency_ms']['p50']} | "
                      f"{s['latency_ms']['p95']} |")
+    for group in groups:
+        s = group["summary"]
+        label = f"{group['model']} [{group['settings']['format']}]"
+        errors = ", ".join(f"{k}={v}" for k, v in s["errors"].items() if v)
+        lines += ["", f"### {label}" + ("" if s["complete"] else " (parcial)"), "",
+                  f"Tentativas {s['attempted']}/{s['planned']}. "
+                  + (f"Erros: {errors}." if errors else "Sem erros."), "",
+                  "| Categoria | Acertos |", "| --- | ---: |"]
+        for cat, g in sorted(s["by_category"].items()):
+            lines.append(f"| {cat} | {g['passed']}/{g['attempts']} |")
+        if s["always_failed"]:
+            lines += ["", "Falharam em todas as repetições: " + ", ".join(s["always_failed"])]
     lines += ["", "Falhas HTTP, respostas inválidas e truncamentos contam como não acertos.",
               "Latências incluem falhas; warmup está separado no manifesto.",
               "Modo thinking é solicitado; o servidor pode ignorá-lo. Ver raw_response.",
@@ -306,7 +356,11 @@ def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--url", default="http://127.0.0.1:1234/v1")
     ap.add_argument("--list", action="store_true", help="listar IDs reais do servidor")
-    ap.add_argument("--model", action="append", help="ID exato; pode repetir, chamadas sequenciais")
+    ap.add_argument("--model", action="append",
+                    help="ID ou trecho único do ID; pode repetir. Opcional se o servidor "
+                         "anunciar um só modelo")
+    ap.add_argument("--quick", action="store_true",
+                    help="smoke: 4 cenas, 1 repetição (--limit 4 --reps 1)")
     ap.add_argument("--reps", type=int, default=3)
     ap.add_argument("--limit", type=int, default=0, help="smoke com os primeiros N casos")
     ap.add_argument("--format", choices=("schema", "prompt", "both"), default="schema")
@@ -317,6 +371,8 @@ def main(argv=None) -> int:
     ap.add_argument("--notes", default="", help="GPU, runtime, contexto, quantização, offload")
     ap.add_argument("--out", type=Path, help="diretório novo; nunca sobrescreve uma execução")
     args = ap.parse_args(argv)
+    if args.quick:
+        args.limit, args.reps = args.limit or 4, 1
     if args.reps < 1 or args.max_tokens < 1 or args.limit < 0 or args.timeout <= 0:
         ap.error("reps/max-tokens/timeout devem ser positivos; limit >= 0")
     try:
@@ -326,11 +382,7 @@ def main(argv=None) -> int:
             if args.list:
                 print(json.dumps(models, ensure_ascii=False, indent=2))
                 return 0
-            if not args.model:
-                ap.error("use --list e depois --model com o ID exato (sem escolha automática)")
-            available = {m["id"] for m in models}
-            if not set(args.model) <= available:
-                ap.error(f"ID não anunciado pelo servidor; disponíveis: {sorted(available)}")
+            args.model = resolve_models(args.model, [m["id"] for m in models])
             cases = load_cases()
             if args.limit:
                 cases = cases[:args.limit]
@@ -369,10 +421,13 @@ def main(argv=None) -> int:
                             with (directory / "rows.jsonl").open("a", encoding="utf-8") as out:
                                 out.write(json.dumps(row, ensure_ascii=False)+"\n")
                             status = "OK" if row["passed"] else row["error_kind"]
-                            print(f"{model} [{fmt}] {len(group['rows'])}/{len(cases)*args.reps} "
-                                  f"{row['case_id']}: {status} ({row['elapsed_ms']:.0f} ms)",
+                            done, total = len(group["rows"]), len(cases) * args.reps
+                            eta = (time.monotonic() - started) / done * (total - done)
+                            print(f"{model} [{fmt}] {done}/{total} {row['case_id']}: {status} "
+                                  f"({row['elapsed_ms']:.0f} ms) ~{format_eta(eta)} restantes",
                                   flush=True)
 
+                        started = time.monotonic()
                         run_requests(client, url, model, cases, args.reps, settings, emit)
             except KeyboardInterrupt:
                 manifest["interrupted"] = True
@@ -383,6 +438,10 @@ def main(argv=None) -> int:
                 write_report(directory, manifest, groups)
             print(f"Relatório para análise: {(directory / 'resultado.zip').resolve()}")
             return 130 if manifest["interrupted"] else 0
+    except httpx.ConnectError:
+        print(f"Nada responde em {args.url}. Inicie o servidor local (LM Studio > Developer) "
+              "ou use --lmstudio para o modo gerenciado.")
+        return 2
     except (httpx.HTTPError, ValueError, OSError) as exc:
         print(f"Não foi possível executar: {exc}")
         return 2

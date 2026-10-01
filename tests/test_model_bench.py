@@ -78,6 +78,36 @@ class TestModelBench(unittest.TestCase):
             with self.assertRaises(ValueError):
                 bench.validate_decision(raw)
 
+    def test_resolve_models_exact_substring_single_and_ambiguous(self):
+        avail = ["minicpm5-1b-v2", "minicpm5-2b", "qwen3-vl-2b"]
+        self.assertEqual(bench.resolve_models(["qwen"], avail), ["qwen3-vl-2b"])
+        self.assertEqual(bench.resolve_models(["minicpm5-2b"], avail), ["minicpm5-2b"])
+        self.assertEqual(bench.resolve_models(None, ["só"]), ["só"])
+        for requested in (None, ["minicpm"], ["nada"]):
+            with self.assertRaises(ValueError):
+                bench.resolve_models(requested, avail)
+
+    def test_aborts_after_consecutive_infra_failures(self):
+        calls = []
+
+        def handler(request):
+            calls.append(1)
+            return httpx.Response(500, text="fora")
+
+        with httpx.Client(transport=httpx.MockTransport(handler)) as client:
+            rows = bench.run_requests(client, "http://127.0.0.1/v1", "fake",
+                                      bench.load_cases(), 3,
+                                      {"format": "prompt", "temperature": .1,
+                                       "max_tokens": 100, "thinking": "native"}, lambda _: None)
+        self.assertEqual(len(rows), bench.MAX_CONSECUTIVE_INFRA)
+        self.assertEqual(len(calls), bench.MAX_CONSECUTIVE_INFRA)
+
+    def test_summary_lists_always_failed_cases(self):
+        rows = [{"case_id": "a", "category": "x", "passed": True, "elapsed_ms": 1},
+                {"case_id": "a", "category": "x", "error_kind": "semantic", "elapsed_ms": 1},
+                {"case_id": "b", "category": "x", "error_kind": "format", "elapsed_ms": 1}]
+        self.assertEqual(bench.summarize(rows, 3)["always_failed"], ["b"])
+
     def test_done_rejects_existing_evidence_with_pending_requirement(self):
         case = next(c for c in bench.load_cases() if c["id"] == "salvar-pendente")
         result = bench.evaluate_response(case, response('{"type":"done","evidences":["ev-texto"]}'), 1)

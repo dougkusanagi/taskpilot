@@ -49,13 +49,13 @@ class TestManaged(unittest.TestCase):
                 patch.object(managed.Manager, 'command', command), \
                 patch.object(bench, 'main', run):
             output = Path(temp) / 'out'
-            code = managed.main(['--out', str(output), '--limit', '1'])
+            code = managed.main(['--out', str(output), '--limit', '1', '--yes'])
             metadata = json.loads((output / 'automation.json').read_text())
             with zipfile.ZipFile(output / 'resultado.zip') as bundle:
                 self.assertIn('automation.json', bundle.namelist())
                 self.assertIn('comparativo.md', bundle.namelist())
             before = (output / 'automation.json').read_text()
-            self.assertEqual(managed.main(['--out', str(output)]), 2)
+            self.assertEqual(managed.main(['--out', str(output), '--yes']), 2)
             self.assertEqual((output / 'automation.json').read_text(), before)
         return code, metadata, commands
 
@@ -116,3 +116,17 @@ class TestManaged(unittest.TestCase):
             self.assertFalse(spawn.call_args.kwargs['shell'])
             self.assertEqual(spawn.call_args.args[0], ['lms', 'load', 'name with spaces'])
             self.assertEqual(manager.events[0]['returncode'], 0)
+
+    def test_without_yes_never_unloads_when_not_interactive(self):
+        commands = []
+
+        def command(self, *args):
+            commands.append(args)
+            return '[{"modelKey":"minicpm-a"}]'
+
+        with patch.object(managed, 'find_lms', return_value='fake'), \
+                patch.object(managed, 'ensure_server'), \
+                patch.object(managed.Manager, 'command', command), \
+                patch.object(managed.sys.stdin, 'isatty', return_value=False):
+            self.assertEqual(managed.main([]), 2)
+        self.assertNotIn(('unload', '--all'), commands)
