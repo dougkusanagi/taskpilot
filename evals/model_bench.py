@@ -15,6 +15,7 @@ import platform
 import re
 import sys
 import time
+import unicodedata
 import zipfile
 from datetime import datetime, timezone
 from pathlib import Path
@@ -26,6 +27,18 @@ from planner import PlannerDecision, planner_json_schema
 
 ROOT = Path(__file__).resolve().parent.parent
 CASES = Path(__file__).with_name("model_bench_cases.json")
+EVALUATOR_VERSION = "text-32-v2"
+QUICK_CASE_IDS = (
+    "aba-criada", "unicode-portugues", "pessoas-ambiguas", "preco-um",
+    "injecao-pagina", "texto-envio-incerto", "uia-vazia", "nova-aba-cumprida",
+)
+WARMUP_CASE = {
+    "id": "warmup", "category": "warmup", "goal": "Digite aquecimento no editor focado.",
+    "observation": {"window": "Editor", "focus": "Editor vazio", "elements": ["Edit:Editor"]},
+    "state": {"pending": ["digitar aquecimento"], "evidence_ids": []},
+    "last_result": "Editor focado, confirmado.",
+    "alternatives": [{"type": "type_text", "text": "aquecimento"}],
+}
 SYSTEM = """Você escolhe a próxima decisão de um agente local de computador.
 Responda um único objeto JSON com type e os argumentos necessários.
 Você recebe observações TEXTUAIS congeladas, não uma imagem. Nunca gere coordenadas.
@@ -52,7 +65,12 @@ de "args" (que só existe em use_skill). Formas válidas (nenhuma será executad
 {"type":"sequence","steps":[até três decisões planas de teclado/espera com foco demonstrado]}
 {"type":"done","evidences":["IDs de evidências que comprovam o pedido inteiro"]}
 Os valores acima descrevem o campo; não os copie como conteúdo da tarefa.
+Elementos da observação aparecem como tipo:nome (ex.: "Button:Salvar"). Em target e em
+expand: use SOMENTE o nome ("Salvar"), sem o tipo nem os dois pontos; o tipo não é parte do nome.
 Não reabra um aplicativo já ativo.
+Para informar valores, use resposta curta: por exemplo "O total é R$ 10,00".
+Para pedir esclarecimento, formule uma pergunta sobre a escolha pendente.
+Para localização visual, use uma única instrução curta de clique com verbo e alvo.
 """
 
 
@@ -65,6 +83,20 @@ def load_cases(path: Path = CASES) -> list[dict]:
         if not case.get("alternatives") or not case.get("observation"):
             raise ValueError(f"caso incompleto: {case['id']}")
     return cases
+
+
+def select_cases(cases: list[dict], quick: bool, limit: int) -> list[dict]:
+    if quick:
+        by_id = {case["id"]: case for case in cases}
+        cases = [by_id[name] for name in QUICK_CASE_IDS]
+    return cases[:limit] if limit else cases
+
+
+def validate_options(reps, max_tokens, limit, timeout, temperature):
+    if reps < 1 or max_tokens < 1 or limit < 0 or not math.isfinite(timeout) or timeout <= 0:
+        raise ValueError("reps/max-tokens/timeout devem ser positivos; limit >= 0")
+    if not math.isfinite(temperature) or not 0 <= temperature <= 2:
+        raise ValueError("temperature deve ser finita e estar entre 0 e 2")
 
 
 def make_messages(case: dict) -> list[dict]:
@@ -100,7 +132,7 @@ def validate_decision(raw: dict) -> dict:
     extra = set(raw) - allowed
     if extra:
         raise ValueError(f"campos proibidos: {sorted(extra)}")
-    decision = PlannerDecision.model_validate(raw).model_dump(exclude_none=True)
+    decision = PlannerDecision.model_validate(raw, strict=True).model_dump(exclude_none=True)
     required = {
         "open_app": "app", "focus_window": "target", "type_text": "text",
         "press_key": "key", "hotkey": "keys", "uia_click": "target",
@@ -109,6 +141,13 @@ def validate_decision(raw: dict) -> dict:
         "sequence": "steps",
     }
     field = required.get(decision["type"])
+    active = {"type", "task_update", "ms"} | ({field} if field else set())
+    if decision["type"] == "use_skill":
+        active.add("args")
+    if any(value is not None and key not in active for key, value in raw.items()):
+        raise ValueError("argumentos incompatíveis com o tipo da decisão")
+    if decision["type"] != "wait" and decision["ms"] != 0:
+        raise ValueError("ms só pode ser usado em wait")
     if field and not decision.get(field):
         raise ValueError(f"{decision['type']} exige {field}")
     if field and field not in ("steps", "evidences"):
@@ -131,27 +170,57 @@ def validate_decision(raw: dict) -> dict:
     return decision
 
 
+def normalized_text(value: str) -> str:
+    text = unicodedata.normalize("NFKD", value.casefold())
+    return " ".join("".join(c for c in text if not unicodedata.combining(c)).split())
+
+
+def matches_value(value, expected) -> bool:
+    """Oráculos delimitados, sem aceitar substring como prova de semântica."""
+    if isinstance(expected, list):
+        return isinstance(value, list) and len(value) == len(expected) and all(
+            matches_rule(actual, rule) for actual, rule in zip(value, expected)
+        )
+    if not isinstance(expected, dict):
+        return value == expected
+    operators = {"one_of", "money_brl", "click_target", "question_pattern"}
+    if not (set(expected) & operators):
+        return value == expected
+    if set(expected) == {"one_of"}:
+        return value in expected["one_of"]
+    if not isinstance(value, str):
+        return False
+    text = normalized_text(value)
+    if set(expected) == {"money_brl"}:
+        amount = re.escape(expected["money_brl"]).replace(r"\.", r"\.?")
+        # Aceita um único valor afirmativo, sem cifras extras, negação ou instruções.
+        prefix = r"(?:(?:o |a )?(?:preco|valor|total)(?: visivel| da oferta)?\s*(?:e|:)\s*)?"
+        return bool(re.fullmatch(prefix + r"(?:de\s+)?(?:r\$\s*)?" + amount
+                                 + r"\s*[.!]?", text))
+    if set(expected) == {"click_target"}:
+        target = re.escape(normalized_text(expected["click_target"]))
+        prefix = r"(?:click|clique|clicar)\s+(?:(?:on|the|no|na|em|o|a)\s+)*"
+        return bool(re.fullmatch(
+            prefix + r"(?:(?:botao|button)\s+)?[\"']?" + target
+            + r"[\"']?(?:\s+button)?[.!]?", text
+        ))
+    if set(expected) == {"question_pattern"}:
+        return bool(re.fullmatch(expected["question_pattern"], text))
+    raise ValueError(f"regra de avaliação desconhecida: {expected}")
+
+
+def matches_rule(decision: dict, rule: dict) -> bool:
+    return all(
+        set(decision.get(field, [])) == set(expected) if field == "evidences"
+        else matches_value(decision.get(field), expected)
+        for field, expected in rule.items()
+    )
+
+
 def check_case(case: dict, decision: dict) -> list[str]:
     """Classes de respostas aceitáveis com argumentos; sem juiz LLM."""
-    def matches(rule):
-        for field, expected in rule.items():
-            value = decision.get(field)
-            if isinstance(expected, dict):
-                if "contains" in expected:
-                    if not isinstance(value, str) or expected["contains"].casefold() \
-                            not in value.casefold():
-                        return False
-                if "one_of" in expected and value not in expected["one_of"]:
-                    return False
-            elif field == "evidences" and isinstance(value, list):
-                if set(value) != set(expected):
-                    return False
-            elif value != expected:
-                return False
-        return True
-
     errors = []
-    if not any(matches(rule) for rule in case["alternatives"]):
+    if not any(matches_rule(decision, rule) for rule in case["alternatives"]):
         errors.append("ação ou argumentos incompatíveis com este estado")
     if decision["type"] == "done":
         evidence = case["state"].get("evidence_ids", [])
@@ -182,7 +251,7 @@ def evaluate_response(case: dict, data: dict, elapsed_ms: float) -> dict:
         row["errors"] = check_case(case, row["decision"])
         row["error_kind"] = "semantic" if row["errors"] else ""
         row["passed"] = not row["errors"]
-    except (ValueError, KeyError, IndexError, TypeError) as exc:
+    except (ValueError, KeyError, IndexError, TypeError, AttributeError) as exc:
         row["error_kind"] = "format"
         row["errors"] = [str(exc)[:500]]
     return row
@@ -212,13 +281,17 @@ def summarize(rows: list[dict], planned: int) -> dict:
     denom = max(planned, len(rows))
     counts ={k: sum(r.get("error_kind") == k for r in rows)
               for k in ("semantic", "format", "truncated", "infra")}
+    complete = len(rows) == planned
+    execution_ok = complete and not counts["infra"]
     return {"planned": planned, "attempted": len(rows), "not_attempted": max(0, planned-len(rows)),
             "passed": passed, "success_rate": passed / denom if denom else 0,
             "format_rate": formats / denom if denom else 0,
             "pure_json_count": sum(bool(r.get("pure_json")) for r in rows),
             "errors": counts, "always_failed": always_failed, "by_category": by_category,
             "latency_ms": {"p50": percentile(elapsed, .5), "p95": percentile(elapsed, .95)},
-            "complete": len(rows) == planned,
+            "complete": complete, "execution_ok": execution_ok,
+            "execution_status": "ok" if execution_ok else "infra_error" if counts["infra"]
+            else "partial",
             "note": "Probes textuais de desenvolvimento; sem aprovação de E2E, visão ou 6 GB."}
 
 
@@ -237,7 +310,13 @@ def local_url(url: str) -> str:
 def get_models(client: httpx.Client, url: str) -> list[dict]:
     response = client.get(f"{url}/models")
     response.raise_for_status()
-    return response.json()["data"]
+    data = response.json()
+    if not isinstance(data, dict) or not isinstance(data.get("data"), list) or any(
+        not isinstance(m, dict) or not isinstance(m.get("id"), str) or not m["id"]
+        for m in data["data"]
+    ):
+        raise ValueError("/models não retornou uma lista de IDs válidos")
+    return data["data"]
 
 
 def resolve_models(requested: list[str] | None, available: list[str]) -> list[str]:
@@ -257,7 +336,7 @@ def resolve_models(requested: list[str] | None, available: list[str]) -> list[st
             problem = "nenhuma correspondência" if not hits else "ambíguo entre " + ", ".join(hits)
             raise ValueError(f"--model {name!r}: {problem}; disponíveis: {available}")
         chosen.append(hits[0])
-    return chosen
+    return list(dict.fromkeys(chosen))
 
 
 def format_eta(seconds: float) -> str:
@@ -330,6 +409,8 @@ def write_report(directory: Path, manifest: dict, groups: list[dict]) -> None:
         label = f"{group['model']} [{group['settings']['format']}]"
         errors = ", ".join(f"{k}={v}" for k, v in s["errors"].items() if v)
         lines += ["", f"### {label}" + ("" if s["complete"] else " (parcial)"), "",
+                  f"Estado da execução: {s['execution_status']}. "
+                  f"Erros de infraestrutura no aquecimento: {group.get('warmup_infra_errors', 0)}.",
                   f"Tentativas {s['attempted']}/{s['planned']}. "
                   + (f"Erros: {errors}." if errors else "Sem erros."), "",
                   "| Categoria | Acertos |", "| --- | ---: |"]
@@ -342,6 +423,8 @@ def write_report(directory: Path, manifest: dict, groups: list[dict]) -> None:
               "Modo thinking é solicitado; o servidor pode ignorá-lo. Ver raw_response.",
               "JSON schema avalia saída restrita; prompt avalia JSON sem restrição do servidor.",
               "Backend, quantização e offload são declarados pelo operador, não certificados.",
+              "Oráculos conservadores de texto; paráfrases fora da gramática podem falhar.",
+              "Exit 2 indica infraestrutura/execução parcial, não reprovação semântica do modelo.",
               "Consulte rows.jsonl para respostas, tokens, finish_reason e erros por cena."]
     (directory / "relatorio.md").write_text("\n".join(lines)+"\n", encoding="utf-8")
     with zipfile.ZipFile(directory / "resultado.zip", "w", zipfile.ZIP_DEFLATED) as archive:
@@ -362,7 +445,7 @@ def main(argv=None) -> int:
                     help="ID ou trecho único do ID; pode repetir. Opcional se o servidor "
                          "anunciar um só modelo")
     ap.add_argument("--quick", action="store_true",
-                    help="smoke: 4 cenas, 1 repetição (--limit 4 --reps 1)")
+                    help="smoke textual: 8 cenas variadas, 1 repetição")
     ap.add_argument("--reps", type=int, default=3)
     ap.add_argument("--limit", type=int, default=0, help="smoke com os primeiros N casos")
     ap.add_argument("--format", choices=("schema", "prompt", "both"), default="schema")
@@ -374,9 +457,11 @@ def main(argv=None) -> int:
     ap.add_argument("--out", type=Path, help="diretório novo; nunca sobrescreve uma execução")
     args = ap.parse_args(argv)
     if args.quick:
-        args.limit, args.reps = args.limit or 4, 1
-    if args.reps < 1 or args.max_tokens < 1 or args.limit < 0 or args.timeout <= 0:
-        ap.error("reps/max-tokens/timeout devem ser positivos; limit >= 0")
+        args.reps = 1
+    try:
+        validate_options(args.reps, args.max_tokens, args.limit, args.timeout, args.temperature)
+    except ValueError as exc:
+        ap.error(str(exc))
     try:
         url = local_url(args.url)
         with httpx.Client(timeout=args.timeout, trust_env=False) as client:
@@ -385,16 +470,15 @@ def main(argv=None) -> int:
                 print(json.dumps(models, ensure_ascii=False, indent=2))
                 return 0
             args.model = resolve_models(args.model, [m["id"] for m in models])
-            cases = load_cases()
-            if args.limit:
-                cases = cases[:args.limit]
+            cases = select_cases(load_cases(), args.quick, args.limit)
             directory = args.out or ROOT / "runs" / (
                 "model-bench-" + datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S-%f"))
             directory.mkdir(parents=True, exist_ok=False)
             (directory / "rows.jsonl").touch()
             case_text = json.dumps(cases, ensure_ascii=False, indent=2)
             (directory / "cases.json").write_text(case_text, encoding="utf-8")
-            manifest = {"version": 1, "time_utc": datetime.now(timezone.utc).isoformat(),
+            manifest = {"version": 2, "evaluator_version": EVALUATOR_VERSION,
+                        "time_utc": datetime.now(timezone.utc).isoformat(),
                         "url": url, "models_advertised": models, "notes": args.notes,
                         "platform": platform.platform(), "python": platform.python_version(),
                         "cases_sha256": hashlib.sha256(case_text.encode()).hexdigest(),
@@ -402,6 +486,7 @@ def main(argv=None) -> int:
                         "system_prompt": SYSTEM, "warmups": [], "interrupted": False,
                         "requested_models": args.model, "requested_format": args.format,
                         "reps": args.reps, "timeout_s": args.timeout,
+                        "quick": args.quick, "selected_case_ids": [c["id"] for c in cases],
                         "hardware_measured": False,
                         "hardware_note": "Sem medição de pico VRAM/offload; use --notes."}
             groups = []
@@ -415,8 +500,11 @@ def main(argv=None) -> int:
                         groups.append(group)
                         # Warmup real com o mesmo contrato, fora da taxa de acertos.
                         print(f"Aquecendo {model} [{fmt}]...", flush=True)
-                        run_requests(client, url, model, cases[:1], 1, settings,
-                                     lambda row: manifest["warmups"].append(row))
+                        warmups = run_requests(client, url, model, [WARMUP_CASE], 1, settings,
+                                               lambda row: manifest["warmups"].append(row))
+                        group["warmup_infra_errors"] = sum(
+                            row["error_kind"] == "infra" for row in warmups
+                        )
 
                         def emit(row):
                             group["rows"].append(row)
@@ -437,9 +525,14 @@ def main(argv=None) -> int:
             finally:
                 for group in groups:
                     group["summary"] = summarize(group.pop("rows"), len(cases)*args.reps)
+                    if group.get("warmup_infra_errors"):
+                        group["summary"].update(execution_ok=False, execution_status="infra_error")
+                manifest["exit_code"] = 130 if manifest["interrupted"] else 2 if any(
+                    not g["summary"]["execution_ok"] for g in groups
+                ) else 0
                 write_report(directory, manifest, groups)
             print(f"Relatório para análise: {(directory / 'resultado.zip').resolve()}")
-            return 130 if manifest["interrupted"] else 0
+            return manifest["exit_code"]
     except httpx.ConnectError:
         print(f"Nada responde em {args.url}. Inicie o servidor local (LM Studio > Developer) "
               "ou use --lmstudio para o modo gerenciado.")

@@ -97,14 +97,94 @@ class TestManaged(unittest.TestCase):
             return original(transport=httpx.MockTransport(handler), **kwargs)
 
         with patch.object(managed.httpx, 'Client', client), \
-                patch.object(managed.Manager, 'command', return_value='') as command:
+                patch.object(managed.Manager, 'command',
+                             return_value='{"running":true,"port":1234}') as command:
             managed.ensure_server(managed.Manager('fake'), 'http://127.0.0.1:1234/v1')
             self.assertEqual(command.call_args_list[0].args, ('daemon', 'up'))
             self.assertEqual(command.call_args_list[1].args,
                              ('server', 'start', '--port', '1234', '--bind', '127.0.0.1'))
             command.reset_mock()
             managed.ensure_server(managed.Manager('fake'), 'http://127.0.0.1:1234/v1')
-            command.assert_called_once_with('server', 'status')
+            command.assert_called_once_with('server', 'status', '--json', '--quiet')
+
+    def test_wrong_port_stopped_server_and_malformed_status_are_refused(self):
+        import httpx
+        original = httpx.Client
+
+        def client(**kwargs):
+            return original(transport=httpx.MockTransport(
+                lambda _: httpx.Response(200, json={'data': []})), **kwargs)
+
+        for status in ({'running': False, 'port': 1234}, {'running': True, 'port': 9999},
+                       {}, [], {'running': 'true', 'port': 1234}):
+            with self.subTest(status=status), patch.object(managed.httpx, 'Client', client), \
+                    patch.object(managed.Manager, 'command', return_value=json.dumps(status)) as cmd:
+                with self.assertRaises(ValueError):
+                    managed.ensure_server(managed.Manager('fake'), 'http://127.0.0.1:1234/v1')
+                cmd.assert_called_once_with('server', 'status', '--json', '--quiet')
+
+    def test_started_server_also_requires_matching_cli_status(self):
+        import httpx
+        original = httpx.Client
+
+        def client(**kwargs):
+            return original(transport=httpx.MockTransport(
+                lambda _: (_ for _ in ()).throw(httpx.ConnectError('refused'))), **kwargs)
+
+        with patch.object(managed.httpx, 'Client', client), \
+                patch.object(managed.Manager, 'command', return_value='{"running":true,"port":9999}'):
+            with self.assertRaises(ValueError):
+                managed.ensure_server(managed.Manager('fake'), 'http://127.0.0.1:1234/v1')
+
+    def test_managed_quick_http_failure_propagates_and_preserves_report(self):
+        import httpx
+        original = httpx.Client
+        commands = []
+
+        def command(self, *args):
+            commands.append(args)
+            if args[0] == 'ls':
+                return '[{"modelKey":"vendor/qwen3-vl-2b-instruct"}]'
+            return '[]'
+
+        def handler(request):
+            if request.method == 'GET':
+                return httpx.Response(200, json={'data': [{'id': 'taskpilot-bench-0'}]})
+            return httpx.Response(500, text='backend unavailable')
+
+        def client(**kwargs):
+            return original(transport=httpx.MockTransport(handler), **kwargs)
+
+        with tempfile.TemporaryDirectory() as temp, \
+                patch.object(managed, 'find_lms', return_value='fake'), \
+                patch.object(managed, 'ensure_server'), \
+                patch.object(managed.Manager, 'command', command), \
+                patch.object(managed.httpx, 'Client', client):
+            out = Path(temp) / 'out'
+            self.assertEqual(managed.main(['--yes', '--quick', '--gpu', 'max', '--model',
+                                          'qwen3-vl-2b-instruct', '--out', str(out)]), 2)
+            metadata = json.loads((out / 'automation.json').read_text())
+            self.assertEqual(metadata['results'][0]['exit_code'], 2)
+            summary = json.loads((out / 'model-00/summary.json').read_text())
+            self.assertEqual(summary['results'][0]['summary']['planned'], 8)
+            self.assertFalse(summary['results'][0]['summary']['execution_ok'])
+            self.assertIn('infra_error', (out / 'comparativo.md').read_text())
+            self.assertTrue((out / 'resultado.zip').is_file())
+        loads = [cmd for cmd in commands if cmd[0] == 'load']
+        self.assertTrue(all('--gpu' in cmd and 'max' in cmd for cmd in loads))
+        self.assertIn(('unload', 'taskpilot-bench-0'), commands)
+
+    def test_nonfinite_options_and_ambiguous_models_never_unload(self):
+        for args in (['--temperature', 'nan'], ['--timeout', 'nan']):
+            with patch.object(managed, 'find_lms') as find, self.assertRaises(SystemExit):
+                managed.main(args)
+            find.assert_not_called()
+        with patch.object(managed, 'find_lms', return_value='fake'), \
+                patch.object(managed, 'ensure_server'), \
+                patch.object(managed.Manager, 'command',
+                             return_value='[{"modelKey":"qwen/a"},{"modelKey":"qwen/b"}]') as cmd:
+            self.assertEqual(managed.main(['--yes', '--model', 'qwen']), 2)
+            cmd.assert_called_once_with('ls', '--llm', '--json')
 
     def test_command_uses_no_shell_and_records_exit(self):
         from unittest.mock import Mock

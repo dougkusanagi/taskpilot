@@ -80,26 +80,30 @@ def inventory(raw):
 def ensure_server(manager, url):
     parsed = urlsplit(url)
     if parsed.scheme != 'http' or parsed.hostname not in ('localhost', '127.0.0.1') \
-            or parsed.path != '/v1':
+            or parsed.path != '/v1' or parsed.query or parsed.fragment:
         raise ValueError('Modo gerenciado exige http://127.0.0.1:PORTA/v1')
+    port = parsed.port or 80
+
+    def verify_status():
+        status = json.loads(manager.command('server', 'status', '--json', '--quiet'))
+        if not isinstance(status, dict) or status.get('running') is not True \
+                or status.get('port') != port:
+            raise ValueError(f'CLI LM Studio não confirma servidor ativo na porta {port}')
+
     with httpx.Client(timeout=3, trust_env=False) as client:
         try:
-            response = client.get(url + '/models')
+            bench.get_models(client, url)
         except httpx.ConnectError:
             manager.command('daemon', 'up')
-            manager.command('server', 'start', '--port', str(parsed.port or 80),
+            manager.command('server', 'start', '--port', str(port),
                             '--bind', '127.0.0.1')
         else:
-            response.raise_for_status()
-            response.json()['data']
-            # Prova que a CLI responde; não tratar servidor arbitrário como LM Studio.
-            manager.command('server', 'status')
+            verify_status()
             return
+        verify_status()
         for _ in range(30):
             try:
-                response = client.get(url + '/models')
-                response.raise_for_status()
-                response.json()['data']
+                bench.get_models(client, url)
                 return
             except httpx.ConnectError:
                 time.sleep(1)
@@ -112,7 +116,8 @@ def main(argv=None):
     ap.add_argument('--url', default='http://127.0.0.1:1234/v1')
     ap.add_argument('--list', action='store_true')
     ap.add_argument('--match', default='minicpm', help='substring do model key; padrão minicpm')
-    ap.add_argument('--model', action='append', help='model key exato do lms ls, substitui --match')
+    ap.add_argument('--model', action='append',
+                    help='model key exato ou trecho único do lms ls; substitui --match')
     ap.add_argument('--context', type=int, default=8192)
     ap.add_argument('--gpu', default='auto', choices=('auto', 'max', 'off'))
     ap.add_argument('--out', type=Path)
@@ -120,7 +125,7 @@ def main(argv=None):
     ap.add_argument('--limit', type=int, default=0)
     ap.add_argument('--yes', action='store_true',
                     help='aceita descarregar TODOS os modelos residentes do LM Studio')
-    ap.add_argument('--quick', action='store_true', help='smoke: 4 cenas, 1 repetição')
+    ap.add_argument('--quick', action='store_true', help='smoke textual: 8 cenas, 1 repetição')
     ap.add_argument('--format', choices=('schema', 'prompt', 'both'), default='schema')
     ap.add_argument('--thinking', choices=('native', 'on', 'off'), default='native')
     ap.add_argument('--max-tokens', type=int, default=2048)
@@ -129,10 +134,14 @@ def main(argv=None):
     ap.add_argument('--notes', default='')
     args = ap.parse_args(argv)
     if args.quick:
-        args.limit, args.reps = args.limit or 4, 1
-    if args.context < args.max_tokens + 2048 or args.max_tokens < 1 or args.reps < 1 \
-            or args.limit < 0 or args.timeout <= 0:
-        ap.error('Reserve ao menos max-tokens + 2048 de contexto; parâmetros devem ser positivos')
+        args.reps = 1
+    try:
+        bench.validate_options(args.reps, args.max_tokens, args.limit,
+                               args.timeout, args.temperature)
+        if args.context < args.max_tokens + 2048:
+            raise ValueError('Reserve ao menos max-tokens + 2048 de contexto')
+    except ValueError as exc:
+        ap.error(str(exc))
     directory = args.out or bench.ROOT / 'runs' / (
         'lmstudio-bench-' + datetime.now(timezone.utc).strftime('%Y%m%d-%H%M%S-%f'))
     created = False
@@ -149,12 +158,13 @@ def main(argv=None):
         if args.list:
             print(raw)
             return 0
-        selected = [(key, info) for key, info in available
-                    if key in args.model] if args.model else [
-                        (key, info) for key, info in available
+        if args.model:
+            keys = bench.resolve_models(args.model, [key for key, _ in available])
+            by_key = dict(available)
+            selected = [(key, by_key[key]) for key in keys]
+        else:
+            selected = [(key, info) for key, info in available
                         if args.match.casefold() in key.casefold()]
-        if args.model and set(args.model) - {key for key, _ in available}:
-            raise ValueError('Model key não encontrado; use --lmstudio --list')
         if not selected:
             raise ValueError('Nenhum modelo corresponde ao filtro; use --lmstudio --list')
         print('Modelos selecionados: ' + ', '.join(key for key, _ in selected), flush=True)
@@ -182,13 +192,16 @@ def main(argv=None):
                 result['loaded_snapshot'] = manager.command('ps', '--json')
                 output = directory / f'model-{index:02d}'
                 result['directory'] = output.name
-                result['exit_code'] = bench.main([
+                bench_args = [
                     '--url', args.url, '--model', identifier, '--out', str(output),
                     '--reps', str(args.reps), '--limit', str(args.limit),
                     '--format', args.format, '--thinking', args.thinking,
                     '--max-tokens', str(args.max_tokens), '--temperature', str(args.temperature),
                     '--timeout', str(args.timeout), '--notes',
-                    f'context_requested={args.context}; gpu_requested={args.gpu}; {args.notes}'])
+                    f'context_requested={args.context}; gpu_requested={args.gpu}; {args.notes}']
+                if args.quick:
+                    bench_args.append('--quick')
+                result['exit_code'] = bench.main(bench_args)
                 if result['exit_code'] == 130:
                     raise KeyboardInterrupt
                 if result['exit_code']:
@@ -216,18 +229,22 @@ def main(argv=None):
             (directory / 'automation.json').write_text(
                 json.dumps(metadata, ensure_ascii=False, indent=2), encoding='utf-8')
             lines = ['# Comparação gerenciada pelo LM Studio', '',
-                     '| Modelo | Formato | Acertos | Estado |', '| --- | --- | ---: | --- |']
+                     '| Modelo | Formato | Acertos | Estado | Infra | Infra warmup |',
+                     '| --- | --- | ---: | --- | ---: | ---: |']
             for result in results:
                 path = directory / result.get('directory', '_missing') / 'summary.json'
                 if path.is_file():
                     data = json.loads(path.read_text(encoding='utf-8'))
                     for group in data['results']:
                         s = group['summary']
+                        execution = s['execution_status']
                         lines.append(f"| {result['model_key']} | {group['settings']['format']} | "
                                      f"{s['passed']}/{s['planned']} | "
-                                     f"{'completo' if s['complete'] else 'parcial'} |")
+                                     f"{execution} | {s['errors']['infra']} | "
+                                     f"{group.get('warmup_infra_errors', 0)} |")
                 else:
-                    lines.append(f"| {result['model_key']} | — | — | falha de infraestrutura |")
+                    lines.append(f"| {result['model_key']} | — | — | "
+                                 "falha de infraestrutura | — | — |")
             lines += ['', 'Configuração solicitada e comandos: automation.json.',
                       'Estimativa de memória não mede pico VRAM. Sem validação visual/E2E.']
             (directory / 'comparativo.md').write_text('\n'.join(lines)+'\n', encoding='utf-8')

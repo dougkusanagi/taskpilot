@@ -1,5 +1,5 @@
 {
-  "version": "text-32-v1",
+  "version": "text-32-v2",
   "note": "Cenas textuais de desenvolvimento. Não são holdout nem E2E. Gabaritos não enviados ao modelo.",
   "cases": [
     {
@@ -24,6 +24,10 @@
         {
           "type": "hotkey",
           "keys": "ctrl+l"
+        },
+        {
+          "type": "uia_click",
+          "target": "Barra de endereço"
         }
       ]
     },
@@ -49,6 +53,19 @@
         {
           "type": "type_text",
           "text": "https://example.org"
+        },
+        {
+          "type": "sequence",
+          "steps": [
+            {
+              "type": "type_text",
+              "text": "https://example.org"
+            },
+            {
+              "type": "press_key",
+              "key": "enter"
+            }
+          ]
         }
       ]
     },
@@ -279,7 +296,10 @@
       "last_result": "Nenhuma ação anterior.",
       "alternatives": [
         {
-          "type": "ask"
+          "type": "ask",
+          "text": {
+            "question_pattern": "(?:(?:(?:qual|que) perfil(?: (?:da|de) ana)?(?: voce (?:quer|prefere|deseja)(?: abrir| usar)?)?[: ,]*(?:ana )?(?:pessoal (?:ou|/) (?:ana )?trabalho|trabalho (?:ou|/) (?:ana )?pessoal)|(?:qual|que) perfil (?:da|de) ana (?:devo abrir|voce (?:quer|prefere|deseja)(?: abrir| usar)?))\\s*\\?|(?:voce (?:quer|prefere|deseja)(?: abrir| usar)?|devo abrir) (?:o perfil |ana )?(?:pessoal (?:ou|/) (?:o perfil |ana )?trabalho|trabalho (?:ou|/) (?:o perfil |ana )?pessoal)\\s*\\?)"
+          }
         }
       ]
     },
@@ -467,7 +487,7 @@
         {
           "type": "answer",
           "text": {
-            "contains": "219,90"
+            "money_brl": "219,90"
           }
         }
       ]
@@ -495,7 +515,7 @@
         {
           "type": "answer",
           "text": {
-            "contains": "1.249,90"
+            "money_brl": "1.249,90"
           }
         }
       ]
@@ -523,7 +543,7 @@
         {
           "type": "answer",
           "text": {
-            "contains": "2.499,00"
+            "money_brl": "2.499,00"
           }
         }
       ]
@@ -721,7 +741,10 @@
       "last_result": "Nenhuma ação anterior.",
       "alternatives": [
         {
-          "type": "ask"
+          "type": "ask",
+          "text": {
+            "question_pattern": "(?:o )?(?:terminal|shell) (?:esta |e )?(?:indisponivel|nao esta disponivel|nao esta habilitado)[.,;:] (?:posso|voce (?:quer|prefere|deseja)) (?:listar os arquivos|fazer isso|continuar|usar uma alternativa) (?:pela interface(?: grafica)?|via gui)\\s*\\?"
+          }
         }
       ]
     },
@@ -782,7 +805,7 @@
         {
           "type": "visual_action",
           "instruction": {
-            "contains": "Enviar"
+            "click_target": "Enviar"
           }
         },
         {

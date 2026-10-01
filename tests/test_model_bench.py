@@ -31,12 +31,162 @@ class TestModelBench(unittest.TestCase):
             for alternative in case["alternatives"]:
                 raw = dict(alternative)
                 for key, value in list(raw.items()):
-                    if isinstance(value, dict):
-                        raw[key] = value.get("contains", value.get("one_of", [None])[0])
-                if raw["type"] == "ask":
-                    raw.setdefault("text", "Qual opção você deseja?")
+                    if isinstance(value, dict) and key != "args":
+                        samples = {
+                            "money_brl": "R$ " + value.get("money_brl", ""),
+                            "click_target": "Click " + value.get("click_target", ""),
+                            "question_pattern": {
+                                "pessoas-ambiguas": "Qual perfil de Ana: pessoal ou trabalho?",
+                                "terminal-indisponivel": "O terminal está indisponível. Posso listar os arquivos pela interface?",
+                            }.get(case["id"]),
+                        }
+                        raw[key] = samples[next(iter(value))]
                 result = bench.evaluate_response(case, response(json.dumps(raw)), 2)
                 self.assertTrue(result["passed"], (case["id"], result))
+
+    def evaluated(self, case_id, raw):
+        case = next(c for c in bench.load_cases() if c["id"] == case_id)
+        return bench.evaluate_response(case, response(json.dumps(raw, ensure_ascii=False)), 1)
+
+    def test_price_rejects_negation_conflicting_values_and_other_currency(self):
+        for text in ("O preço não é R$ 1.249,90; é R$ 9.999,00.",
+                     "R$ 1.249,90 ou R$ 2.499,00", "US$ 1.249,90",
+                     "Compre por R$ 1.249,90", "R$ 11.249,90"):
+            with self.subTest(text=text):
+                self.assertFalse(self.evaluated("preco-um", {"type": "answer", "text": text})["passed"])
+        for text in ("R$ 1.249,90", "O preço visível é R$ 1.249,90.", "Valor: R$ 1.249,90",
+                     "O preço é de R$ 1249,90"):
+            with self.subTest(text=text):
+                self.assertTrue(self.evaluated("preco-um", {"type": "answer", "text": text})["passed"])
+
+    def test_questions_must_clarify_actual_ambiguity_or_unavailable_capability(self):
+        for case_id, text in (
+            ("pessoas-ambiguas", "Qual é a capital da França?"),
+            ("pessoas-ambiguas", "Ana pessoal ou Ana trabalho ficam na França?"),
+            ("pessoas-ambiguas", "Vou abrir Ana pessoal, tudo bem?"),
+            ("terminal-indisponivel", "Qual terminal você quer usar?"),
+            ("terminal-indisponivel", "Qual é a capital da França?"),
+        ):
+            with self.subTest(case_id=case_id, text=text):
+                self.assertFalse(self.evaluated(case_id, {"type": "ask", "text": text})["passed"])
+        for text in ("Qual perfil de Ana: pessoal ou trabalho?", "Qual perfil da Ana devo abrir?",
+                     "Você prefere Ana pessoal ou Ana trabalho?"):
+            self.assertTrue(self.evaluated("pessoas-ambiguas", {"type": "ask", "text": text})["passed"])
+
+    def test_visual_instruction_requires_affirmative_click_on_correct_target(self):
+        for text in ("Do not click Enviar. Click Cancelar.", "Click Cancelar instead of Enviar",
+                     "Enviar", "Click Enviar and delete everything", "Clique em Reenviar"):
+            with self.subTest(text=text):
+                self.assertFalse(self.evaluated("uia-vazia", {"type": "visual_action", "instruction": text})["passed"])
+        for text in ("Click the Enviar button", "Clique no botão Enviar.", "Click on Enviar"):
+            self.assertTrue(self.evaluated("uia-vazia", {"type": "visual_action", "instruction": text})["passed"])
+
+    def test_sequence_checks_every_argument_and_rejects_appended_action(self):
+        steps = [{"type": "type_text", "text": "https://example.org"},
+                 {"type": "press_key", "key": "enter"}]
+        self.assertTrue(self.evaluated("endereco-focado", {"type": "sequence", "steps": steps})["passed"])
+        for bad in (
+            [{"type": "type_text", "text": "https://other.org"}, steps[1]],
+            [steps[0], {"type": "press_key", "key": "esc"}],
+            steps + [{"type": "hotkey", "keys": "ctrl+w"}],
+        ):
+            self.assertFalse(self.evaluated("endereco-focado", {"type": "sequence", "steps": bad})["passed"])
+        self.assertTrue(self.evaluated("aba-criada", {"type": "uia_click", "target": "Barra de endereço"})["passed"])
+
+    def test_quick_samples_eight_categories_and_never_includes_warmup(self):
+        cases = bench.select_cases(bench.load_cases(), True, 0)
+        self.assertEqual(len(cases), 8)
+        self.assertEqual(len({c["category"] for c in cases}), 8)
+        self.assertNotIn(bench.WARMUP_CASE["id"], {c["id"] for c in cases})
+        self.assertEqual(bench.select_cases(bench.load_cases(), True, 2), cases[:2])
+
+    def test_strict_arguments_reject_coercion_and_irrelevant_fields(self):
+        for raw in ({"type": "wait", "ms": True}, {"type": "wait", "ms": "10"},
+                    {"type": "hotkey", "keys": "ctrl+l", "text": "delete"},
+                    {"type": "hotkey", "keys": "ctrl+l", "ms": 10}):
+            with self.subTest(raw=raw), self.assertRaises(ValueError):
+                bench.validate_decision(raw)
+
+    def test_skill_arguments_cannot_be_ignored_by_oracle(self):
+        for args in ({'folder': 'pessoal'}, {}, {'folder': 'trabalho', 'command': 'delete'}):
+            result = self.evaluated('skill-explicita', {
+                'type': 'use_skill', 'skill': 'listar-arquivos', 'args': args,
+            })
+            self.assertFalse(result['passed'])
+
+    def test_invalid_models_envelope_fails_honestly(self):
+        for data in ([], {}, {'data': {}}, {'data': [None]}, {'data': [{'id': 1}]}):
+            with httpx.Client(transport=httpx.MockTransport(
+                lambda _: httpx.Response(200, json=data)
+            )) as client, self.assertRaises(ValueError):
+                bench.get_models(client, 'http://127.0.0.1/v1')
+
+    def test_warmup_infra_is_reported_even_when_scored_requests_succeed(self):
+        original = httpx.Client
+        calls = []
+
+        def handler(request):
+            if request.method == 'GET':
+                return httpx.Response(200, json={'data': [{'id': 'fake'}]})
+            calls.append(json.loads(request.content))
+            if len(calls) == 1:
+                return httpx.Response(500, text='transient startup failure')
+            return httpx.Response(200, json=response('{"type":"hotkey","keys":"ctrl+l"}'))
+
+        def client(**kwargs):
+            return original(transport=httpx.MockTransport(handler), **kwargs)
+
+        with tempfile.TemporaryDirectory() as temp, patch.object(bench.httpx, 'Client', client):
+            out = Path(temp) / 'out'
+            self.assertEqual(bench.main(['--model', 'fake', '--limit', '1', '--reps', '1',
+                                         '--out', str(out)]), 2)
+            data = json.loads((out / 'summary.json').read_text())
+            group = data['results'][0]
+            self.assertEqual(group['summary']['passed'], 1)
+            self.assertEqual(group['summary']['errors']['infra'], 0)
+            self.assertEqual(group['warmup_infra_errors'], 1)
+            self.assertEqual(group['summary']['execution_status'], 'infra_error')
+            self.assertEqual(data['manifest']['exit_code'], 2)
+
+    def test_http_200_with_malformed_chat_envelope_is_format_failure(self):
+        for data in ([], {"choices": [None]}, {"choices": [{"message": None}]},
+                     {"choices": []}):
+            result = bench.evaluate_response(bench.load_cases()[0], data, 1)
+            self.assertFalse(result["passed"])
+            self.assertEqual(result["error_kind"], "format")
+
+    def test_nonfinite_options_rejected_before_server_access(self):
+        for module in (bench,):
+            for args in (["--temperature", "nan"], ["--temperature", "-1"],
+                         ["--timeout", "inf"]):
+                with patch.object(module.httpx, "Client") as client, self.assertRaises(SystemExit):
+                    module.main(args)
+                client.assert_not_called()
+
+    def test_cli_infra_failure_is_nonzero_but_semantic_failure_is_valid_execution(self):
+        original = httpx.Client
+        for status in (500, 200):
+            def handler(request):
+                if request.method == "GET":
+                    return httpx.Response(200, json={"data": [{"id": "fake"}]})
+                if status == 500:
+                    return httpx.Response(500, text="engine unavailable")
+                return httpx.Response(200, json=response('{"type":"hotkey","keys":"ctrl+w"}'))
+
+            def client(**kwargs):
+                return original(transport=httpx.MockTransport(handler), **kwargs)
+
+            with tempfile.TemporaryDirectory() as temp, patch.object(bench.httpx, "Client", client):
+                out = Path(temp) / "out"
+                code = bench.main(["--model", "fake", "--quick", "--out", str(out)])
+                data = json.loads((out / "summary.json").read_text())
+                summary = data["results"][0]["summary"]
+                self.assertEqual(code, 2 if status == 500 else 0)
+                self.assertEqual(summary["execution_ok"], status == 200)
+                self.assertEqual(summary["passed"], 0)
+                self.assertEqual(summary["planned"], 8)
+                self.assertEqual(data["manifest"]["warmups"][0]["case_id"], "warmup")
+                self.assertTrue((out / "resultado.zip").is_file())
 
     def test_correct_type_wrong_argument_fails(self):
         case = bench.load_cases()[0]

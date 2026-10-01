@@ -54,7 +54,10 @@ O ZIP final na raiz da rodada reúne os relatórios de todos os modelos.
 
 O filtro seleciona todos os arquivos correspondentes, inclusive quantizações
 diferentes. Confira `--lmstudio --list` antes de uma rodada longa; `--model` usa
-model keys da CLI, que podem diferir dos IDs da API usados no modo manual abaixo.
+model keys da CLI (exato ou trecho único), que podem diferir dos IDs da API usados
+no modo manual abaixo. Filtros ambíguos são recusados antes de descarregar modelos.
+O gerenciador confere `running` e a porta com `lms server status --json --quiet`
+tanto ao reaproveitar quanto ao iniciar o servidor. Não basta receber HTTP 200.
 A automação segue a [CLI oficial do LM Studio](https://lmstudio.ai/docs/cli/local-models/load).
 
 
@@ -75,6 +78,18 @@ de visão ou teste do desktop. A memória é fornecida em snapshots preparados;
 não é uma trajetória de ações executadas. A interpretação de perguntas e
 instruções de localização é parcial, baseada nas classes/argumentos esperados;
 inspecionar as respostas originais antes de decidir um vencedor.
+
+A versão **text-32-v2** remove os acertos por substring. Valores em reais exigem
+uma resposta curta afirmativa com um único valor (com ou sem separador de milhar).
+Perguntas devem esclarecer a escolha de perfil ou a alternativa à capacidade
+indisponível; instruções visuais devem pedir um único clique no alvo esperado.
+São gramáticas conservadoras: paráfrases válidas fora delas podem ser reprovadas.
+Não são um juiz geral de linguagem natural. Argumentos de skills e cada passo de
+sequências são conferidos; passos extras ou contraditórios falham. Há alternativas
+explícitas para focar a barra por UIA e digitar a URL seguida de Enter quando o
+foco já está confirmado. Não há execução nem avanço simulado de uma trajetória.
+O manifesto registra versão do avaliador e IDs selecionados; as regras exatas
+ficam no `cases.json`. Não compare taxas da v1 e v2 como se fossem a mesma bateria.
 
 ## Preparar o LM Studio
 
@@ -109,8 +124,13 @@ Substitua `ID_EXATO_DA_API` pelo ID retornado em `--list`:
 uv run python -m evals.model_bench --model "ID_EXATO_DA_API" --quick
 ```
 
-Esse smoke faz uma chamada de aquecimento e duas decisões. Confirma
-conexão, identidade anunciada e formato; não classifica o modelo.
+Esse smoke faz uma chamada de aquecimento e **oito decisões**, uma repetição,
+com formato `schema` por padrão. Inclui memória, Unicode, ambiguidade, preço,
+instrução maliciosa, recuperação de envio incerto, UIA vazia e conclusão com
+evidência. Confirma conexão e exercita contratos variados; não classifica o modelo.
+`--quick --limit N` limita essa seleção de oito cenas; sem `--quick`, `--limit N`
+continua usando os primeiros N casos da bateria completa.
+O aquecimento usa uma cena própria que não pertence à bateria avaliada.
 Se houver HTTP 400 de schema, registre o erro e rode a variante `--format prompt`.
 O programa não muda formato ou modelo silenciosamente para obter sucesso.
 
@@ -128,6 +148,15 @@ avaliadas por modelo, além de dois aquecimentos. Para uma primeira rodada
 mais curta, use `--format schema`: 96 decisões mais um aquecimento.
 A saída informa o progresso e o tempo restante estimado; não há inferências concorrentes.
 Cinco falhas de infraestrutura seguidas (servidor caído, modelo não carregado) abortam o grupo em vez de esperar todos os timeouts.
+
+O código de saída distingue execução de qualidade do modelo: **0** = bateria
+executada integralmente sem erro de infraestrutura, mesmo que todas as decisões
+estejam erradas; **2** = erro de parâmetros/infraestrutura ou execução incompleta;
+**130** = interrupção por Ctrl+C. Erros HTTP isolados e erros no aquecimento também
+produzem 2, mesmo que as outras chamadas funcionem. O modo gerenciado propaga esse
+estado e preserva os ZIPs. `complete` só indica que todas as tentativas ocorreram;
+`execution_ok` e `execution_status` indicam se a execução foi válida. Erros do
+aquecimento ficam separados do denominador e aparecem no comparativo.
 
 Repita para os três rótulos da captura:
 
@@ -226,6 +255,7 @@ medir leitura/localização e só depois executar os finalistas no Sandbox.
 
 ```powershell
 uv run python -m unittest discover -s tests -p test_model_bench.py
+uv run python -m unittest discover -s tests -p test_lmstudio_bench.py
 uv run ruff check
 ```
 
