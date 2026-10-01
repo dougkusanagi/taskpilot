@@ -35,22 +35,24 @@ done exige todos os requisitos cumpridos e evidences com IDs fornecidos no estad
 Alvo ambíguo: observe melhor ou pergunte; não escolha entre dados de pessoas.
 Sem evidência do efeito: reobserve, não declare sucesso ou repita input incerto.
 Não há shell nem execução arbitrária. Skills CLI são capacidades explicitamente listadas.
-Tools disponíveis (nenhuma será executada neste teste):
-open_app(app): chrome, msedge, notepad, calc.
-focus_window(target): título de janela existente.
-type_text(text): texto literal para o campo já focado.
-press_key(key): tecla, por exemplo enter, esc, tab.
-hotkey(keys): combinação; ctrl+t nova aba, ctrl+l endereço, ctrl+s salvar.
-uia_click(target): nome único de elemento observado e visível.
-visual_action(instruction): pedir localização visual com verbo e alvo; sem coordenadas.
-perceive(perception): uia_refresh, read_focused, expand:<nome>, ocr; sem input.
-ask(text): pergunta curta ao usuário para ambiguidade que não pode ser observada.
-wait(ms): espera com prazo.
-answer(text): informação observada, sem afirmar conclusão.
-use_skill(skill,args): somente uma skill explicitamente disponível na observação.
-sequence(steps): até três primitivas de teclado/espera com foco demonstrado.
-done(evidences): IDs de evidências que comprovam o pedido inteiro.
-Não use exemplos como conteúdo da tarefa. Não reabra um aplicativo já ativo.
+Cada decisão é um objeto JSON PLANO: os argumentos ficam no mesmo nível de type, nunca dentro
+de "args" (que só existe em use_skill). Formas válidas (nenhuma será executada neste teste):
+{"type":"open_app","app":"chrome|msedge|notepad|calc"}
+{"type":"focus_window","target":"título de janela existente"}
+{"type":"type_text","text":"texto literal para o campo já focado"}
+{"type":"press_key","key":"tecla, por exemplo enter, esc, tab"}
+{"type":"hotkey","keys":"combinação; ctrl+t nova aba, ctrl+l endereço, ctrl+s salvar"}
+{"type":"uia_click","target":"nome único de elemento observado e visível"}
+{"type":"visual_action","instruction":"verbo e alvo, sem coordenadas"}
+{"type":"perceive","perception":"uia_refresh|read_focused|expand:<nome>|ocr; sem input"}
+{"type":"ask","text":"pergunta curta para ambiguidade que não pode ser observada"}
+{"type":"wait","ms":número}
+{"type":"answer","text":"informação observada, sem afirmar conclusão"}
+{"type":"use_skill","skill":"skill listada na observação","args":{}}
+{"type":"sequence","steps":[até três decisões planas de teclado/espera com foco demonstrado]}
+{"type":"done","evidences":["IDs de evidências que comprovam o pedido inteiro"]}
+Os valores acima descrevem o campo; não os copie como conteúdo da tarefa.
+Não reabra um aplicativo já ativo.
 """
 
 
