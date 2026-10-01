@@ -127,7 +127,8 @@ def main(argv=None):
                     help='aceita descarregar TODOS os modelos residentes do LM Studio')
     ap.add_argument('--quick', action='store_true', help='smoke textual: 8 cenas, 1 repetição')
     ap.add_argument('--format', choices=('schema', 'prompt', 'both'), default='schema')
-    ap.add_argument('--thinking', choices=('native', 'on', 'off'), default='native')
+    ap.add_argument('--thinking', default='native',
+                    help='variações separadas por vírgula: native,on,off,low,medium,high')
     ap.add_argument('--max-tokens', type=int, default=2048)
     ap.add_argument('--temperature', type=float, default=.1)
     ap.add_argument('--timeout', type=float, default=180)
@@ -138,6 +139,9 @@ def main(argv=None):
     try:
         bench.validate_options(args.reps, args.max_tokens, args.limit,
                                args.timeout, args.temperature)
+        modes = [v.strip() for v in args.thinking.split(',') if v.strip()]
+        if not modes or set(modes) - set(bench.THINKING_MODES):
+            raise ValueError(f'--thinking deve usar valores de {bench.THINKING_MODES}')
         if args.context < args.max_tokens + 2048:
             raise ValueError('Reserve ao menos max-tokens + 2048 de contexto')
     except ValueError as exc:
@@ -229,8 +233,8 @@ def main(argv=None):
             (directory / 'automation.json').write_text(
                 json.dumps(metadata, ensure_ascii=False, indent=2), encoding='utf-8')
             lines = ['# Comparação gerenciada pelo LM Studio', '',
-                     '| Modelo | Formato | Acertos | Estado | Infra | Infra warmup |',
-                     '| --- | --- | ---: | --- | ---: | ---: |']
+                     '| Modelo | Formato | Reasoning | Acertos | Estado | Infra | Infra warmup |',
+                     '| --- | --- | --- | ---: | --- | ---: | ---: |']
             for result in results:
                 path = directory / result.get('directory', '_missing') / 'summary.json'
                 if path.is_file():
@@ -239,11 +243,12 @@ def main(argv=None):
                         s = group['summary']
                         execution = s['execution_status']
                         lines.append(f"| {result['model_key']} | {group['settings']['format']} | "
+                                     f"{group['settings']['thinking']} | "
                                      f"{s['passed']}/{s['planned']} | "
                                      f"{execution} | {s['errors']['infra']} | "
                                      f"{group.get('warmup_infra_errors', 0)} |")
                 else:
-                    lines.append(f"| {result['model_key']} | — | — | "
+                    lines.append(f"| {result['model_key']} | — | — | — | "
                                  "falha de infraestrutura | — | — |")
             lines += ['', 'Configuração solicitada e comandos: automation.json.',
                       'Estimativa de memória não mede pico VRAM. Sem validação visual/E2E.']

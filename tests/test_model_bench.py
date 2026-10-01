@@ -304,6 +304,28 @@ class TestModelBench(unittest.TestCase):
         self.assertEqual(payloads[0]["reasoning_effort"], "none")
         self.assertEqual(rows[0]["error_kind"], "infra")
 
+    def test_reasoning_variants_map_to_request_fields(self):
+        sent = {}
+        for mode in bench.THINKING_MODES:
+            payloads = []
+
+            def handler(request, payloads=payloads):
+                payloads.append(json.loads(request.content))
+                return httpx.Response(200, json=response('{"type":"wait","ms":1}'))
+
+            with httpx.Client(transport=httpx.MockTransport(handler)) as client:
+                bench.run_requests(client, "http://127.0.0.1/v1", "fake",
+                                   bench.load_cases()[:1], 1,
+                                   {"format": "prompt", "temperature": .1,
+                                    "max_tokens": 100, "thinking": mode}, lambda _: None)
+            sent[mode] = payloads[0].get("reasoning_effort")
+        self.assertEqual(sent, {"native": None, "on": None, "off": "none",
+                                "low": "low", "medium": "medium", "high": "high"})
+
+    def test_cli_rejects_unknown_reasoning_variant(self):
+        with self.assertRaises(SystemExit):
+            bench.main(["--model", "fake", "--thinking", "off,extreme"])
+
     def test_cli_writes_portable_bundle_and_refuses_overwrite(self):
         original_client = httpx.Client
 

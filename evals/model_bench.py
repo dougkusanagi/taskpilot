@@ -9,6 +9,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import ipaddress
+import itertools
 import json
 import math
 import platform
@@ -345,6 +346,8 @@ def format_eta(seconds: float) -> str:
 
 
 MAX_CONSECUTIVE_INFRA = 5
+EFFORTS = ("low", "medium", "high")
+THINKING_MODES = ("native", "on", "off") + EFFORTS
 
 
 def run_requests(client, url, model, cases, reps, settings, emit):
@@ -361,12 +364,14 @@ def run_requests(client, url, model, cases, reps, settings, emit):
                 payload["response_format"] = {
                     "type": "json_schema", "json_schema": {"name": "decision",
                     "strict": True, "schema": planner_json_schema()}}
-            if settings["thinking"] != "native":
-                payload["chat_template_kwargs"] = {
-                    "enable_thinking": settings["thinking"] == "on"}
-                if settings["thinking"] == "off":
-                    # LM Studio ignora chat_template_kwargs; reasoning_effort é o que desliga.
-                    payload["reasoning_effort"] = "none"
+            thinking = settings["thinking"]
+            if thinking in ("on", "off"):
+                payload["chat_template_kwargs"] = {"enable_thinking": thinking == "on"}
+            if thinking == "off":
+                # LM Studio ignora chat_template_kwargs; reasoning_effort é o que desliga.
+                payload["reasoning_effort"] = "none"
+            elif thinking in EFFORTS:
+                payload["reasoning_effort"] = thinking
             t0 = time.perf_counter()
             try:
                 response = client.post(f"{url}/chat/completions", json=payload)
@@ -398,18 +403,20 @@ def write_report(directory: Path, manifest: dict, groups: list[dict]) -> None:
     lines = ["# Comparação textual de modelos locais", "",
              "Cenas congeladas, sem mouse, teclado, terminal ou captura de tela.",
              "Resultados de desenvolvimento; não provam tarefas E2E ou capacidade visual.", "",
-             "| Modelo | Formato | Tentativas | Acertos | Formato válido | p50 ms | p95 ms |",
-             "| --- | --- | ---: | ---: | ---: | ---: | ---: |"]
+             "| Modelo | Formato | Reasoning | Tentativas | Acertos | Formato válido "
+             "| p50 ms | p95 ms |",
+             "| --- | --- | --- | ---: | ---: | ---: | ---: | ---: |"]
     for group in groups:
         s = group["summary"]
         label = str(group["model"]).replace("|", "\\|")
         lines.append(f"| {label} | {group['settings']['format']} | "
+                     f"{group['settings']['thinking']} | "
                      f"{s['attempted']}/{s['planned']} | {s['success_rate']:.1%} | "
                      f"{s['format_rate']:.1%} | {s['latency_ms']['p50']} | "
                      f"{s['latency_ms']['p95']} |")
     for group in groups:
         s = group["summary"]
-        label = f"{group['model']} [{group['settings']['format']}]"
+        label = f"{group['model']} [{group['settings']['format']}/{group['settings']['thinking']}]"
         errors = ", ".join(f"{k}={v}" for k, v in s["errors"].items() if v)
         lines += ["", f"### {label}" + ("" if s["complete"] else " (parcial)"), "",
                   f"Estado da execução: {s['execution_status']}. "
@@ -452,7 +459,9 @@ def main(argv=None) -> int:
     ap.add_argument("--reps", type=int, default=3)
     ap.add_argument("--limit", type=int, default=0, help="smoke com os primeiros N casos")
     ap.add_argument("--format", choices=("schema", "prompt", "both"), default="schema")
-    ap.add_argument("--thinking", choices=("native", "on", "off"), default="native")
+    ap.add_argument("--thinking", default="native",
+                    help="variações separadas por vírgula: native,on,off,low,medium,high; "
+                         "cada uma vira um grupo (off e low/medium/high usam reasoning_effort)")
     ap.add_argument("--max-tokens", type=int, default=2048)
     ap.add_argument("--temperature", type=float, default=.1)
     ap.add_argument("--timeout", type=float, default=180)
@@ -461,8 +470,11 @@ def main(argv=None) -> int:
     args = ap.parse_args(argv)
     if args.quick:
         args.reps = 1
+    variants = list(dict.fromkeys(v.strip() for v in args.thinking.split(",") if v.strip()))
     try:
         validate_options(args.reps, args.max_tokens, args.limit, args.timeout, args.temperature)
+        if not variants or set(variants) - set(THINKING_MODES):
+            raise ValueError(f"--thinking deve usar valores de {THINKING_MODES}")
     except ValueError as exc:
         ap.error(str(exc))
     try:
@@ -496,13 +508,15 @@ def main(argv=None) -> int:
             print(f"Saída: {directory.resolve()}", flush=True)
             try:
                 for model in args.model:
-                    for fmt in (("schema", "prompt") if args.format == "both" else (args.format,)):
-                        settings = {"format": fmt, "thinking": args.thinking,
+                    for fmt, think in itertools.product(
+                            ("schema", "prompt") if args.format == "both" else (args.format,),
+                            variants):
+                        settings = {"format": fmt, "thinking": think,
                                     "max_tokens": args.max_tokens, "temperature": args.temperature}
                         group = {"model": model, "settings": settings, "rows": []}
                         groups.append(group)
                         # Warmup real com o mesmo contrato, fora da taxa de acertos.
-                        print(f"Aquecendo {model} [{fmt}]...", flush=True)
+                        print(f"Aquecendo {model} [{fmt}/{think}]...", flush=True)
                         warmups = run_requests(client, url, model, [WARMUP_CASE], 1, settings,
                                                lambda row: manifest["warmups"].append(row))
                         group["warmup_infra_errors"] = sum(
@@ -516,7 +530,8 @@ def main(argv=None) -> int:
                             status = "OK" if row["passed"] else row["error_kind"]
                             done, total = len(group["rows"]), len(cases) * args.reps
                             eta = (time.monotonic() - started) / done * (total - done)
-                            print(f"{model} [{fmt}] {done}/{total} {row['case_id']}: {status} "
+                            print(f"{model} [{fmt}/{think}] {done}/{total} {row['case_id']}: "
+                                  f"{status} "
                                   f"({row['elapsed_ms']:.0f} ms) ~{format_eta(eta)} restantes",
                                   flush=True)
 
