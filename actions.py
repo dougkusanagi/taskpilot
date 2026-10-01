@@ -9,7 +9,22 @@ from __future__ import annotations
 
 import time
 
-import pyautogui
+try:
+    import pyautogui
+except Exception as _exc:  # Linux sem X11/Xlib compatível: o módulo ainda precisa importar
+    _WHY = str(_exc)[:120]
+
+    class _PyAutoGuiUnavailable:
+        """Substituto SEGURO: qualquer ação física levanta erro, nunca finge sucesso."""
+
+        FAILSAFE = True
+        PAUSE = 0.15
+
+        def __getattr__(self, name):
+            raise RuntimeError(f"pyautogui indisponível nesta plataforma ({_WHY}); "
+                               "nenhuma ação física foi executada")
+
+    pyautogui = _PyAutoGuiUnavailable()
 
 pyautogui.FAILSAFE = True  # mouse no canto superior-esquerdo aborta
 pyautogui.PAUSE = 0.15

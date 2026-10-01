@@ -95,7 +95,7 @@ class TestSnapshotPulaOverlay(unittest.TestCase):
     def test_foreground_e_overlay_cai_no_app_real(self):
         wins = [_FakeWin(overlay.OVERLAY_TITLE, focus=True),
                 _FakeWin("Windows PowerShell")]
-        with patch("pywinauto.Desktop", _desk_with(wins)):
+        with patch("pywinauto.Desktop", _desk_with(wins), create=True):
             items, title, wrect = uia.active_window_snapshot()
         self.assertEqual(title, "Windows PowerShell")
         self.assertEqual(wrect, (0, 0, 800, 600))
@@ -106,12 +106,12 @@ class TestSnapshotPulaOverlay(unittest.TestCase):
 class TestFocusPulaOverlay(unittest.TestCase):
     def test_nunca_foca_o_overlay(self):
         wins = [_FakeWin(overlay.OVERLAY_TITLE), _FakeWin("Google - Chrome")]
-        with patch("pywinauto.Desktop", _desk_with(wins)):
+        with patch("pywinauto.Desktop", _desk_with(wins), create=True):
             self.assertFalse(tools.focus_window("crr-overlay", timeout=0.1))
 
     def test_app_real_ainda_foca(self):
         wins = [_FakeWin(overlay.OVERLAY_TITLE), _FakeWin("Google - Chrome")]
-        with patch("pywinauto.Desktop", _desk_with(wins)):
+        with patch("pywinauto.Desktop", _desk_with(wins), create=True):
             self.assertTrue(tools.focus_window("google", timeout=2.0))
         self.assertTrue(wins[1].focused)
         self.assertFalse(wins[0].focused)

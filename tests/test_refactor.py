@@ -275,6 +275,8 @@ class TestUiaObsF2(unittest.TestCase):
 
 class TestActionsSafetyF2(unittest.TestCase):
     def test_precondicao_falta_xy_ou_stale(self):
+        from unittest.mock import patch
+
         import actions
         from schemas import Action
 
@@ -282,7 +284,9 @@ class TestActionsSafetyF2(unittest.TestCase):
         self.assertIn("x,y", msg)
         msg = actions.check_preconditions(Action(type="click", element_ref="obs#1"))
         self.assertIn("stale", msg)
-        msg = actions.check_preconditions(Action(type="drag", x=1, y=1))
+        # tela virtual simulada: ctypes.windll só existe no Windows
+        with patch("actions._virtual_screen", return_value=(0, 0, 1920, 1080)):
+            msg = actions.check_preconditions(Action(type="drag", x=1, y=1))
         self.assertIn("x2", msg)
 
     def test_executor_unico(self):

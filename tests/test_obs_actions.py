@@ -142,7 +142,7 @@ class TestToolsWhitelist(unittest.TestCase):
 
         self.tools = tools
         self.opened: list[str] = []
-        self._orig = (os.startfile, tools.time.sleep, tools.focus_window)
+        self._orig = (getattr(os, "startfile", None), tools.time.sleep, tools.focus_window)
         os.startfile = self.opened.append
         tools.time.sleep = lambda s: None
         tools.focus_window = lambda hint, timeout=2.0: True  # open foca; sem GUI
@@ -150,7 +150,11 @@ class TestToolsWhitelist(unittest.TestCase):
     def tearDown(self):
         import os
 
-        os.startfile, self.tools.time.sleep, self.tools.focus_window = self._orig
+        startfile, self.tools.time.sleep, self.tools.focus_window = self._orig
+        if startfile is None:  # Linux: startfile só existia por causa do teste
+            del os.startfile
+        else:
+            os.startfile = startfile
 
     def test_whitelist_aceita_alias(self):
         for t in ("notepad.exe", "Bloco de Notas", "calc", "edge"):
