@@ -192,8 +192,9 @@ def main(argv=None):
             try:
                 # Autorizado no modo gerenciado: isolar consumo e evitar competição de VRAM.
                 manager.command('unload', '--all')
+                # --parallel 1: o app roda uma geração por vez; slots extras só gastam VRAM.
                 load_args = ['load', key, '--context-length', str(args.context),
-                             '--identifier', identifier]
+                             '--parallel', '1', '--identifier', identifier]
                 if args.gpu != 'auto':
                     load_args += ['--gpu', args.gpu]
                 result['estimate'] = manager.command(*load_args, '--estimate-only')

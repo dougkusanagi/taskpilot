@@ -23,6 +23,7 @@ cd "$(dirname "$0")/.."
 
 SUITE=${SUITE:-text}
 REPS=${REPS:-3}
+CONTEXT=8192
 case "$SUITE" in
   text)
     TOKENS=4096
@@ -37,16 +38,19 @@ mai-ui-2b|native|max
 google/gemma-4-e4b|native,off|auto" ;;
   production|trajectory)
     # Produção usa thinking desligado e max_tokens 256; o orçamento maior só vale p/ trajetória.
+    # qwen3-vl-4b-thinking fica de fora: não tem modo sem raciocínio (reasoning_effort=none é ignorado).
     if [ "$SUITE" = production ]; then TOKENS=256; else TOKENS=512; fi
     PADRAO="qwen3-vl-4b-instruct|native|max
 qwen/qwen3-4b-2507|native|max
 nvidia/nemotron-3-nano-4b|off|max
 google/gemma-4-e2b|off|max
 qwen3.5-4b|off|max
-qwen3-vl-4b-thinking|off|max
 minicpm5-2b|off|max" ;;
   ground)
+    # Com imagem, o 4B estoura a VRAM de 6 GB em contexto 8192 (falha ao processar o chunk
+    # de imagem); 4096 cabe (~5,1 GB no total, medido em 01/10).
     TOKENS=1024
+    CONTEXT=4096
     PADRAO="qwen3-vl-4b-instruct|native|max
 qwen3-vl-4b-thinking|native,off|max
 qwen3.5-4b|native,off|max
@@ -60,7 +64,7 @@ esac
 ENTRADAS=${MODELOS:-$PADRAO}
 OUT=${OUT:-runs/bench-$SUITE-$(date +%Y%m%d-%H%M%S)}
 mkdir -p "$OUT"
-echo "Suíte: $SUITE | repetições: $REPS | max-tokens: $TOKENS"
+echo "Suíte: $SUITE | repetições: $REPS | max-tokens: $TOKENS | contexto: $CONTEXT"
 echo "Saída: $OUT"
 echo "Modelos:"; echo "$ENTRADAS"
 
@@ -71,7 +75,7 @@ while IFS='|' read -r modelo variacoes gpu; do
   echo
   echo "================ $modelo [$variacoes] gpu=$gpu ($(date +%H:%M:%S)) ================"
   uv run python -m evals.model_bench --lmstudio --yes --suite "$SUITE" --gpu "$gpu" \
-    --reps "$REPS" --max-tokens "$TOKENS" --context 8192 --thinking "$variacoes" \
+    --reps "$REPS" --max-tokens "$TOKENS" --context "$CONTEXT" --thinking "$variacoes" \
     --model "$modelo" --out "$OUT/$slug" \
     --notes "$SUITE 6GB; $(nvidia-smi --query-gpu=name,memory.total --format=csv,noheader 2>/dev/null)" \
     "$@" 2>&1 | tee "$OUT/$slug.log"

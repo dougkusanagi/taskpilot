@@ -172,6 +172,7 @@ class TestManaged(unittest.TestCase):
             self.assertTrue((out / 'resultado.zip').is_file())
         loads = [cmd for cmd in commands if cmd[0] == 'load']
         self.assertTrue(all('--gpu' in cmd and 'max' in cmd for cmd in loads))
+        self.assertTrue(all(cmd[cmd.index('--parallel') + 1] == '1' for cmd in loads))
         self.assertIn(('unload', 'taskpilot-bench-0'), commands)
 
     def test_nonfinite_options_and_ambiguous_models_never_unload(self):
