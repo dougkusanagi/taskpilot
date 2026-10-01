@@ -188,6 +188,17 @@ também é aceito e marcado como formato tolerante, distinto de JSON puro.
 É uma solicitação; o servidor/modelo pode ignorá-la. Não interpretar o flag
 como comprovação de que thinking foi ativado/desativado.
 
+Verificação local de 01/10/2026: o LM Studio ignora `chat_template_kwargs`
+(`qwen3.5-4b` seguiu raciocinando com `enable_thinking=false`). O que desliga é
+`reasoning_effort: "none"`, e o runner passou a enviá-lo com `--thinking off`
+(commit `1d27b3c`). Confira sempre `usage.completion_tokens_details.reasoning_tokens`
+em `rows.jsonl`: com `off` deve ser 0. Níveis `low`/`medium`/`high` aceitos pelo
+runner **não mudaram o raciocínio de forma consistente** em `qwen3.5-4b`, `minicpm5-2b`,
+`gemma-4-e2b` e `nemotron-3-nano-4b` (tokens variam como ruído); na prática só existem
+dois estados: ligado (`native`) e desligado (`off`). A API nativa `/api/v1/chat` usa
+outro contrato (`reasoning: "off"`). Pesquisa e resultados:
+[relatório de 01/10](pesquisa-modelos-2026-10-01.md).
+
 `--max-tokens 2048` é o orçamento comum inicial, não uma afirmação de que
 todo modelo thinking consegue concluir nele. `finish_reason=length` conta
 como truncamento, inclusive quando há JSON aparentemente válido. Se houver
@@ -199,6 +210,49 @@ Temperatura padrão: 0,1; pode ajustar `--temperature`, mantendo igualdade na
 rodada. Repetições testam estabilidade e latência, mas não são amostras
 independentes de generalização. `--timeout` é por requisição, padrão 180 s;
 timeouts entram como falhas e não são reexecutados automaticamente.
+
+## Suítes: o que cada bateria mede
+
+`--suite` escolhe a bateria; todas usam o mesmo runner (modo gerenciado, variações de
+reasoning, aborto por infraestrutura, relatórios e ZIP).
+
+| Suíte | O que envia | O que mede |
+| --- | --- | --- |
+| `text` (padrão) | 32 cenas de texto, prompt do próprio benchmark | Escolha da ação e dos argumentos. Prompt ajustado por nós: **otimista**. |
+| `production` | As mesmas cenas com `PLANNER_SYSTEM` + `build_prompt` (`planner.py`) | O que o planner real receberia. Use `--max-tokens 256` e reasoning `off`, como em produção. |
+| `trajectory` | 5 cenários de vários passos num simulador (Notepad, Chrome, calculadora, perfil ambíguo, cookies) | Convergência: `done` aceito com pendências cumpridas em até 8 passos; ações sem efeito, `done` prematuro, repetição e saídas inválidas. |
+| `ground` | Screenshots + instrução; ponto 0..1 (prompt/parser de grounding de produção) | Localização: ponto dentro da caixa do alvo; alvo ausente (`null`), cliques falsos e respostas em escala 0..1000. |
+
+```bash
+uv run python -m evals.model_bench --lmstudio --yes --suite production --thinking off --max-tokens 256 --model qwen3.5-4b
+uv run python -m evals.model_bench --lmstudio --yes --suite trajectory --thinking off --model qwen3.5-4b
+SUITE=ground scripts/bench-modelos.sh           # série completa de visão
+```
+
+**Bateria visual (`ground`).** As imagens não são versionadas (páginas reais mudam e têm
+direitos próprios); o que está no repositório é a especificação (`evals/ground_specs.json`),
+as páginas locais (`evals/ground/pages/`) e o capturador. Gere-as uma vez:
+
+```bash
+uv run --with playwright python -m evals.ground_capture
+```
+
+O capturador abre cada página em Chrome headless, tira o screenshot do viewport e grava a
+caixa de cada alvo lida da DOM/JS **no momento da captura**; o modelo só recebe os pixels.
+Isso rotula também sites cujo código não caberia no contexto e páginas sem DOM útil: `canvas`
+(interface desenhada), botões só com ícone, modal de cookies, tabela com botões repetidos,
+alvos pequenos em baixo contraste e alvos inexistentes. Sites reais saem de
+`ground_specs.json`; um site fora do ar é pulado e listado. Confira os rótulos desenhando as
+caixas sobre as imagens antes de confiar numa rodada nova.
+
+**Medições do runner.** Cada grupo registra `tok/s` (p50), pico de VRAM do sistema inteiro
+via `nvidia-smi` (modelo + desktop + outros processos; não é o consumo isolado do modelo) e,
+nas variações, os tokens de raciocínio por resposta. Offload e quantização continuam
+declarados em `--notes`.
+
+**Escalada de raciocínio no app.** `planner.escalate_thinking` (config, desligado por
+padrão) liga o raciocínio só quando há erro/repetição pendente (`max_tokens` 1536). Meça com
+`trajectory` antes de ligar.
 
 ## Relatório para a próxima análise
 
@@ -254,7 +308,7 @@ medir leitura/localização e só depois executar os finalistas no Sandbox.
 ## Validar o runner sem modelos
 
 ```powershell
-uv run python -m unittest discover -s tests -p test_model_bench.py
+uv run python -m unittest tests.test_model_bench tests.test_lmstudio_bench tests.test_ground_bench tests.test_trajectory_bench tests.test_target_tolerance
 uv run python -m unittest discover -s tests -p test_lmstudio_bench.py
 uv run ruff check
 ```

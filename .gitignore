@@ -19,3 +19,7 @@ build/
 *.egg-info/
 
 models/
+
+# Bateria visual: imagens geradas por evals/ground_capture.py
+evals/ground/images/
+evals/ground/cases.json

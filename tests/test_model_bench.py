@@ -385,3 +385,31 @@ class TestModelBench(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestProductionSuite(unittest.TestCase):
+    def test_uses_real_planner_prompt_and_hides_the_oracle(self):
+        from planner import PLANNER_SYSTEM
+        for case in bench.load_cases():
+            messages = bench.production_messages(case)
+            self.assertEqual(messages[0]["content"], PLANNER_SYSTEM)
+            user = messages[1]["content"]
+            self.assertIn(case["goal"], user)
+            self.assertNotIn("alternatives", user)
+            for element in case["observation"].get("elements", []):
+                self.assertIn(element, user)
+
+    def test_state_and_last_result_reach_the_prompt(self):
+        case = next(c for c in bench.load_cases() if c["id"] == "salvar-pendente")
+        user = bench.production_messages(case)[1]["content"]
+        self.assertIn("Pending requirements", user)
+        for pending in case["state"]["pending"]:
+            self.assertIn(pending, user)
+        for evidence in case["state"]["evidence_ids"]:
+            self.assertIn(evidence, user)
+
+    def test_suite_is_selectable_and_scores_with_same_oracle(self):
+        self.assertEqual(bench.PRODUCTION_SUITE.evaluate, bench.evaluate_response)
+        row = bench.PRODUCTION_SUITE.evaluate(bench.load_cases()[0],
+                                              response('{"type":"hotkey","keys":"ctrl+l"}'), 1)
+        self.assertTrue(row["passed"])

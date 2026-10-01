@@ -1,0 +1,20 @@
+<!doctype html><meta charset="utf-8"><title>Editor (canvas)</title>
+<body style="margin:0;background:#1e1f26"><canvas id="c" width="1280" height="800"></canvas>
+<script>
+// Interface desenhada em <canvas>: nenhum elemento na DOM/acessibilidade.
+const c=document.getElementById('c'),g=c.getContext('2d');g.fillStyle='#1e1f26';g.fillRect(0,0,1280,800);
+window.__t={};
+function btn(id,x,y,w,h,label,color){g.fillStyle=color;g.beginPath();g.roundRect(x,y,w,h,8);g.fill();
+ g.fillStyle='#fff';g.font='20px sans-serif';g.textAlign='center';g.textBaseline='middle';g.fillText(label,x+w/2,y+h/2);window.__t[id]={x,y,width:w,height:h};}
+g.fillStyle='#2b2d38';g.fillRect(0,0,1280,64);g.fillStyle='#9aa0b4';g.font='22px sans-serif';g.textAlign='left';g.fillText('Projeto sem título — Estúdio',24,34);
+btn('exportar',1060,12,190,40,'Exportar vídeo','#3b82f6');
+btn('salvar',840,12,200,40,'Salvar rascunho','#475569');
+btn('desfazer',60,140,160,48,'Desfazer','#334155');
+btn('refazer',240,140,160,48,'Refazer','#334155');
+btn('cortar',60,220,160,48,'Cortar clipe','#b45309');
+btn('excluir',240,220,160,48,'Excluir','#b91c1c');
+g.fillStyle='#111218';g.fillRect(440,120,780,420);g.fillStyle='#64748b';g.font='28px sans-serif';g.textAlign='center';g.fillText('Pré-visualização',830,330);
+btn('reproduzir',440,570,180,52,'▶ Reproduzir','#16a34a');
+btn('pausar',640,570,160,52,'Pausar','#ca8a04');
+btn('cancelar',1040,700,180,48,'Cancelar','#475569');
+</script>

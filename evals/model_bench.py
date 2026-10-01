@@ -14,17 +14,21 @@ import json
 import math
 import platform
 import re
+import subprocess
 import sys
+import threading
 import time
 import unicodedata
 import zipfile
+from collections.abc import Callable
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import urlsplit
 
 import httpx
 
-from planner import PlannerDecision, planner_json_schema
+from planner import PLANNER_SYSTEM, PlannerDecision, build_prompt, planner_json_schema
 
 ROOT = Path(__file__).resolve().parent.parent
 CASES = Path(__file__).with_name("model_bench_cases.json")
@@ -258,6 +262,107 @@ def evaluate_response(case: dict, data: dict, elapsed_ms: float) -> dict:
     return row
 
 
+@dataclass(frozen=True)
+class Suite:
+    """Uma bateria: o que enviar, como pontuar e o que avisar no relatório."""
+    name: str
+    title: str
+    scope: tuple[str, ...]
+    load: Callable[[], list[dict]]
+    messages: Callable[[dict], list[dict]]
+    evaluate: Callable[[dict, dict, float], dict]
+    system: str
+    quick: Callable[[list[dict]], list[dict]]
+    warmup_case: dict | None = None
+    use_schema: bool = True
+    run_case: Callable | None = None  # (client, url, model, case, settings) -> row, multi-passo
+    extra_summary: Callable[[list[dict]], dict] | None = None
+    fingerprint: Callable[[list[dict]], str] | None = None
+
+
+TEXT_SUITE = Suite(
+    name="text", title="Comparação textual de modelos locais",
+    scope=("Cenas congeladas, sem mouse, teclado, terminal ou captura de tela.",
+           "Resultados de desenvolvimento; não provam tarefas E2E ou capacidade visual."),
+    load=load_cases, messages=make_messages, evaluate=evaluate_response, system=SYSTEM,
+    quick=lambda cases: select_cases(cases, True, 0), warmup_case=WARMUP_CASE)
+
+
+def production_messages(case: dict) -> list[dict]:
+    """A cena como o planner de produção a recebe (`PLANNER_SYSTEM` + `build_prompt`).
+
+    Adaptação: o resumo de tarefa é montado do estado da cena (pendências e IDs de evidência)
+    e `focus`/`coverage` não existem no prompt real, então não são enviados. Skills entram
+    como no `next_action`. Os campos do gabarito continuam fora.
+    """
+    obs, state = case["observation"], case["state"]
+    summary = ""
+    if state.get("pending") or state.get("evidence_ids"):
+        summary = ("Pending requirements: " + "; ".join(state.get("pending", [])) +
+                   "\nAvailable evidence IDs: " + ", ".join(state.get("evidence_ids", [])))
+    last = case.get("last_result", "")
+    user = build_prompt(case["goal"], obs.get("window", ""), list(obs.get("elements", [])), [],
+                        task_summary=summary,
+                        last_result="" if last.startswith("Nenhuma ação") else last)
+    if obs.get("skills"):
+        user += "\nSkills:\n" + ", ".join(obs["skills"])[:1200] + "\n"
+    return [{"role": "system", "content": PLANNER_SYSTEM}, {"role": "user", "content": user}]
+
+
+PRODUCTION_SUITE = Suite(
+    name="production", title="Comparação textual com o prompt do planner de produção",
+    scope=("Mesmas 32 cenas e oráculos, enviadas com PLANNER_SYSTEM + build_prompt (planner.py).",
+           "Use --max-tokens 256 para reproduzir o orçamento real; reasoning ligado trunca nele.",
+           "Resultados de desenvolvimento; não provam E2E, visão nem o loop completo."),
+    load=load_cases, messages=production_messages, evaluate=evaluate_response,
+    system=PLANNER_SYSTEM, quick=lambda cases: select_cases(cases, True, 0),
+    warmup_case=WARMUP_CASE)
+
+
+class GpuSampler:
+    """Amostra a VRAM total em uso (nvidia-smi) durante um grupo. Sem GPU: available=False."""
+
+    def __init__(self, interval: float = .5):
+        self.interval, self.baseline, self.peak, self.total = interval, None, None, None
+        self._stop = threading.Event()
+        self._thread = None
+
+    @staticmethod
+    def read() -> tuple[int, int] | None:
+        try:
+            out = subprocess.run(
+                ["nvidia-smi", "--query-gpu=memory.used,memory.total",
+                 "--format=csv,noheader,nounits"],
+                capture_output=True, text=True, timeout=5, check=True).stdout
+            used, total = (int(v) for v in out.splitlines()[0].split(","))
+            return used, total
+        except (OSError, subprocess.SubprocessError, ValueError, IndexError):
+            return None
+
+    def _loop(self):
+        while not self._stop.wait(self.interval):
+            sample = self.read()
+            if sample:
+                self.peak = max(self.peak or 0, sample[0])
+
+    def start(self) -> "GpuSampler":
+        sample = self.read()
+        if sample:
+            self.baseline = self.peak = sample[0]
+            self.total = sample[1]
+            self._thread = threading.Thread(target=self._loop, daemon=True)
+            self._thread.start()
+        return self
+
+    def stop(self) -> dict:
+        self._stop.set()
+        if self._thread:
+            self._thread.join(timeout=2)
+        return {"available": self.baseline is not None, "baseline_mb": self.baseline,
+                "peak_mb": self.peak, "total_mb": self.total,
+                "note": "VRAM total do sistema (modelo + desktop + outros processos)"}
+
+
 def percentile(values: list[float], q: float) -> float | None:
     if not values:
         return None
@@ -279,6 +384,7 @@ def summarize(rows: list[dict], planned: int) -> dict:
     for row in rows:
         per_case.setdefault(row.get("case_id", "?"), []).append(bool(row.get("passed")))
     always_failed = sorted(c for c, v in per_case.items() if not any(v))
+    tps = [r["tokens_per_s"] for r in rows if r.get("tokens_per_s")]
     denom = max(planned, len(rows))
     counts ={k: sum(r.get("error_kind") == k for r in rows)
               for k in ("semantic", "format", "truncated", "infra")}
@@ -290,6 +396,7 @@ def summarize(rows: list[dict], planned: int) -> dict:
             "pure_json_count": sum(bool(r.get("pure_json")) for r in rows),
             "errors": counts, "always_failed": always_failed, "by_category": by_category,
             "latency_ms": {"p50": percentile(elapsed, .5), "p95": percentile(elapsed, .95)},
+            "tokens_per_s_p50": percentile(tps, .5),
             "complete": complete, "execution_ok": execution_ok,
             "execution_status": "ok" if execution_ok else "infra_error" if counts["infra"]
             else "partial",
@@ -350,33 +457,41 @@ EFFORTS = ("low", "medium", "high")
 THINKING_MODES = ("native", "on", "off") + EFFORTS
 
 
-def run_requests(client, url, model, cases, reps, settings, emit):
+def build_payload(model, messages, settings, use_schema=True) -> dict:
+    payload = {"model": model, "messages": messages, "temperature": settings["temperature"],
+               "max_tokens": settings["max_tokens"], "stream": False}
+    if use_schema and settings["format"] == "schema":
+        payload["response_format"] = {
+            "type": "json_schema", "json_schema": {"name": "decision",
+            "strict": True, "schema": planner_json_schema()}}
+    thinking = settings["thinking"]
+    if thinking in ("on", "off"):
+        payload["chat_template_kwargs"] = {"enable_thinking": thinking == "on"}
+    if thinking == "off":
+        # LM Studio ignora chat_template_kwargs; reasoning_effort é o que desliga.
+        payload["reasoning_effort"] = "none"
+    elif thinking in EFFORTS:
+        payload["reasoning_effort"] = thinking
+    return payload
+
+
+def run_requests(client, url, model, cases, reps, settings, emit, suite=None):
+    suite = suite or TEXT_SUITE
     rows = []
     infra_streak = 0
     for rep in range(reps):
         # Rotaciona casos para reduzir viés de ordem entre repetições.
         shift = rep % len(cases)
         for case in cases[shift:] + cases[:shift]:
-            payload = {"model": model, "messages": make_messages(case),
-                       "temperature": settings["temperature"],
-                       "max_tokens": settings["max_tokens"], "stream": False}
-            if settings["format"] == "schema":
-                payload["response_format"] = {
-                    "type": "json_schema", "json_schema": {"name": "decision",
-                    "strict": True, "schema": planner_json_schema()}}
-            thinking = settings["thinking"]
-            if thinking in ("on", "off"):
-                payload["chat_template_kwargs"] = {"enable_thinking": thinking == "on"}
-            if thinking == "off":
-                # LM Studio ignora chat_template_kwargs; reasoning_effort é o que desliga.
-                payload["reasoning_effort"] = "none"
-            elif thinking in EFFORTS:
-                payload["reasoning_effort"] = thinking
+            payload = build_payload(model, suite.messages(case), settings, suite.use_schema)
             t0 = time.perf_counter()
             try:
-                response = client.post(f"{url}/chat/completions", json=payload)
-                response.raise_for_status()
-                row = evaluate_response(case, response.json(), (time.perf_counter()-t0)*1000)
+                if suite.run_case:
+                    row = suite.run_case(client, url, model, case, settings)
+                else:
+                    response = client.post(f"{url}/chat/completions", json=payload)
+                    response.raise_for_status()
+                    row = suite.evaluate(case, response.json(), (time.perf_counter()-t0)*1000)
             except (httpx.HTTPError, ValueError) as exc:
                 row = {"passed": False, "format_valid": False, "pure_json": False,
                        "error_kind": "infra", "errors": [str(exc)[:1000]],
@@ -384,6 +499,9 @@ def run_requests(client, url, model, cases, reps, settings, emit):
                 if isinstance(exc, httpx.HTTPStatusError):
                     row["http_status"] = exc.response.status_code
                     row["server_error_body"] = exc.response.text[:4000]
+            tokens = (row.get("usage") or {}).get("completion_tokens")
+            if tokens and row.get("elapsed_ms"):
+                row["tokens_per_s"] = round(tokens / (row["elapsed_ms"] / 1000), 1)
             row.update(case_id=case["id"], category=case["category"], rep=rep,
                        requested_model=model, settings=settings)
             rows.append(row)
@@ -396,16 +514,16 @@ def run_requests(client, url, model, cases, reps, settings, emit):
     return rows
 
 
-def write_report(directory: Path, manifest: dict, groups: list[dict]) -> None:
+def write_report(directory: Path, manifest: dict, groups: list[dict],
+                 suite: Suite | None = None) -> None:
+    suite = suite or TEXT_SUITE
     summary = {"manifest": manifest, "results": groups}
     (directory / "summary.json").write_text(
         json.dumps(summary, ensure_ascii=False, indent=2), encoding="utf-8")
-    lines = ["# Comparação textual de modelos locais", "",
-             "Cenas congeladas, sem mouse, teclado, terminal ou captura de tela.",
-             "Resultados de desenvolvimento; não provam tarefas E2E ou capacidade visual.", "",
+    lines = [f"# {suite.title}", "", *suite.scope, "",
              "| Modelo | Formato | Reasoning | Tentativas | Acertos | Formato válido "
-             "| p50 ms | p95 ms |",
-             "| --- | --- | --- | ---: | ---: | ---: | ---: | ---: |"]
+             "| p50 ms | p95 ms | tok/s | VRAM pico MB |",
+             "| --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |"]
     for group in groups:
         s = group["summary"]
         label = str(group["model"]).replace("|", "\\|")
@@ -413,7 +531,8 @@ def write_report(directory: Path, manifest: dict, groups: list[dict]) -> None:
                      f"{group['settings']['thinking']} | "
                      f"{s['attempted']}/{s['planned']} | {s['success_rate']:.1%} | "
                      f"{s['format_rate']:.1%} | {s['latency_ms']['p50']} | "
-                     f"{s['latency_ms']['p95']} |")
+                     f"{s['latency_ms']['p95']} | {s.get('tokens_per_s_p50')} | "
+                     f"{group.get('gpu', {}).get('peak_mb')} |")
     for group in groups:
         s = group["summary"]
         label = f"{group['model']} [{group['settings']['format']}/{group['settings']['thinking']}]"
@@ -426,6 +545,8 @@ def write_report(directory: Path, manifest: dict, groups: list[dict]) -> None:
                   "| Categoria | Acertos |", "| --- | ---: |"]
         for cat, g in sorted(s["by_category"].items()):
             lines.append(f"| {cat} | {g['passed']}/{g['attempts']} |")
+        for key, value in (s.get("extra") or {}).items():
+            lines.append(f"\n{key}: {value}")
         if s["always_failed"]:
             lines += ["", "Falharam em todas as repetições: " + ", ".join(s["always_failed"])]
     lines += ["", "Falhas HTTP, respostas inválidas e truncamentos contam como não acertos.",
@@ -433,7 +554,8 @@ def write_report(directory: Path, manifest: dict, groups: list[dict]) -> None:
               "Modo thinking é solicitado; o servidor pode ignorá-lo. Ver raw_response.",
               "JSON schema avalia saída restrita; prompt avalia JSON sem restrição do servidor.",
               "Backend, quantização e offload são declarados pelo operador, não certificados.",
-              "Oráculos conservadores de texto; paráfrases fora da gramática podem falhar.",
+              "VRAM pico = máximo de memória em uso na GPU durante o grupo (sistema inteiro).",
+              "Oráculos conservadores; paráfrases fora da gramática podem falhar.",
               "Exit 2 indica infraestrutura/execução parcial, não reprovação semântica do modelo.",
               "Consulte rows.jsonl para respostas, tokens, finish_reason e erros por cena."]
     (directory / "relatorio.md").write_text("\n".join(lines)+"\n", encoding="utf-8")
@@ -449,6 +571,11 @@ def main(argv=None) -> int:
         argv.remove("--lmstudio")
         return managed_main(argv)
     ap = argparse.ArgumentParser(description=__doc__)
+    ap.add_argument("--suite", choices=("text", "production", "trajectory", "ground"),
+                    default="text",
+                    help="text = prompt do benchmark; production = prompt real do planner; "
+                         "trajectory = cenários multi-passo; ground = localizar elementos "
+                         "em screenshots")
     ap.add_argument("--url", default="http://127.0.0.1:1234/v1")
     ap.add_argument("--list", action="store_true", help="listar IDs reais do servidor")
     ap.add_argument("--model", action="append",
@@ -485,7 +612,17 @@ def main(argv=None) -> int:
                 print(json.dumps(models, ensure_ascii=False, indent=2))
                 return 0
             args.model = resolve_models(args.model, [m["id"] for m in models])
-            cases = select_cases(load_cases(), args.quick, args.limit)
+            suite = PRODUCTION_SUITE if args.suite == "production" else TEXT_SUITE
+            if args.suite == "ground":
+                from evals.ground_bench import SUITE as suite
+                args.format = "prompt"
+            elif args.suite == "trajectory":
+                from evals.trajectory_bench import SUITE as suite
+            cases = suite.load()
+            if args.quick:
+                cases = suite.quick(cases)
+            if args.limit:
+                cases = cases[:args.limit]
             directory = args.out or ROOT / "runs" / (
                 "model-bench-" + datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S-%f"))
             directory.mkdir(parents=True, exist_ok=False)
@@ -497,13 +634,16 @@ def main(argv=None) -> int:
                         "url": url, "models_advertised": models, "notes": args.notes,
                         "platform": platform.platform(), "python": platform.python_version(),
                         "cases_sha256": hashlib.sha256(case_text.encode()).hexdigest(),
-                        "prompt_sha256": hashlib.sha256(SYSTEM.encode()).hexdigest(),
-                        "system_prompt": SYSTEM, "warmups": [], "interrupted": False,
+                        "suite": suite.name,
+                        "images_sha256": suite.fingerprint(cases) if suite.fingerprint else None,
+                        "prompt_sha256": hashlib.sha256(suite.system.encode()).hexdigest(),
+                        "system_prompt": suite.system, "warmups": [], "interrupted": False,
                         "requested_models": args.model, "requested_format": args.format,
                         "reps": args.reps, "timeout_s": args.timeout,
                         "quick": args.quick, "selected_case_ids": [c["id"] for c in cases],
-                        "hardware_measured": False,
-                        "hardware_note": "Sem medição de pico VRAM/offload; use --notes."}
+                        "hardware_measured": GpuSampler.read() is not None,
+                        "hardware_note": "Pico de VRAM total por grupo via nvidia-smi; offload "
+                                         "e quantização continuam declarados em --notes."}
             groups = []
             print(f"Saída: {directory.resolve()}", flush=True)
             try:
@@ -517,8 +657,11 @@ def main(argv=None) -> int:
                         groups.append(group)
                         # Warmup real com o mesmo contrato, fora da taxa de acertos.
                         print(f"Aquecendo {model} [{fmt}/{think}]...", flush=True)
-                        warmups = run_requests(client, url, model, [WARMUP_CASE], 1, settings,
-                                               lambda row: manifest["warmups"].append(row))
+                        sampler = GpuSampler().start()
+                        warmups = run_requests(client, url, model,
+                                               [suite.warmup_case or cases[0]], 1, settings,
+                                               lambda row: manifest["warmups"].append(row),
+                                               suite)
                         group["warmup_infra_errors"] = sum(
                             row["error_kind"] == "infra" for row in warmups
                         )
@@ -536,19 +679,26 @@ def main(argv=None) -> int:
                                   flush=True)
 
                         started = time.monotonic()
-                        run_requests(client, url, model, cases, args.reps, settings, emit)
+                        run_requests(client, url, model, cases, args.reps, settings, emit, suite)
+                        group["gpu"] = sampler.stop()
             except KeyboardInterrupt:
                 manifest["interrupted"] = True
                 print("Interrompido; preservando relatório parcial.")
             finally:
                 for group in groups:
                     group["summary"] = summarize(group.pop("rows"), len(cases)*args.reps)
+                    rows_all = [json.loads(line) for line in
+                                (directory / "rows.jsonl").read_text(encoding="utf-8").splitlines()]
+                    mine = [r for r in rows_all if r["requested_model"] == group["model"]
+                            and r["settings"] == group["settings"]]
+                    if suite.extra_summary:
+                        group["summary"]["extra"] = suite.extra_summary(mine)
                     if group.get("warmup_infra_errors"):
                         group["summary"].update(execution_ok=False, execution_status="infra_error")
                 manifest["exit_code"] = 130 if manifest["interrupted"] else 2 if any(
                     not g["summary"]["execution_ok"] for g in groups
                 ) else 0
-                write_report(directory, manifest, groups)
+                write_report(directory, manifest, groups, suite)
             print(f"Relatório para análise: {(directory / 'resultado.zip').resolve()}")
             return manifest["exit_code"]
     except httpx.ConnectError:

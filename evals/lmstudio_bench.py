@@ -113,6 +113,11 @@ def ensure_server(manager, url):
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument('--lms-path')
+    ap.add_argument('--suite', choices=('text', 'production', 'trajectory', 'ground'),
+                    default='text',
+                    help='text = prompt do benchmark; production = prompt real do planner; '
+                         'trajectory = cenários multi-passo; ground = localizar elementos '
+                         'em screenshots')
     ap.add_argument('--url', default='http://127.0.0.1:1234/v1')
     ap.add_argument('--list', action='store_true')
     ap.add_argument('--match', default='minicpm', help='substring do model key; padrão minicpm')
@@ -197,6 +202,7 @@ def main(argv=None):
                 output = directory / f'model-{index:02d}'
                 result['directory'] = output.name
                 bench_args = [
+                    '--suite', args.suite,
                     '--url', args.url, '--model', identifier, '--out', str(output),
                     '--reps', str(args.reps), '--limit', str(args.limit),
                     '--format', args.format, '--thinking', args.thinking,

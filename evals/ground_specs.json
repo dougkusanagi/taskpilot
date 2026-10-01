@@ -1,0 +1,286 @@
+{
+  "version": "ground-v1",
+  "note": "Páginas + alvos. A caixa de cada alvo vem da DOM/JS NA CAPTURA e nunca é enviada ao modelo. Alvo com absent=true não existe na página: a resposta correta é null.",
+  "pages": [
+    {
+      "id": "canvas",
+      "file": "pages/canvas-ui.html",
+      "category": "canvas-sem-dom",
+      "viewport": [
+        1280,
+        800
+      ],
+      "targets": [
+        {
+          "instruction": "Click the 'Exportar vídeo' button",
+          "js": "window.__t.exportar"
+        },
+        {
+          "instruction": "Clique no botão Cortar clipe",
+          "js": "window.__t.cortar"
+        },
+        {
+          "instruction": "Click the red Excluir button",
+          "js": "window.__t.excluir"
+        },
+        {
+          "instruction": "Click the green play button",
+          "js": "window.__t.reproduzir"
+        },
+        {
+          "instruction": "Click the 'Checkout' button",
+          "absent": true
+        }
+      ]
+    },
+    {
+      "id": "icones",
+      "file": "pages/icon-toolbar.html",
+      "category": "so-icone",
+      "viewport": [
+        1280,
+        800
+      ],
+      "targets": [
+        {
+          "instruction": "Click the settings gear icon",
+          "selector": "#gear"
+        },
+        {
+          "instruction": "Click the trash can icon",
+          "selector": "#trash"
+        },
+        {
+          "instruction": "Click the magnifying glass search icon",
+          "selector": "#search"
+        },
+        {
+          "instruction": "Click the save (floppy disk) icon",
+          "selector": "#save"
+        },
+        {
+          "instruction": "Click the shopping cart icon",
+          "absent": true
+        }
+      ]
+    },
+    {
+      "id": "cookies",
+      "file": "pages/cookie-modal.html",
+      "category": "modal-overlay",
+      "viewport": [
+        1366,
+        768
+      ],
+      "targets": [
+        {
+          "instruction": "Clique em Aceitar todos",
+          "selector": "#accept"
+        },
+        {
+          "instruction": "Click 'Rejeitar não essenciais'",
+          "selector": "#reject"
+        },
+        {
+          "instruction": "Click the privacy policy link",
+          "selector": "#policy"
+        }
+      ]
+    },
+    {
+      "id": "tabela",
+      "file": "pages/table-rows.html",
+      "category": "alvo-repetido",
+      "viewport": [
+        1280,
+        800
+      ],
+      "targets": [
+        {
+          "instruction": "Click the Editar button in Carla Dias's row",
+          "selector": "#e3"
+        },
+        {
+          "instruction": "Click the Excluir button in Carla Dias's row",
+          "selector": "#d3"
+        },
+        {
+          "instruction": "Click the Editar button in Diego Matos's row",
+          "selector": "#e4"
+        },
+        {
+          "instruction": "Click the Editar button in Ana Ribeiro's row",
+          "selector": "#e1"
+        }
+      ]
+    },
+    {
+      "id": "minusculo",
+      "file": "pages/tiny-lowcontrast.html",
+      "category": "alvo-pequeno",
+      "viewport": [
+        1920,
+        1080
+      ],
+      "targets": [
+        {
+          "instruction": "Check the 'Resumo semanal por e-mail' checkbox",
+          "selector": "#n3"
+        },
+        {
+          "instruction": "Click the 'Aplicar' button",
+          "selector": "#apply"
+        },
+        {
+          "instruction": "Click the 'restaurar padrões' link",
+          "selector": "#reset"
+        },
+        {
+          "instruction": "Check the 'Notificações no navegador' checkbox",
+          "selector": "#n4"
+        }
+      ]
+    },
+    {
+      "id": "example",
+      "url": "https://example.org/",
+      "category": "site-real",
+      "viewport": [
+        1280,
+        800
+      ],
+      "targets": [
+        {
+          "instruction": "Click the 'Learn more' link",
+          "selector": "a"
+        }
+      ]
+    },
+    {
+      "id": "wikipedia",
+      "url": "https://en.wikipedia.org/wiki/Main_Page",
+      "category": "site-real",
+      "viewport": [
+        1366,
+        768
+      ],
+      "targets": [
+        {
+          "instruction": "Click on the Wikipedia search box",
+          "selector": "input[name=search]"
+        },
+        {
+          "instruction": "Click the 'Log in' link",
+          "selector": "#pt-login-2"
+        }
+      ]
+    },
+    {
+      "id": "python",
+      "url": "https://www.python.org/",
+      "category": "site-real",
+      "viewport": [
+        1366,
+        768
+      ],
+      "targets": [
+        {
+          "instruction": "Click the Downloads menu item",
+          "selector": "#downloads > a"
+        },
+        {
+          "instruction": "Click the search field",
+          "selector": "#id-search-field"
+        },
+        {
+          "instruction": "Click the Documentation menu item",
+          "selector": "#documentation > a"
+        }
+      ]
+    },
+    {
+      "id": "hackernews",
+      "url": "https://news.ycombinator.com/",
+      "category": "site-real",
+      "viewport": [
+        1280,
+        800
+      ],
+      "targets": [
+        {
+          "instruction": "Click the 'login' link at the top right",
+          "selector": "a[href^='login']"
+        },
+        {
+          "instruction": "Click the title link of the first story",
+          "selector": ".titleline > a >> nth=0"
+        },
+        {
+          "instruction": "Click the 'new' link in the header",
+          "selector": "a[href='newest']"
+        }
+      ]
+    },
+    {
+      "id": "github-login",
+      "url": "https://github.com/login",
+      "category": "site-real",
+      "viewport": [
+        1280,
+        800
+      ],
+      "targets": [
+        {
+          "instruction": "Click the username or email field",
+          "selector": "#login_field"
+        },
+        {
+          "instruction": "Click the green 'Sign in' button",
+          "selector": "input[type=submit]"
+        },
+        {
+          "instruction": "Click the 'Forgot password?' link",
+          "selector": "a[href*='password_reset']"
+        }
+      ]
+    },
+    {
+      "id": "form-demo",
+      "url": "https://httpbin.org/forms/post",
+      "category": "site-real",
+      "viewport": [
+        1280,
+        800
+      ],
+      "targets": [
+        {
+          "instruction": "Click the 'Customer name' field",
+          "selector": "input[name=custname]"
+        },
+        {
+          "instruction": "Select the 'Large' pizza size radio button",
+          "selector": "input[value=large]"
+        },
+        {
+          "instruction": "Click the 'Submit order' button",
+          "selector": "button"
+        }
+      ]
+    },
+    {
+      "id": "docs-python",
+      "url": "https://docs.python.org/3/",
+      "category": "site-real",
+      "viewport": [
+        1366,
+        768
+      ],
+      "targets": [
+        {
+          "instruction": "Click the 'Tutorial' link",
+          "selector": "a[href='tutorial/index.html']"
+        }
+      ]
+    }
+  ]
+}
