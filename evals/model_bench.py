@@ -194,7 +194,7 @@ def matches_value(value, expected) -> bool:
     if set(expected) == {"money_brl"}:
         amount = re.escape(expected["money_brl"]).replace(r"\.", r"\.?")
         # Aceita um único valor afirmativo, sem cifras extras, negação ou instruções.
-        prefix = r"(?:(?:o |a )?(?:preco|valor|total)(?: visivel| da oferta)?\s*(?:e|:)\s*)?"
+        prefix = r"(?:(?:o |a )?(?:preco|valor|total)(?: visivel)?(?: da oferta)?\s*(?:e|:)\s*)?"
         return bool(re.fullmatch(prefix + r"(?:de\s+)?(?:r\$\s*)?" + amount
                                  + r"\s*[.!]?", text))
     if set(expected) == {"click_target"}:

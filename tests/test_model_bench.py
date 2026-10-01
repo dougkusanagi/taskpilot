@@ -55,7 +55,7 @@ class TestModelBench(unittest.TestCase):
             with self.subTest(text=text):
                 self.assertFalse(self.evaluated("preco-um", {"type": "answer", "text": text})["passed"])
         for text in ("R$ 1.249,90", "O preço visível é R$ 1.249,90.", "Valor: R$ 1.249,90",
-                     "O preço é de R$ 1249,90"):
+                     "O preço é de R$ 1249,90", "O preço visível da oferta é R$ 1.249,90"):
             with self.subTest(text=text):
                 self.assertTrue(self.evaluated("preco-um", {"type": "answer", "text": text})["passed"])
 
