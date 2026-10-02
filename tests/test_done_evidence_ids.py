@@ -66,20 +66,47 @@ class TestPlannerContract(unittest.TestCase):
         for name in ("click_text", "save_as", "wait:<texto>"):
             self.assertNotIn(name, base)
 
-    def test_dynamic_schema_restricts_targets_evidence_and_keys(self):
+    @staticmethod
+    def by_type(schema):
+        return {v["properties"]["type"]["enum"][0]: v for v in schema["anyOf"]}
+
+    def test_dynamic_schema_has_one_strict_variant_per_action(self):
         import planner
 
         schema = planner.planner_json_schema(names=["Button:Salvar", "Edit:Editor=oi"],
                                              evidence_ids=["E1"], apps=["chrome"],
-                                             extra_types=False)
-        click, other = schema["anyOf"]
-        self.assertEqual(click["properties"]["target"]["enum"], ["Editor", "Salvar"])
-        self.assertEqual(click["properties"]["evidences"]["items"]["enum"], ["E1"])
-        self.assertNotIn("click_text", other["properties"]["type"]["enum"])
-        self.assertNotIn("uia_click", other["properties"]["type"]["enum"])
-        self.assertIn("pattern", other["properties"]["keys"])
-        none = planner.planner_json_schema(names=[], extra_types=False)
-        self.assertNotIn("uia_click", none["properties"]["type"]["enum"])  # nada clicável
+                                             extra_types=False, allow_skill=False)
+        by = self.by_type(schema)
+        self.assertEqual(by["uia_click"]["properties"]["target"]["enum"], ["Editor", "Salvar"])
+        self.assertEqual(by["done"]["properties"]["evidences"]["items"]["enum"], ["E1"])
+        self.assertEqual(by["done"]["properties"]["evidences"]["minItems"], 1)
+        self.assertEqual(by["open_app"]["properties"]["app"]["enum"], ["chrome"])
+        self.assertIn("pattern", by["hotkey"]["properties"]["keys"])
+        self.assertIn("enter", by["press_key"]["properties"]["key"]["enum"])
+        for name in ("click_text", "fill", "save_as", "use_skill"):
+            self.assertNotIn(name, by)
+        for variant in schema["anyOf"]:  # nenhum campo fora dos da própria ação
+            self.assertFalse(variant["additionalProperties"])
+            self.assertIn("type", variant["required"])
+
+    def test_done_disappears_without_confirmed_evidence_and_click_without_names(self):
+        import planner
+
+        by = self.by_type(planner.planner_json_schema(names=[], evidence_ids=[],
+                                                      extra_types=False))
+        self.assertNotIn("done", by)
+        self.assertNotIn("uia_click", by)
+        self.assertIn("visual_action", by)
+
+    def test_optional_tools_and_skills_only_when_offered(self):
+        import planner
+
+        by = self.by_type(planner.planner_json_schema(names=["Edit:Page"], evidence_ids=["E1"],
+                                                      extra_types=True, allow_skill=True))
+        self.assertEqual(by["fill"]["required"], ["type", "target", "text"])
+        self.assertEqual(by["fill"]["properties"]["target"]["enum"], ["Page"])
+        for name in ("click_text", "save_as", "use_skill"):
+            self.assertIn(name, by)
 
     def test_why_is_required_only_when_requested(self):
         import planner
@@ -88,6 +115,10 @@ class TestPlannerContract(unittest.TestCase):
         sch = planner.planner_json_schema(why=True)
         self.assertEqual(sch["required"], ["why", "type"])
         self.assertEqual(next(iter(sch["properties"])), "why")  # antes da ação
+        typed = planner.planner_json_schema(why=True, names=["Button:Ok"], evidence_ids=["E1"])
+        for variant in typed["anyOf"]:
+            self.assertEqual(variant["required"][0], "why")
+            self.assertEqual(next(iter(variant["properties"])), "why")
 
     def test_unknown_feature_fails_early(self):
         import planner

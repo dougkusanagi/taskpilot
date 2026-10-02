@@ -626,7 +626,8 @@ def main(argv=None) -> int:
                          "trajectory = cenários multi-passo; ground = localizar elementos "
                          "em screenshots")
     ap.add_argument("--features", default="",
-                    help="recursos do planner (production): tools,fewshot,recipes,dynschema,why")
+                    help="recursos. production/trajectory: tools,fewshot,recipes,dynschema,why,"
+                         "plan. ground: zoom,auto,k1000,pixel,p2d,pyauto")
     ap.add_argument("--url", default="http://127.0.0.1:1234/v1")
     ap.add_argument("--list", action="store_true", help="listar IDs reais do servidor")
     ap.add_argument("--model", action="append",
@@ -666,10 +667,14 @@ def main(argv=None) -> int:
             features = tuple(f for f in args.features.split(",") if f)
             suite = production_suite(features) if args.suite == "production" else TEXT_SUITE
             if args.suite == "ground":
-                from evals.ground_bench import SUITE as suite
+                from evals.ground_bench import ground_suite
+
+                suite = ground_suite(features)
                 args.format = "prompt"
             elif args.suite == "trajectory":
-                from evals.trajectory_bench import SUITE as suite
+                from evals.trajectory_bench import trajectory_suite
+
+                suite = trajectory_suite(features)
             cases = suite.load()
             if args.quick:
                 cases = suite.quick(cases)

@@ -242,9 +242,97 @@ class TestNewToolsInSimulator(unittest.TestCase):
                                              {"id": "NotepadSave"}, SETTINGS)
         schema = payloads[0]["response_format"]["json_schema"]["schema"]
         self.assertIn("anyOf", schema)
-        self.assertEqual(sorted(schema["anyOf"][0]["properties"]["target"]["enum"]),
+        click = next(v for v in schema["anyOf"]
+                     if v["properties"]["type"]["enum"] == ["uia_click"])
+        self.assertEqual(sorted(click["properties"]["target"]["enum"]),
                          ["Arquivo", "Editor"])  # só o que está na tela, sem o tipo
+        types = {v["properties"]["type"]["enum"][0] for v in schema["anyOf"]}
+        self.assertNotIn("done", types)  # nenhuma evidência confirmada ainda
 
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestChecklistVariants(unittest.TestCase):
+    def test_three_checklist_modes_in_the_prompt(self):
+        sim = tb.NotepadSave()
+        oracle = tb.step_messages(sim, [], ())[1]["content"]
+        none = tb.step_messages(sim, [], ("nochecklist",))[1]["content"]
+        plan = tb.step_messages(sim, [], ("plan",), ["digitar", "salvar"])[1]["content"]
+        self.assertIn("pendências: digitar o texto no editor", oracle)
+        self.assertNotIn("pendências", none)
+        self.assertNotIn("requisitos", none)
+        self.assertIn("requisitos do pedido: (1) digitar; (2) salvar", plan)
+        self.assertNotIn("pendências", plan)
+
+    def test_plan_feature_calls_the_model_once_per_scenario_and_survives_failure(self):
+        seen = []
+
+        def handler(request):
+            body = json.loads(request.content)
+            seen.append(body["messages"][0]["content"][:20])
+            if "requirements" in json.dumps(body.get("response_format", "")):
+                return httpx.Response(200, json={"usage": {}, "choices": [{
+                    "finish_reason": "stop",
+                    "message": {"content": '{"requirements":["abrir aba"]}'}}]})
+            return httpx.Response(200, json={"usage": {}, "choices": [{
+                "finish_reason": "stop", "message": {"content": '{"type":"wait","ms":10}'}}]})
+
+        with httpx.Client(transport=httpx.MockTransport(handler)) as client:
+            row = tb.make_run_case(("plan",))(client, "http://x/v1", "fake",
+                                              {"id": "ChromeUrl"}, SETTINGS)
+        self.assertEqual(sum(1 for s in seen if s.startswith("Break the user")), 1)
+        self.assertFalse(row["passed"])
+
+
+class TestEquivalentPathsV2(unittest.TestCase):
+    def run_scenario(self, name, actions):
+        with scripted_client(lambda n: actions if n == name else []) as client:
+            return tb.run_case(client, "http://127.0.0.1/v1", "fake", {"id": name}, SETTINGS)
+
+    def test_notepad_via_file_menu_save_as_and_enter(self):
+        row = self.run_scenario("NotepadSave", [
+            {"type": "type_text", "text": "ola mundo"}, {"type": "uia_click", "target": "Arquivo"},
+            {"type": "uia_click", "target": "Salvar como"},
+            {"type": "uia_click", "target": "Nome do arquivo"},
+            {"type": "type_text", "text": "nota.txt"}, {"type": "press_key", "key": "enter"},
+            {"type": "done", "evidences": ["E1", "E2"]}])
+        self.assertTrue(row["passed"], row["errors"])
+        self.assertEqual(row["wasted_actions"], 0)
+
+    def test_save_as_tool_also_works_with_the_dialog_already_open(self):
+        row = self.run_scenario("NotepadSave", [
+            {"type": "type_text", "text": "ola mundo"}, {"type": "hotkey", "keys": "ctrl+s"},
+            {"type": "save_as", "text": "nota.txt"}, {"type": "done", "evidences": ["E1", "E2"]}])
+        self.assertTrue(row["passed"], row["errors"])
+
+    def test_sequence_runs_each_primitive_and_reports_when_nothing_happened(self):
+        row = self.run_scenario("ChromeUrl", [
+            {"type": "hotkey", "keys": "ctrl+t"},
+            {"type": "sequence", "steps": [{"type": "hotkey", "keys": "ctrl+l"},
+                                           {"type": "type_text", "text": "https://example.org"},
+                                           {"type": "press_key", "key": "enter"}]},
+            {"type": "done", "evidences": ["E1", "E2"]}])
+        self.assertTrue(row["passed"], row["errors"])
+        idle = self.run_scenario("CalcSum", [{"type": "sequence", "steps": [
+            {"type": "hotkey", "keys": "ctrl+t"}, {"type": "press_key", "key": "tab"}]}])
+        self.assertTrue(idle["transcript"][0]["result"].startswith("no visible effect"))
+
+    def test_english_labels_and_answer_do_not_count_as_wasted_clicks(self):
+        row = self.run_scenario("CookieBanner", [
+            {"type": "visual_action", "instruction": "Click the blue Accept all button"},
+            {"type": "visual_action", "instruction": "Click the Buy now button"},
+            {"type": "done", "evidences": ["E1", "E2"]}])
+        self.assertTrue(row["passed"], row["errors"])
+        said = self.run_scenario("CalcSum", [{"type": "answer", "text": "5"}])
+        self.assertIn("não conclui", said["transcript"][0]["result"])
+        self.assertFalse(said["transcript"][0]["result"].startswith("no visible effect"))
+
+    def test_clicking_the_address_bar_focuses_it_for_typing(self):
+        row = self.run_scenario("ChromeUrl", [
+            {"type": "hotkey", "keys": "ctrl+t"},
+            {"type": "uia_click", "target": "Barra de endereço"},
+            {"type": "type_text", "text": "example.org"}, {"type": "press_key", "key": "enter"},
+            {"type": "done", "evidences": ["E1", "E2"]}])
+        self.assertTrue(row["passed"], row["errors"])

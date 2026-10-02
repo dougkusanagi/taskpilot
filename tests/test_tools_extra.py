@@ -247,3 +247,64 @@ class TestPerceiveWait(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestPlanAndRecord(unittest.TestCase):
+    def test_plan_requirements_parses_the_checklist_and_never_raises(self):
+        import planner
+
+        p = planner.MiniCPMPlanner(features=("plan",))
+        original = __import__("http_pool").post_json
+        import http_pool
+
+        http_pool.post_json = lambda *a, **k: (
+            {"choices": [{"message": {"content": '{"requirements":["abrir a nova aba",'
+                                                  ' "ir para example.org", ""]}'}}]}, 1.0)
+        try:
+            self.assertEqual(p.plan_requirements("abra example.org"),
+                             ["abrir a nova aba", "ir para example.org"])
+            http_pool.post_json = lambda *a, **k: (_ for _ in ()).throw(RuntimeError("fora"))
+            self.assertEqual(p.plan_requirements("x"), [])
+            http_pool.post_json = lambda *a, **k: ({"choices": [{"message": {"content": "lixo"}}]},
+                                                   1.0)
+            self.assertEqual(p.plan_requirements("x"), [])
+        finally:
+            http_pool.post_json = original
+
+    def test_requirements_flow_into_the_prompt_once(self):
+        import state as statemod
+
+        class Planned(FakePlanner):
+            features = ("plan",)
+            calls = 0
+
+            def plan_requirements(self, goal):
+                Planned.calls += 1
+                return ["abrir a nova aba", "ir para example.org"]
+
+            def next_action(self, goal, window, ui_names, history, last_error="", **kw):
+                self.summary = kw.get("task_summary", "")
+                return self.dec, 1.0
+
+        planner = Planned(PlannerDecision(type="wait", ms=10))
+        ts = statemod.init("g")
+        for _ in range(2):
+            loop._ask_planner(planner, "g", "w", [], {"task_state": ts}, "", {})
+        self.assertEqual(Planned.calls, 1)  # uma vez só
+        self.assertIn("requisitos do pedido: (1) abrir a nova aba", planner.summary)
+
+    def test_record_mode_stores_the_exchange_and_writes_sft(self):
+        import tempfile
+        from pathlib import Path
+        from unittest.mock import patch
+
+        import telemetry
+
+        with tempfile.TemporaryDirectory() as temp, \
+                patch.object(telemetry, "run_dir", lambda rid: Path(temp)):
+            loop._write_record("r1", "abra", "done", [
+                {"step": 1, "messages": [{"role": "user", "content": "u"}], "response": "{}",
+                 "outcome": {"did": "x"}}])
+            lines = (Path(temp) / "sft.jsonl").read_text(encoding="utf-8").splitlines()
+        self.assertEqual(len(lines), 1)
+        self.assertIn('"run_result": "done"', lines[0])

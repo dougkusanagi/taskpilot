@@ -19,6 +19,8 @@ import httpx
 
 from evals import model_bench as bench
 from planner import (
+    PLAN_SCHEMA,
+    PLAN_SYSTEM,
     MiniCPMPlanner,
     build_prompt,
     build_system,
@@ -99,6 +101,14 @@ class Sim:
                 return (f"{spec[5:].strip()!r} NÃO apareceu em 8 s; não repita wait: mude de "
                         "abordagem")
             return f"leitura: janela {self.window!r}; elementos {', '.join(self.elements)}"
+        if d["type"] == "answer":
+            return "answer registrado; isso não conclui a tarefa (use done com evidências)"
+        if d["type"] == "sequence":
+            steps = [x for x in (d.get("steps") or []) if isinstance(x, dict)]
+            results = [self.apply(step) for step in steps]
+            if not results or all(r.startswith("no visible effect") for r in results):
+                return self.no_effect()
+            return "; ".join(results)
         if d["type"] == "click_text":  # texto visível = mesmo alvo que o clique visual
             return self.apply({"type": "visual_action", "instruction": d.get("text") or ""})
         if d["type"] == "fill":
@@ -158,6 +168,14 @@ class NotepadSave(Sim):
             return "Nome digitado."
         return self.no_effect("campo não encontrado")
 
+    def confirm_save(self):
+        if self.fname.strip().casefold() != "nota.txt":
+            return "Aviso: nome do arquivo vazio ou diferente do pedido."
+        self.dialog, self.window = False, "nota.txt - Notepad"
+        self.elements = [f"Edit:Editor={self.typed}"]
+        self.evidence["ev-arquivo"] = "arquivo salvo"
+        return "Arquivo salvo."
+
     def open_dialog(self):
         self.dialog, self.menu, self.window = True, False, "Salvar como"
         self.elements = ["Edit:Nome do arquivo", "Button:Salvar", "Button:Cancelar"]
@@ -177,6 +195,13 @@ class NotepadSave(Sim):
             return "Texto digitado no editor."
         if t == "hotkey" and keys_of(d) == "ctrl+s" and not self.dialog:
             return self.open_dialog()
+        if t == "press_key" and d["key"].lower() == "enter" and self.dialog:
+            return self.confirm_save()
+        if t == "open_app" and d["app"] == "notepad":
+            return "O Bloco de Notas já está ativo; nada mudou."
+        if t == "save_as" and self.dialog:
+            self.fname = (d.get("text") or "").strip()
+            return self.confirm_save()
         if t == "save_as" and not self.dialog:
             name = (d.get("text") or "").strip()
             if name.casefold() != "nota.txt":
@@ -194,15 +219,12 @@ class NotepadSave(Sim):
         if name == "arquivo" and not self.dialog:
             self.menu, self.elements = True, self.MENU
             return "Menu Arquivo aberto."
-        if name == "salvar" and self.menu:
+        if name in ("salvar", "salvar como") and self.menu:
             return self.open_dialog()
         if name == "salvar" and self.dialog:
-            if self.fname.strip().casefold() != "nota.txt":
-                return "Aviso: nome do arquivo vazio ou diferente do pedido."
-            self.dialog, self.window = False, "nota.txt - Notepad"
-            self.elements = [f"Edit:Editor={self.typed}"]
-            self.evidence["ev-arquivo"] = "arquivo salvo"
-            return "Arquivo salvo."
+            return self.confirm_save()
+        if name in ("nome do arquivo", "editor"):
+            return f"Campo {d.get('target') or name} focado."
         if name == "cancelar" and self.dialog:
             self.dialog, self.window = False, "Sem título - Notepad"
             self.elements = self.base_elements()
@@ -245,6 +267,9 @@ class ChromeUrl(Sim):
         if self.clicked(d) == "nova guia" and not self.tab:
             return self.new_tab()
         if t == "hotkey" and keys_of(d) in ("ctrl+l", "f6", "alt+d"):
+            self.focused = True
+            return "Barra de endereço focada."
+        if self.clicked(d) == "barra de endereço":
             self.focused = True
             return "Barra de endereço focada."
         if t == "type_text":
@@ -368,6 +393,9 @@ class CalcSum(Sim):
 class CookieBanner(Sim):
     goal = "Aceite os cookies e depois clique em Comprar agora."
     category = "modal-bloqueio"
+    ALIASES = {"accept all": "aceitar todos", "accept": "aceitar todos",
+               "accept cookies": "aceitar todos", "reject": "rejeitar",
+               "buy now": "comprar agora", "buy": "comprar agora"}
 
     def __init__(self):
         super().__init__()
@@ -414,14 +442,24 @@ REQ_LABELS = {
 }
 
 
-def step_messages(sim: Sim, history: list[str], features: tuple[str, ...] = ()) -> list[dict]:
-    """Prompt de um passo no formato do planner real: estado compacto com pendências e
-    "evidências confirmadas: E1=…" (a checklist de pendências vem do simulador; o loop real
-    ainda não a gera)."""
+BENCH_ONLY_FEATURES = ("nochecklist",)
+
+
+def step_messages(sim: Sim, history: list[str], features: tuple[str, ...] = (),
+                  requirements: list[str] | None = None) -> list[dict]:
+    """Prompt de um passo no formato do planner real: estado compacto com o checklist e
+    "evidências confirmadas: E1=…". Checklist: `plan` = gerado pelo modelo (requisitos fixos, como
+    o loop real); `nochecklist` = nenhum; padrão = pendências exatas do simulador (limite
+    superior, o loop real não as tem)."""
     parts = []
-    pend = [REQ_LABELS.get(k, k) for k in sim.pending()]
-    if pend:
-        parts.append("pendências: " + "; ".join(pend))
+    if "plan" in features:
+        if requirements:
+            parts.append("requisitos do pedido: " + "; ".join(
+                f"({i}) {r[:80]}" for i, r in enumerate(requirements, 1)))
+    elif "nochecklist" not in features:
+        pend = [REQ_LABELS.get(k, k) for k in sim.pending()]
+        if pend:
+            parts.append("pendências: " + "; ".join(pend))
     ids = sim.evidence_ids()
     if ids:
         parts.append("evidências confirmadas: " + "; ".join(
@@ -429,7 +467,7 @@ def step_messages(sim: Sim, history: list[str], features: tuple[str, ...] = ()) 
     obs = sim.observation()
     recipes = recipes_for(sim.window) if "recipes" in features else ""
     user = build_prompt(sim.goal, obs["window"], obs["elements"], history,
-                        task_summary=" | ".join(parts) or "todas as pendências cumpridas",
+                        task_summary=" | ".join(parts) or "(sem estado ainda)",
                         last_result="" if sim.last.startswith("Nenhuma ação") else sim.last,
                         recipes=recipes)
     return [{"role": "system", "content": build_system(features)},
@@ -437,7 +475,21 @@ def step_messages(sim: Sim, history: list[str], features: tuple[str, ...] = ()) 
 
 
 def make_run_case(features: tuple[str, ...] = ()):
-    probe = MiniCPMPlanner(features=features)
+    planner_feats = tuple(f for f in features if f not in BENCH_ONLY_FEATURES)
+    probe = MiniCPMPlanner(features=planner_feats)
+
+    def plan(client, url, model, settings, goal: str) -> list[str]:
+        payload = bench.build_payload(
+            model, [{"role": "system", "content": PLAN_SYSTEM}, {"role": "user", "content": goal}],
+            settings, True, PLAN_SCHEMA)
+        payload["max_tokens"] = min(payload["max_tokens"], 200)
+        try:
+            response = client.post(f"{url}/chat/completions", json=payload)
+            response.raise_for_status()
+            raw, _ = bench.parse_response(response.json()["choices"][0]["message"]["content"])
+            return [str(x).strip()[:120] for x in raw.get("requirements", []) if str(x).strip()]
+        except (httpx.HTTPError, ValueError, KeyError, TypeError):
+            return []
 
     def step_schema(sim: Sim) -> dict:
         kwargs = probe.schema_kwargs(list(sim.elements))
@@ -447,6 +499,7 @@ def make_run_case(features: tuple[str, ...] = ()):
 
     def run_case(client: httpx.Client, url: str, model: str, case: dict, settings: dict) -> dict:
         sim = SCENARIOS[case["id"]]()
+        requirements = plan(client, url, model, settings, sim.goal) if "plan" in features else None
         history: list[str] = []
         transcript, invalid, wasted, misdone, same = [], 0, 0, 0, 0
         started = time.perf_counter()
@@ -454,8 +507,9 @@ def make_run_case(features: tuple[str, ...] = ()):
                "error_kind": "semantic", "errors": [], "raw_response": None}
         tokens = 0
         for step in range(1, MAX_STEPS + 1):
-            payload = bench.build_payload(model, step_messages(sim, history, features), settings,
-                                          True, step_schema(sim) if features else None)
+            payload = bench.build_payload(
+                model, step_messages(sim, history, features, requirements), settings, True,
+                step_schema(sim) if planner_feats else None)
             response = client.post(f"{url}/chat/completions", json=payload)
             response.raise_for_status()
             data = response.json()

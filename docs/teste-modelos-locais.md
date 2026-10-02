@@ -229,6 +229,34 @@ uv run python -m evals.model_bench --lmstudio --yes --suite trajectory --thinkin
 SUITE=ground scripts/bench-modelos.sh           # série completa de visão
 ```
 
+**Recursos (`--features`).** Cada melhoria do planner/visão é um recurso ligável e medido uma a uma:
+
+| Suíte | Recursos | Efeito |
+| --- | --- | --- |
+| `production`, `trajectory` | `fewshot` | 5 exemplos curtos de OUTROS apps no system prompt (formato, `done` com evidências, recuperação) |
+| | `dynschema` | schema JSON por passo: `uia_click` só aceita nomes visíveis, `evidences` só IDs existentes, `key/keys/app` restritos |
+| | `recipes` | ficha do aplicativo da janela ativa (Notepad, Calculadora, navegador, diálogo Salvar) |
+| | `tools` | catálogo com `click_text`, `fill`, `save_as` e `perceive wait:<texto>` |
+| | `why` | campo curto de raciocínio antes da ação (medido: dobra a latência e não ajuda) |
+| | `plan` | uma chamada inicial gera o checklist do pedido, guardado pelo Python |
+| `trajectory` | `nochecklist` | sem checklist (o padrão entrega as pendências exatas do simulador: limite superior) |
+| `ground` | `zoom` | duas etapas: ponto grosso, recorte na resolução original, ponto fino |
+| | `auto`, `k1000`, `pixel` | aceita respostas em 0..1/0..1000/pixels (o padrão de produção só aceita 0..1) |
+| | `p2d`, `pyauto` | prompt nativo: `{"point_2d":[x,y]}` 0..1000, ou `click(x, y)` |
+
+```bash
+uv run python -m evals.model_bench --lmstudio --yes --suite production --features dynschema,fewshot --thinking off --max-tokens 256 --model qwen3.5-4b
+uv run python -m evals.model_bench --lmstudio --yes --suite ground --features zoom --context 4096 --model qwen3-vl-4b-instruct
+```
+
+**OCR com caixas (`click_text`).** `uv run --extra ocr python -m evals.ocr_bench` mede a ferramenta
+sem modelo: dado o texto visível (`label` em `ground_specs.json`), o OCR local acha o alvo e confere
+se o ponto cai na caixa; ambiguidade e ausência viram recusa, nunca clique no escuro.
+
+**Dados de treino.** `main.py --record` grava `runs/<id>/sft.jsonl`; `python -m evals.export_sft
+planner|ground --out ...` gera exemplos de chat (planner: só passos úteis de runs concluídos;
+ground: imagem + ponto do centro da caixa). Contém telas do usuário: só local.
+
 **Bateria visual (`ground`).** As imagens não são versionadas (páginas reais mudam e têm
 direitos próprios); o que está no repositório é a especificação (`evals/ground_specs.json`),
 as páginas locais (`evals/ground/pages/`) e o capturador. Gere-as uma vez:

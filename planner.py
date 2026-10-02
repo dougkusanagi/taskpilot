@@ -144,7 +144,9 @@ Rules:
 #  fewshot -> 4 trajetórias curtas de OUTROS aplicativos (formato, não conteúdo da tarefa)
 #  recipes -> ficha do aplicativo da janela ativa (recipes.py), no fim do prompt do usuário
 #  dynschema / why -> ver planner_json_schema (enum de alvos reais; campo curto "why")
-PLANNER_FEATURES = ("tools", "fewshot", "recipes", "dynschema", "why")
+#  plan    -> 1 chamada no início gera o checklist do pedido (state.requirements), guardado pelo
+#             Python e mostrado a cada passo; o done só vale com evidência confirmada
+PLANNER_FEATURES = ("tools", "fewshot", "recipes", "dynschema", "why", "plan")
 PLANNER_APPS = ("chrome", "msedge", "brave", "notepad", "calc")
 
 TOOLS_EXTRA = """
@@ -176,6 +178,20 @@ def fewshot_block(with_tools: bool = False) -> str:
     items = FEWSHOT_BASE + (FEWSHOT_TOOLS if with_tools else [])
     return ("\n\nExamples of the format only (other apps; never copy their strings):\n"
             + "\n".join(items))
+
+
+PLAN_SYSTEM = (
+    "Break the user's goal into 1 to 5 SHORT requirements, each one independently verifiable on "
+    "the screen after it is done. Keep the user's language; copy file names, values and "
+    "addresses exactly; add no extra steps and no commentary. "
+    'Reply with ONE JSON object: {"requirements":["...","..."]}.'
+)
+PLAN_SCHEMA = {
+    "type": "object",
+    "properties": {"requirements": {"type": "array", "minItems": 1, "maxItems": 5,
+                                    "items": {"type": "string", "maxLength": 120}}},
+    "required": ["requirements"], "additionalProperties": False,
+}
 
 
 def build_system(features: tuple[str, ...] | list[str] = ()) -> str:
@@ -227,6 +243,7 @@ def build_unified_prompt(
     task_summary: str = "",
     last_result: str = "",
     skill: str = "",
+    recipes: str = "",
 ) -> str:
     """Prompt do perfil unificado: texto (+imagem à parte) com frame ref."""
     base = build_prompt(
@@ -237,6 +254,7 @@ def build_unified_prompt(
         last_error,
         task_summary=task_summary,
         last_result=last_result,
+        recipes=recipes,
     )
     extra = ""
     if frame_id:
@@ -385,18 +403,55 @@ def planner_json_schema(
     if names is None:
         return {"type": "object", "properties": props, "required": [*lead, "type"],
                 "additionalProperties": False}
+    return _typed_schema(props, lead, names, evidence_ids, apps, allow_skill, extra_types)
+
+
+def _typed_schema(props: dict, lead: list[str], names: list[str],
+                  evidence_ids: list[str] | None, apps: list[str] | None,
+                  allow_skill: bool, extra_types: bool) -> dict:
+    """Uma variante por tipo de ação, cada uma só com os campos dela (additionalProperties
+    false): extras viram impossíveis, `uia_click`/`fill` só aceitam nomes na tela e `done` só
+    existe se houver evidência confirmada (mesma regra que o verificador aplica depois)."""
     clean = sorted({n for n in (element_name(x) for x in names) if n})
-    other_types = [t for t in props["type"]["enum"] if t != "uia_click"]
-    other = {"type": "object", "properties": {**props, "type": {"type": "string",
-                                                                "enum": other_types}},
-             "required": [*lead, "type"], "additionalProperties": False}
-    if not clean:  # nada clicável por nome: uia_click deixa de existir
-        return other
-    click = {"type": "object",
-             "properties": {**props, "type": {"type": "string", "enum": ["uia_click"]},
-                            "target": {"type": "string", "enum": clean}},
-             "required": [*lead, "type", "target"], "additionalProperties": False}
-    return {"type": "object", "anyOf": [click, other]}
+    text = {"type": "string", "minLength": 1, "maxLength": 500}
+    fields: dict[str, dict] = {
+        "open_app": {"app": props["app"] if apps is None else
+                     {"type": "string", "enum": list(apps)}},
+        "focus_window": {"target": {"type": "string", "minLength": 1, "maxLength": 120}},
+        "type_text": {"text": text},
+        "press_key": {"key": {"type": "string", "enum": list(_SINGLE_KEYS)}},
+        "hotkey": {"keys": {"type": "string", "pattern": _HOTKEY_PATTERN}},
+        "visual_action": {"instruction": {"type": "string", "minLength": 1, "maxLength": 200}},
+        "wait": {"ms": {"type": "integer", "minimum": 100, "maximum": 10000}},
+        "answer": {"text": text},
+        "sequence": {"steps": {"type": "array", "minItems": 1, "maxItems": 3,
+                               "items": {"type": "object"}}},
+        "ask": {"text": text},
+        "perceive": {"perception": {"type": "string", "minLength": 1, "maxLength": 120}},
+    }
+    if clean:
+        fields["uia_click"] = {"target": {"type": "string", "enum": clean}}
+    if evidence_ids is None or evidence_ids:  # sem evidência confirmada não há `done`
+        fields["done"] = {"evidences": {"type": "array", "minItems": 1, "items": {
+            "type": "string", **({"enum": list(evidence_ids)} if evidence_ids else {})}}}
+    if allow_skill:
+        fields["use_skill"] = {"skill": {"type": "string", "minLength": 1},
+                               "args": {"type": ["object", "null"]}}
+    if extra_types:
+        fields["click_text"] = {"text": text}
+        fields["save_as"] = {"text": {"type": "string", "minLength": 1, "maxLength": 100}}
+        if clean:
+            fields["fill"] = {"target": {"type": "string", "enum": clean}, "text": text}
+    variants = []
+    for type_name, own in fields.items():
+        properties = {"type": {"type": "string", "enum": [type_name]}, **own,
+                      "task_update": {"type": ["object", "null"]}}
+        if lead:
+            properties = {"why": props["why"], **properties}
+        variants.append({"type": "object", "properties": properties,
+                         "required": [*lead, "type", *(k for k in own if k != "args")],
+                         "additionalProperties": False})
+    return {"type": "object", "anyOf": variants}
 
 
 def planner_response_format(**schema_kwargs) -> dict:
@@ -520,13 +575,41 @@ class MiniCPMPlanner:
             raise ValueError(f"planner.features desconhecidas: {sorted(unknown)}")
         self.features = tuple(features or ())
 
-    def schema_kwargs(self, ui_names: list[str], skills_catalog: str = "") -> dict:
+    def plan_requirements(self, goal: str) -> list[str]:
+        """Checklist do pedido (feature "plan"): uma chamada curta, sem raciocínio. Lista vazia
+        se o servidor falhar ou responder lixo (o loop segue sem checklist, nunca trava)."""
+        payload = {
+            "model": self.model,
+            "messages": [{"role": "system", "content": PLAN_SYSTEM},
+                         {"role": "user", "content": goal}],
+            "temperature": 0.0,
+            "max_tokens": 200,
+            "response_format": {"type": "json_schema", "json_schema": {
+                "name": "plan", "strict": True, "schema": PLAN_SCHEMA}},
+            "chat_template_kwargs": {"enable_thinking": False},
+            "cache_prompt": True,
+        }
+        try:
+            import http_pool as _pool
+
+            data, _ms = _pool.post_json(self.base_url, "/chat/completions", payload,
+                                        self.timeout_s, retries=1)
+            raw = extract_json(data["choices"][0]["message"]["content"])
+            items = raw.get("requirements", [])
+            return [str(x).strip()[:120] for x in items if str(x).strip()][:5]
+        except Exception:
+            return []
+
+    def schema_kwargs(self, ui_names: list[str], skills_catalog: str = "",
+                      evidence_ids: list[str] | None = None) -> dict:
         """Parâmetros do schema dinâmico conforme as features (vazio = schema base)."""
         feats = set(self.features)
         kwargs: dict = {}
         if "dynschema" in feats:
             kwargs.update(names=list(ui_names), apps=list(PLANNER_APPS),
                           allow_skill=bool(skills_catalog))
+            if evidence_ids is not None:
+                kwargs["evidence_ids"] = list(evidence_ids)
         if "why" in feats:
             kwargs["why"] = True
         if kwargs:
@@ -556,6 +639,7 @@ class MiniCPMPlanner:
         task_summary: str = "",
         last_result: str = "",
         think: bool = False,
+        evidence_ids: list[str] | None = None,
     ) -> tuple[PlannerDecision, float]:
         """Uma decisão do planner. Retorna (decisão, planner_ms). Só texto."""
         user = build_prompt(
@@ -588,7 +672,7 @@ class MiniCPMPlanner:
             # (llama-server honra `response_format`; quem ignorar cai no
             # `extract_json` abaixo como fallback).
             "response_format": planner_response_format(
-                **self.schema_kwargs(ui_names, skills_catalog)),
+                **self.schema_kwargs(ui_names, skills_catalog, evidence_ids)),
             # llama-server reaproveita o prefixo igual (system + exemplos) entre passos.
             "cache_prompt": True,
             # reasoning hibrido: modo rapido (sem thinking) por padrao; thinking
@@ -610,6 +694,8 @@ class MiniCPMPlanner:
             raise RuntimeError(f"planner HTTP falhou: {e}")
         ms = (time.perf_counter() - t0) * 1000
         content = data["choices"][0]["message"]["content"]
+        # Troca exata (prompt + resposta) p/ o modo --record (dados de treino); nunca é enviada.
+        self.last_exchange = {"messages": payload["messages"], "response": content}
         raw = extract_json(content)
         dec = PlannerDecision.model_validate(raw)
         dec.assert_no_coords(raw)
@@ -631,6 +717,7 @@ class QwenVLPlanner(MiniCPMPlanner):
         task_summary: str = "",
         last_result: str = "",
         think: bool = False,
+        evidence_ids: list[str] | None = None,
     ) -> tuple[PlannerDecision, float]:
         from obs import capture_for_vision
 
@@ -650,13 +737,15 @@ class QwenVLPlanner(MiniCPMPlanner):
             task_summary=task_summary,
             last_result=last_result,
             skill=skill_context,
+            recipes=recipes_for(window) if "recipes" in self.features else "",
         )
         if skills_catalog:
             user += f"\nSkills:\n{skills_catalog[:1200]}\n"
         payload = {
             "model": self.model,
             "messages": [
-                {"role": "system", "content": UNIFIED_SYSTEM},
+                {"role": "system", "content": UNIFIED_SYSTEM + (
+                    fewshot_block("tools" in self.features) if "fewshot" in self.features else "")},
                 {
                     "role": "user",
                     "content": [
@@ -669,7 +758,9 @@ class QwenVLPlanner(MiniCPMPlanner):
                 },
             ],
             "temperature": self.temperature,
-            "response_format": planner_response_format(),
+            "response_format": planner_response_format(
+                **self.schema_kwargs(ui_names, skills_catalog, evidence_ids)),
+            "cache_prompt": True,
             "max_tokens": THINK_MAX_TOKENS if think else 256,
         }
         if think:  # sem override no caminho normal: o perfil unificado segue como estava

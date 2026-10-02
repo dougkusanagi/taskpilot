@@ -627,10 +627,24 @@ def _ask_planner(
     except Exception:
         task_summary = ""
     last_result = str(ctx.get("last_result", ""))[:600]
+    # Feature "plan": checklist do pedido gerado UMA vez (1 chamada curta) e guardado no estado.
+    task_state = ctx.get("task_state")
+    if ("plan" in getattr(planner, "features", ()) and task_state is not None
+            and not task_state.requirements and not ctx.get("plan_tried")):
+        ctx["plan_tried"] = True
+        try:
+            task_state.requirements = list(planner.plan_requirements(instruction))
+            task_summary = statemod.compact(task_state)
+        except Exception:
+            pass
     # Escalada opcional (planner.escalate_thinking): raciocínio só quando há erro/repetição
     # pendente, onde vale pagar a latência. Desligado por padrão até medir no loop real.
     extra = {"think": True} if last_error and cfg.get("planner", {}).get(
         "escalate_thinking") else {}
+    if "dynschema" in getattr(planner, "features", ()) and task_state is not None:
+        # IDs E1..En das evidências confirmadas: o schema só deixa o done citar estes (e some
+        # com o done enquanto não houver nenhum).
+        extra["evidence_ids"] = [f"E{i}" for i in range(1, len(task_state.evidences) + 1)]
     try:
         return planner.next_action(
             goal=instruction,
@@ -781,6 +795,9 @@ def _decide_planner(
             )
             t["planner_ms"] = round(t["planner_ms"] + pms, 1)
             t["planner_calls"] += 1
+            if cfg.get("record") and getattr(planner, "last_exchange", None):
+                # --record: prompt + resposta exatos deste passo (dados de treino, só local)
+                ctx.setdefault("exchanges", []).append({"step": step, **planner.last_exchange})
             frame_id = str(getattr(planner, "last_frame_id", "") or "")
             if frame_id:
                 # R1: frame disponível ≠ fato confirmado. O ID fica rastreável
@@ -1556,6 +1573,20 @@ def _ensure_local_servers(cfg: dict) -> dict:
 
 
 # --- run ----------------------------------------------------------------------
+def _write_record(run_id: str, instruction: str, result: str, exchanges: list) -> None:
+    """`runs/<id>/sft.jsonl`: uma linha por decisão do planner, com o desfecho do passo e o
+    resultado do run. Só local (contém telas/URLs do usuário): nunca é enviado a lugar nenhum."""
+    try:
+        import telemetry as _tel
+
+        path = _tel.run_dir(run_id) / "sft.jsonl"
+        for ex in exchanges:
+            _tel.append_jsonl(path, {"run_id": run_id, "instruction": instruction,
+                                     "run_result": result, **ex})
+    except Exception as e:  # gravar nunca derruba o run
+        print(f"[record] falhou: {e}")
+
+
 def run(instruction: str, cfg: dict, dry_run: bool = False) -> dict:
     """Loop principal. dry_run=True bloqueia TODOS os efeitos (§9.1 F0).
 
@@ -2037,6 +2068,8 @@ def run(instruction: str, cfg: dict, dry_run: bool = False) -> dict:
                 pass
             emit("VERIFY", vnote, "")
             metrics["steps"] += 1
+            if cfg.get("record") and ctx.get("exchanges") and ctx["exchanges"][-1]["step"] == step:
+                ctx["exchanges"][-1]["outcome"] = {"did": desc, "verify": vnote, "confirm": cnote}
             _log(
                 {
                     "step": step,
@@ -2069,6 +2102,8 @@ def run(instruction: str, cfg: dict, dry_run: bool = False) -> dict:
             pass
         server.stop_servers(procs)  # só encerra os que NÓS subimos
 
+    if cfg.get("record") and run_id:
+        _write_record(run_id, instruction, result, ctx.get("exchanges", []))
     total_ms = time.perf_counter() - total0
     print(f"\n{result.upper()}")
     print(f"Total: {total_ms:.1f}s")

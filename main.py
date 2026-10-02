@@ -88,6 +88,9 @@ def main() -> None:
     ap.add_argument("--dry-run", action="store_true",
                     help="F0: bloqueia TODOS os efeitos (bootstrap/foco/teclado/CLI); "
                          "só decide, sem clicar")
+    ap.add_argument("--record", action="store_true",
+                    help="grava em runs/<id>/sft.jsonl cada decisão do planner (prompt, resposta, "
+                         "desfecho) p/ treino futuro; só local")
     ap.add_argument("--ui", action="store_true",
                     help="tray + janela Spotlight com ditado (requer: uv sync --extra ui)")
     args = ap.parse_args()
@@ -109,6 +112,8 @@ def main() -> None:
             raise SystemExit(2)
     if args.dry_run:
         cfg["dry_run"] = True
+    if args.record:
+        cfg["record"] = True
 
     if args.self_test:
         import safety
