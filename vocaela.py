@@ -327,6 +327,111 @@ def parse_qwen_grounding(text: str) -> VisualAction:
     raise ValueError(f"Qwen grounding inválido: {text[:200]!r}")
 
 
+# --- grounding tolerante a formato/escala + zoom em duas etapas ---------------------------------
+COORD_MODES = ("unit", "auto", "1000", "pixel")
+_NUM = r"-?\d+(?:\.\d+)?"
+_POINT_PATTERNS = (
+    # {"x": 0.5, "y": 0.5}
+    rf'"x"\s*:\s*({_NUM})\s*,\s*"y"\s*:\s*({_NUM})',
+    # {"point_2d": [x, y]} / {"coordinate": [x, y]} / "coordinates": [x, y]
+    rf'"(?:point_2d|point|coordinate|coordinates|click_point)"\s*:\s*\[\s*({_NUM})\s*,\s*({_NUM})',
+    # <point>x, y</point> / <point x=.. y=..>
+    rf'<point>\s*\(?\s*({_NUM})\s*,\s*({_NUM})',
+    # click(x, y) / pyautogui.click(x=.., y=..)
+    rf'click\(\s*(?:x\s*=\s*)?({_NUM})\s*,\s*(?:y\s*=\s*)?({_NUM})',
+    # (x, y) ou [x, y] soltos
+    rf'[\[(]\s*({_NUM})\s*,\s*({_NUM})\s*[\])]',
+)
+_ABSENT = re.compile(r'"x"\s*:\s*null|not visible|não visível|cannot find|not found', re.I)
+
+
+def parse_point_any(text: str, size: tuple[int, int] | None = None,
+                    coords: str = "auto") -> VisualAction:
+    """Ponto do centro em 0..1 a partir de formatos/escala variados (puro, testável).
+
+    `coords`: `unit` = só 0..1 (protocolo de produção); `1000` = 0..1000 (Qwen3-VL nativo);
+    `pixel` = pixels da imagem enviada (exige `size`); `auto` = 0..1 se couber, senão 0..1000 se
+    couber, senão pixels dentro de `size`. Valores que não cabem em nenhuma escala = erro
+    honesto (nunca inventa coordenada). Alvo ausente = ValueError "alvo não visível".
+    """
+    if coords not in COORD_MODES:
+        raise ValueError(f"coords inválido: {coords!r}; use {COORD_MODES}")
+    t = re.sub(r"^```(?:json)?\s*|\s*```$", "", (text or "").strip()).strip()
+    if _ABSENT.search(t) and not any(re.search(p_, t) for p_ in _POINT_PATTERNS[:2]):
+        raise ValueError(f"alvo não visível p/ o grounding: {t[:200]!r}")
+    nums = None
+    for pattern in _POINT_PATTERNS:
+        m = re.search(pattern, t)
+        if m:
+            nums = (float(m.group(1)), float(m.group(2)))
+            break
+    if nums is None:
+        raise ValueError(f"grounding sem ponto reconhecível: {t[:200]!r}")
+    x, y = nums
+
+    def unit(v: float, scale: float) -> float:
+        return round(v / scale, 4)
+
+    inside_unit = 0.0 <= x <= 1.0 and 0.0 <= y <= 1.0
+    mode = coords
+    if mode == "auto":
+        if inside_unit:
+            mode = "unit"
+        elif 0 <= x <= 1000 and 0 <= y <= 1000:
+            mode = "1000"
+        else:
+            mode = "pixel"
+    if mode == "unit":
+        if not inside_unit:
+            raise ValueError(f"x/y fora de 0..1: {[x, y]}")
+        return VisualAction(type="click", x=round(x, 4), y=round(y, 4))
+    if mode == "1000":
+        if not (0 <= x <= 1000 and 0 <= y <= 1000):
+            raise ValueError(f"x/y fora de 0..1000: {[x, y]}")
+        return VisualAction(type="click", x=unit(x, 1000), y=unit(y, 1000))
+    if not size or not (0 <= x <= size[0] and 0 <= y <= size[1]):
+        raise ValueError(f"x/y fora da imagem {size}: {[x, y]}")
+    return VisualAction(type="click", x=unit(x, size[0]), y=unit(y, size[1]))
+
+
+def crop_around(size: tuple[int, int], center: tuple[float, float], frac: float = 0.35,
+                min_px: int = 320) -> tuple[int, int, int, int]:
+    """Caixa (x0,y0,x1,y1) em pixels ao redor de `center` (0..1), `frac` de cada lado e no mínimo
+    `min_px`, deslocada para caber na imagem. Puro."""
+    w, h = size
+    cw, ch = min(w, max(min_px, int(w * frac))), min(h, max(min_px, int(h * frac)))
+    x0 = int(min(max(0, center[0] * w - cw / 2), w - cw))
+    y0 = int(min(max(0, center[1] * h - ch / 2), h - ch))
+    return x0, y0, x0 + cw, y0 + ch
+
+
+def zoom_ground(ground_fn, image: Image.Image, instruction: str, frac: float = 0.35,
+                coords: str = "auto", unconfirmed: str = "first") -> tuple[VisualAction, dict]:
+    """Localização em duas etapas: ponto grosso na imagem toda, depois recorte em volta dele na
+    resolução original e um ponto fino. `ground_fn(PIL, instrução) -> texto do modelo`.
+
+    `unconfirmed`: se o recorte não confirma o alvo — "first" mantém o ponto grosso, "reject"
+    recusa (menos cliques falsos, menos acertos). Alvo ausente na 1ª etapa propaga ValueError.
+    """
+    first = parse_point_any(ground_fn(image, instruction), image.size, coords)
+    box = crop_around(image.size, (first.x, first.y), frac)
+    crop = image.crop(box)
+    meta = {"zoom": True, "box": list(box), "first": [first.x, first.y]}
+    try:
+        second = parse_point_any(ground_fn(crop, instruction), crop.size, coords)
+    except ValueError as exc:
+        meta["zoom_status"] = "unconfirmed"
+        if unconfirmed == "reject":
+            raise ValueError(f"alvo não confirmado no zoom: {exc}") from exc
+        return first, meta
+    w, h = image.size
+    x = (box[0] + second.x * (box[2] - box[0])) / w
+    y = (box[1] + second.y * (box[3] - box[1])) / h
+    meta.update(zoom_status="ok", second=[second.x, second.y])
+    return VisualAction(type="click", x=round(min(max(x, 0), 1), 4),
+                        y=round(min(max(y, 0), 1), 4)), meta
+
+
 class QwenGroundingAdapter:
     """Grounding JSON p/ perfis Qwen (D1/D2/U1/U2). Mesma interface do Vocaela.
 
@@ -339,11 +444,17 @@ class QwenGroundingAdapter:
 
     def __init__(self, base_url: str = "http://127.0.0.1:8082/v1",
                  model: str = "Qwen3-VL-2B-Instruct",
-                 timeout_s: float = 180.0, max_long_edge: int = 1024):
+                 timeout_s: float = 180.0, max_long_edge: int = 1024,
+                 zoom: bool = False, coords: str = "unit", zoom_frac: float = 0.35):
         self.base_url = base_url.rstrip("/")
         self.model = model
         self.timeout_s = timeout_s
         self.max_long_edge = max_long_edge
+        # Padrão = comportamento histórico (0..1 estrito, 1 chamada). `zoom` e `coords=auto`
+        # só devem ligar depois de medidos na bateria `ground` do model_bench.
+        if coords not in COORD_MODES:
+            raise ValueError(f"vision.coords inválido: {coords!r}; use {COORD_MODES}")
+        self.zoom, self.coords, self.zoom_frac = bool(zoom), coords, float(zoom_frac)
 
     def check(self) -> dict:
         try:
@@ -365,10 +476,24 @@ class QwenGroundingAdapter:
                  instruction: str,
                  history: list[str] | None = None) -> tuple[VisualAction, float]:
         """Retorna (VisualAction click 0..1, vision_ms)."""
+        t0 = time.perf_counter()
+        if self.zoom and isinstance(screenshot, Image.Image):
+            def ask(img: Image.Image, text: str) -> str:
+                return self._ask(_prep_image(img, self.max_long_edge)[0], text, history)
+
+            va, self.last_meta = zoom_ground(ask, screenshot, instruction, self.zoom_frac,
+                                             self.coords)
+            return va, (time.perf_counter() - t0) * 1000
         if isinstance(screenshot, Image.Image):
-            b64, _ = _prep_image(screenshot, self.max_long_edge)
+            b64, size = _prep_image(screenshot, self.max_long_edge)
         else:
-            b64 = str(screenshot)
+            b64, size = str(screenshot), None
+        content = self._ask(b64, instruction, history)
+        if self.coords == "unit":
+            return parse_qwen_grounding(content), (time.perf_counter() - t0) * 1000
+        return parse_point_any(content, size, self.coords), (time.perf_counter() - t0) * 1000
+
+    def _ask(self, b64: str, instruction: str, history: list[str] | None) -> str:
         user_text = f"Instruction: {instruction}\nReturn ONLY the JSON point."
         if history:
             seq = "\n".join(f"- {h[:120]}" for h in history[-3:])
@@ -386,7 +511,6 @@ class QwenGroundingAdapter:
             "temperature": 0.0,
             "max_tokens": 64,
         }
-        t0 = time.perf_counter()
         try:
             import http_pool as _pool
 
@@ -394,6 +518,4 @@ class QwenGroundingAdapter:
                                         payload, self.timeout_s, retries=2)
         except RuntimeError as e:
             raise RuntimeError(f"qwen grounding HTTP falhou: {e}")
-        ms = (time.perf_counter() - t0) * 1000
-        content = data["choices"][0]["message"]["content"]
-        return parse_qwen_grounding(content), ms
+        return data["choices"][0]["message"]["content"]

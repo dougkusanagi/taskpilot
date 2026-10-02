@@ -134,13 +134,16 @@ def build_adapters(cfg: dict):
     planner = planner_cls(base_url=p_url,
                               model=pc.get("model", prof.get("planner", "MiniCPM5-2B")),
                              temperature=float(pc.get("temperature", 0.1)),
-                             timeout_s=float(pc.get("timeout_s", 90)))
+                             timeout_s=float(pc.get("timeout_s", 90)),
+                             features=tuple(pc.get("features", ())))
     v_model = vc.get("model", prof.get("vision", ""))
     if "qwen" in str(v_model).lower():
         vision = QwenGroundingAdapter(
             base_url=v_url, model=v_model,
             timeout_s=float(vc.get("timeout_s", 180)),
-            max_long_edge=int(cfg.get("screenshot_max_width", 1024)))
+            max_long_edge=int(cfg.get("screenshot_max_width", 1024)),
+            zoom=bool(vc.get("zoom", False)), coords=str(vc.get("coords", "unit")),
+            zoom_frac=float(vc.get("zoom_frac", 0.35)))
     else:
         vision = VocaelaAdapter(
             base_url=v_url, model=v_model,

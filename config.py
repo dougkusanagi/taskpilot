@@ -35,13 +35,22 @@ DEFAULTS: dict = {
         # Liga o raciocínio só quando há erro/repetição pendente (custa latência).
         # Desligado até medir no loop real (R3).
         "escalate_thinking": False,
+        # Recursos do planner medidos no benchmark (planner.PLANNER_FEATURES): tools, fewshot,
+        # recipes, dynschema, why. Vazio = prompt/schema históricos.
+        "features": [],
     },
     "vision": {
         "provider": "llama.cpp",
         "base_url": "http://127.0.0.1:8082/v1",
         "model": "Vocaela-2-500M-1024R2",
         "timeout_s": 180,
+        # Só perfis Qwen: zoom em 2 etapas e aceitar 0..1000/pixels (ver bateria `ground`).
+        "zoom": False,
+        "coords": "unit",
+        "zoom_frac": 0.35,
     },
+    # Ao abrir um navegador novo: flags que fazem o UIA enxergar o conteúdo da página.
+    "launch": {"browser_args": ["--force-renderer-accessibility"]},
     "max_steps": 30,
     "screenshot_max_width": 1024,  # Vocaela-2-1024R2: treino em longest-edge 1024
     "verify_wait_ms": 500,
@@ -51,6 +60,12 @@ DEFAULTS: dict = {
         "auto_start": True,  # endpoints locais caídos -> baixa GGUFs e sobe
         "host": "127.0.0.1",  # bind dos llama-server (0.0.0.0 p/ expor ao Sandbox)
         "ngl": 0,  # 0 = CPU; >0 offload p/ GPU (quem tem VRAM)
+        # llama.cpp a baixar: cpu (padrão) | vulkan (GPU qualquer, 32 MB) | cuda (NVIDIA, rápida).
+        # Com backend GPU e ngl=0 o runtime usa ngl=99. Troca de backend rebaixa o binário.
+        "backend": "cpu",
+        "parallel": 0,  # 0 = padrão do llama-server; 1 = sem slots extras de KV (menos VRAM)
+        "kv_cache": "f16",  # f16 | q8_0 | q4_0 (quantiza o KV; usa flash attention)
+        "mmproj_offload": True,  # False = encoder de imagem na CPU (libera ~0,8 GB de VRAM)
         "threads": 0,  # 0 = metade dos núcleos (server.DEFAULT_THREADS)
         "ctx": 4096,
         # Carga do GGUF com Defender/HDD leva minutos (polling até o deadline)

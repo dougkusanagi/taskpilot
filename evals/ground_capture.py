@@ -50,6 +50,7 @@ def main() -> int:
                 case = {"id": f"{page_spec['id']}-{n}", "page": page_spec["id"],
                         "category": page_spec["category"], "image": image,
                         "instruction": target["instruction"], "viewport": [vw, vh],
+                        "label": target.get("label"),
                         "source": page_spec.get("url") or page_spec["file"]}
                 if target.get("absent"):
                     case["bbox"] = None

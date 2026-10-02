@@ -13,19 +13,23 @@
       "targets": [
         {
           "instruction": "Click the 'Exportar vídeo' button",
-          "js": "window.__t.exportar"
+          "js": "window.__t.exportar",
+          "label": "Exportar vídeo"
         },
         {
           "instruction": "Clique no botão Cortar clipe",
-          "js": "window.__t.cortar"
+          "js": "window.__t.cortar",
+          "label": "Cortar clipe"
         },
         {
           "instruction": "Click the red Excluir button",
-          "js": "window.__t.excluir"
+          "js": "window.__t.excluir",
+          "label": "Excluir"
         },
         {
           "instruction": "Click the green play button",
-          "js": "window.__t.reproduzir"
+          "js": "window.__t.reproduzir",
+          "label": "Reproduzir"
         },
         {
           "instruction": "Click the 'Checkout' button",
@@ -75,15 +79,18 @@
       "targets": [
         {
           "instruction": "Clique em Aceitar todos",
-          "selector": "#accept"
+          "selector": "#accept",
+          "label": "Aceitar todos"
         },
         {
           "instruction": "Click 'Rejeitar não essenciais'",
-          "selector": "#reject"
+          "selector": "#reject",
+          "label": "Rejeitar não essenciais"
         },
         {
           "instruction": "Click the privacy policy link",
-          "selector": "#policy"
+          "selector": "#policy",
+          "label": "política de privacidade"
         }
       ]
     },
@@ -129,11 +136,13 @@
         },
         {
           "instruction": "Click the 'Aplicar' button",
-          "selector": "#apply"
+          "selector": "#apply",
+          "label": "Aplicar"
         },
         {
           "instruction": "Click the 'restaurar padrões' link",
-          "selector": "#reset"
+          "selector": "#reset",
+          "label": "restaurar padrões"
         },
         {
           "instruction": "Check the 'Notificações no navegador' checkbox",
@@ -152,7 +161,8 @@
       "targets": [
         {
           "instruction": "Click the 'Learn more' link",
-          "selector": "a"
+          "selector": "a",
+          "label": "Learn more"
         }
       ]
     },
@@ -171,7 +181,8 @@
         },
         {
           "instruction": "Click the 'Log in' link",
-          "selector": "#pt-login-2"
+          "selector": "#pt-login-2",
+          "label": "Log in"
         }
       ]
     },
@@ -186,7 +197,8 @@
       "targets": [
         {
           "instruction": "Click the Downloads menu item",
-          "selector": "#downloads > a"
+          "selector": "#downloads > a",
+          "label": "Downloads"
         },
         {
           "instruction": "Click the search field",
@@ -194,7 +206,8 @@
         },
         {
           "instruction": "Click the Documentation menu item",
-          "selector": "#documentation > a"
+          "selector": "#documentation > a",
+          "label": "Documentation"
         }
       ]
     },
@@ -209,7 +222,8 @@
       "targets": [
         {
           "instruction": "Click the 'login' link at the top right",
-          "selector": "a[href^='login']"
+          "selector": "a[href^='login']",
+          "label": "login"
         },
         {
           "instruction": "Click the title link of the first story",
@@ -217,7 +231,8 @@
         },
         {
           "instruction": "Click the 'new' link in the header",
-          "selector": "a[href='newest']"
+          "selector": "a[href='newest']",
+          "label": "new"
         }
       ]
     },
@@ -236,11 +251,13 @@
         },
         {
           "instruction": "Click the green 'Sign in' button",
-          "selector": "input[type=submit]"
+          "selector": "input[type=submit]",
+          "label": "Sign in"
         },
         {
           "instruction": "Click the 'Forgot password?' link",
-          "selector": "a[href*='password_reset']"
+          "selector": "a[href*='password_reset']",
+          "label": "Forgot password?"
         }
       ]
     },
@@ -263,7 +280,8 @@
         },
         {
           "instruction": "Click the 'Submit order' button",
-          "selector": "button"
+          "selector": "button",
+          "label": "Submit order"
         }
       ]
     },
@@ -278,7 +296,8 @@
       "targets": [
         {
           "instruction": "Click the 'Tutorial' link",
-          "selector": "a[href='tutorial/index.html']"
+          "selector": "a[href='tutorial/index.html']",
+          "label": "Tutorial"
         }
       ]
     }

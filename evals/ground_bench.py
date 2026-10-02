@@ -13,12 +13,20 @@ from __future__ import annotations
 import hashlib
 import json
 import re
+import time
 from pathlib import Path
 
 from PIL import Image
 
+from evals import model_bench as bench
 from evals.model_bench import Suite
-from vocaela import QWEN_GROUNDING_SYSTEM, _prep_image, parse_qwen_grounding
+from vocaela import (
+    QWEN_GROUNDING_SYSTEM,
+    _prep_image,
+    parse_point_any,
+    parse_qwen_grounding,
+    zoom_ground,
+)
 
 GROUND = Path(__file__).with_name("ground")
 _IMAGES: dict[str, str] = {}
@@ -56,13 +64,31 @@ def image_b64(case: dict) -> str:
     return _IMAGES[case["image"]]
 
 
-def make_messages(case: dict) -> list[dict]:
-    text = f"Instruction: {case['instruction']}\nReturn ONLY the JSON point."
-    return [{"role": "system", "content": QWEN_GROUNDING_SYSTEM},
+# Prompts de grounding. `prod` é o de produção; os outros pedem o formato nativo de cada família
+# (o parser tolerante entende todos): point_2d 0..1000 (Qwen3-VL) e click(x, y) (GUI-Owl).
+PROMPTS = {
+    "prod": (QWEN_GROUNDING_SYSTEM, "Instruction: {instruction}\nReturn ONLY the JSON point."),
+    "p2d": ("You are a GUI grounding model. Locate the UI element the user describes and answer "
+            "with ONLY its center as JSON: {\"point_2d\": [x, y]} with x and y in 0..1000 "
+            "(relative to the image width and height). If it is not visible answer "
+            "{\"point_2d\": null}.", "Locate: {instruction}"),
+    "pyauto": ("You are a GUI agent. Given a screenshot and an instruction, answer with ONLY one "
+               "call: click(x, y) where x and y are the pixel coordinates of the element center "
+               "in the image you see. If the element is not visible answer: not visible.",
+               "Instruction: {instruction}"),
+}
+
+
+def messages_for(prompt: str, instruction: str, b64: str) -> list[dict]:
+    system, template = PROMPTS[prompt]
+    return [{"role": "system", "content": system},
             {"role": "user", "content": [
-                {"type": "text", "text": text},
-                {"type": "image_url",
-                 "image_url": {"url": f"data:image/jpeg;base64,{image_b64(case)}"}}]}]
+                {"type": "text", "text": template.format(instruction=instruction)},
+                {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{b64}"}}]}]
+
+
+def make_messages(case: dict) -> list[dict]:
+    return messages_for("prod", case["instruction"], image_b64(case))
 
 
 def raw_point(content: str) -> tuple[float, float] | None:
@@ -77,7 +103,7 @@ def inside(point: tuple[float, float], bbox: list[float]) -> bool:
     return bbox[0] <= point[0] <= bbox[2] and bbox[1] <= point[1] <= bbox[3]
 
 
-def evaluate_response(case: dict, data: dict, elapsed_ms: float) -> dict:
+def evaluate_response(case: dict, data: dict, elapsed_ms: float, coords: str = "unit") -> dict:
     row = {"elapsed_ms": round(elapsed_ms, 1), "passed": False, "format_valid": False,
            "pure_json": False, "decision": None, "error_kind": "", "errors": [],
            "raw_response": data, "bbox": case["bbox"], "said_absent": False,
@@ -97,7 +123,12 @@ def evaluate_response(case: dict, data: dict, elapsed_ms: float) -> dict:
         except json.JSONDecodeError:
             pass
         try:
-            action = parse_qwen_grounding(content)
+            if coords == "unit":
+                action = parse_qwen_grounding(content)
+            else:
+                with Image.open(GROUND / case["image"]) as im:
+                    sent = _prep_image(im)[1]  # tamanho da imagem que o modelo realmente viu
+                action = parse_point_any(content, sent, coords)
             point = (action.x, action.y)
             row["decision"] = {"x": point[0], "y": point[1]}
             row["format_valid"] = True
@@ -155,6 +186,63 @@ def fingerprint(cases: list[dict]) -> str:
     for name in sorted({c["image"] for c in cases}):
         digest.update((GROUND / name).read_bytes())
     return digest.hexdigest()
+
+
+def ground_suite(features: tuple[str, ...] = ()) -> Suite:
+    """Suíte `ground` com variantes: `zoom` (2 etapas), `auto`/`k1000`/`pixel` (escala aceita),
+    `p2d`/`pyauto` (prompt nativo). Sem recursos = protocolo de produção, 1 chamada."""
+    feats = set(features)
+    unknown = feats - {"zoom", "auto", "k1000", "pixel", "p2d", "pyauto"}
+    if unknown:
+        raise ValueError(f"features de ground desconhecidas: {sorted(unknown)}")
+    coords = "auto" if "auto" in feats else "1000" if "k1000" in feats else \
+        "pixel" if "pixel" in feats else ("auto" if feats & {"p2d", "pyauto", "zoom"} else "unit")
+    prompt = "p2d" if "p2d" in feats else "pyauto" if "pyauto" in feats else "prod"
+    if coords == "unit" and prompt == "prod" and not feats:
+        return SUITE
+
+    def messages(case: dict) -> list[dict]:
+        return messages_for(prompt, case["instruction"], image_b64(case))
+
+    def evaluate(case: dict, data: dict, ms: float) -> dict:
+        return evaluate_response(case, data, ms, coords)
+
+    def run_case(client, url, model, case, settings) -> dict:
+        t0 = time.perf_counter()
+        seen = {"last": "", "tokens": 0}
+
+        def ask(img: Image.Image, instruction: str) -> str:
+            payload = bench.build_payload(
+                model, messages_for(prompt, instruction, _prep_image(img)[0]), settings, False)
+            response = client.post(f"{url}/chat/completions", json=payload)
+            response.raise_for_status()
+            data = response.json()
+            seen["tokens"] += (data.get("usage") or {}).get("completion_tokens", 0) or 0
+            seen["last"] = data["choices"][0]["message"].get("content") or ""
+            return seen["last"]
+
+        with Image.open(GROUND / case["image"]) as im:
+            image = im.convert("RGB")
+        meta: dict = {}
+        try:
+            va, meta = zoom_ground(ask, image, case["instruction"], coords=coords)
+            content = json.dumps({"x": va.x, "y": va.y})
+        except ValueError:
+            content = seen["last"]  # ausente / formato inválido: pontua do jeito de sempre
+        fake = {"model": model, "usage": {"completion_tokens": seen["tokens"]},
+                "choices": [{"finish_reason": "stop", "message": {"content": content}}]}
+        row = evaluate_response(case, fake, (time.perf_counter() - t0) * 1000,
+                                "unit" if meta else coords)
+        row["zoom"] = meta
+        return row
+
+    return Suite(
+        name="ground", title=SUITE.title,
+        scope=(*SUITE.scope, f"Variante: {', '.join(sorted(feats))}."),
+        load=load_cases, messages=messages, evaluate=evaluate,
+        system=PROMPTS[prompt][0], quick=quick_cases, use_schema=False,
+        run_case=run_case if "zoom" in feats else None,
+        extra_summary=extra_summary, fingerprint=fingerprint)
 
 
 SUITE = Suite(
