@@ -126,6 +126,19 @@
 
 ## Comandos
 
+Comparação textual isolada (30/09): `evals.model_bench` usa servidor local
+OpenAI-compatible (padrão LM Studio `:1234/v1`), 32 cenas ×3, argumentos
+checados e erros incluídos no denominador. Não importa loop/executor nem
+captura tela/baixa pesos. `--list` lista IDs; `--model ID --format both`
+gera `runs/model-bench-.../resultado.zip` com respostas/manifesto/casos.
+Thinking native por padrão; sem medição automática de VRAM/offload e sem
+aprovação de visão/E2E. Guia: `docs/teste-modelos-locais.md`; regressões
+isoladas: `uv run python -m unittest discover -s tests -p test_model_bench.py`.
+O runner antigo `evals.probe_battery` não foi alterado por essa entrega.
+Validação do runner: 13 regressões isoladas e lint verdes. Suite completa:
+217 testes, mesmos 49 erros de
+plataforma e 1 skip do baseline Linux; sem aprovação da suite Windows.
+
 ```powershell
 uv run python -m unittest discover -s tests   # suite oficial (sempre via uv)
 uv run ruff check                             # lint (dev-deps do pyproject)
@@ -135,6 +148,13 @@ uv run python -m evals.runner --pilot --dry-run  # smoke, não valida tarefas
 ```
 
 Use **uv** — o python do sistema não tem as deps (`pyautogui` etc.).
+Análise em Linux de 30/09: lint passou; suite reportou 204 testes, 49 erros
+e 1 skip, com falhas de importação PyAutoGUI/MouseInfo/Xlib
+(`FamilyServerInterpreted` ausente). Não equivale à bateria completa de
+286 testes histórica nem prova regressão no Windows. Isolamento dos testes
+puros das deps GUI continua necessário. Ver
+`docs/relatorio-viabilidade-6gb-2026-09-30.md` para o parecer e lacunas
+reproduzidas; esse relatório não muda o plano/default nem aprova gates.
 Sandbox: `.\scripts\Start-Sandbox.ps1` (uso manual, sem admin) e
 `.\scripts\Invoke-SandboxTest.ps1 -Command '...' ` (eu rodo; com
 `-Bootstrap` faz a bateria completa — 1ª vez demora minutos no winget).
@@ -258,3 +278,86 @@ abaixo são legado a substituir conforme o plano vigente, não regras a perpetua
 - Commit + push a cada passo testável que valer (suite verde antes).
 - Ignorados: `config.sandbox.json`, `sandbox/crr*.wsb`, `.sandbox-job/`,
   `last.png`, `run.jsonl`, `runs/`.
+
+## Benchmark gerenciado LM Studio (30/09)
+
+- `uv run python -m evals.model_bench --lmstudio` delega a
+  `evals/lmstudio_bench.py`: CLI local `lms`, inicia daemon/servidor se a porta
+  estiver recusando conexão, seleciona model keys contendo minicpm (`--match`/
+  `--model` substituem), descarrega residentes e testa um arquivo por vez.
+- Contexto solicitado 8192; offload auto por omissão; formatos ambos, native
+  thinking, 2048 tokens. Não certifica VRAM ou parâmetros efetivos. Guarda
+  inventário/estimativa/ps/comandos em automation.json, comparativo e ZIP conjunto.
+  Não altera default B1 nem executa ferramentas GUI. Servidor permanece ativo.
+- 7 testes gerenciados + 13 do avaliador verdes; integração com instalação real
+  Windows/LM Studio ainda precisa da execução do usuário.
+- Suite completa nesta revisão: 224 testes, mesmos 49 erros de plataforma e
+  1 skip no Linux; sem commit/push porque a suite oficial não está verde.
+
+## Correções do benchmark textual (30/09, text-32-v2)
+
+- `evals.model_bench`/`lmstudio_bench`: `--quick` seleciona oito cenas de oito
+  categorias, uma repetição, formato schema por padrão; `--limit` limita essa
+  seleção quando combinado com quick. Aquecimento usa cena própria, fora da
+  bateria avaliada. O modo gerenciado encaminha quick ao runner textual.
+- Oráculos v2 substituem substring por gramáticas conservadoras de valor em BRL,
+  esclarecimento e clique afirmativo; negado/contraditório/alvo diferente não
+  passa só por citar o valor ou label esperado. Paráfrases válidas fora dessas
+  gramáticas podem falhar: não é juiz semântico geral nem aprovação visual/E2E.
+  Args de skill agora são comparados (antes um dict desconhecido era ignorado);
+  sequence confere cada passo e rejeita passos extras. Alternativas explícitas
+  aceitam UIA na barra e URL+Enter com foco já demonstrado. Tipos/argumentos são
+  estritos; campos de outro tipo e coerções de ms são recusados.
+- Exit 0 significa execução completa sem infra, mesmo com nota zero; infra
+  isolada, abort por cinco erros, execução incompleta ou infra no warmup dão 2;
+  Ctrl+C dá 130. `complete` indica tentativas feitas; `execution_ok` e
+  `execution_status` indicam validade da execução. ZIPs parciais preservados;
+  comparativo distingue infra das tentativas e do warmup. Manifesto v2 registra
+  avaliador, IDs selecionados e exit code; taxas v1/v2 não são intercambiáveis.
+- LM Studio confirma running+porta por `server status --json --quiet`, inclusive
+  após iniciar; `--model` aceita key exata ou trecho único, sem escolher ambíguo.
+  Parâmetros não finitos/temperatura fora de 0..2 falham antes de acessar CLI ou
+  descarregar residentes. Sem medição automática de VRAM/offload; gpu max segue
+  uma solicitação. Não altera perfil/default nem executa GUI.
+- Validação: 28 testes do avaliador + 12 gerenciados verdes, lint e diff-check
+  verdes. Suite oficial: 244 testes, 49 erros de plataforma conhecidos e 1 skip
+  no Linux (PyAutoGUI/MouseInfo/Xlib); sem commit/push pelo gate de suite verde.
+  Integração real Windows/LM Studio/GPU continua pendente.
+
+## Pesquisa de modelos e thinking (01/10)
+
+- Pesquisa: `docs/pesquisa-modelos-2026-10-01.md`. Candidatos prioritários
+  propostos: LFM2.5-VL-3B, Agents-A1-4B, Gemma 4 E2B e GUI-Owl Instruct;
+  pesos/projetores e runtime precisam de validação local. Bonsai 2 27B
+  PTQ1_0 + visão ultrapassa 6 GB só em arquivos; Bonsai 27B binário tem
+  footprint menor, mas pico/runtime próprios impedem afirmar que cabe.
+- Quirk reproduzido no LM Studio local: `chat_template_kwargs.enable_thinking`
+  do runner foi ignorado (off ainda gerou 122 tokens no warmup).
+  `reasoning_effort="none"` em `/v1/chat/completions` desligou de fato no
+  experimento; API nativa `/api/v1/chat` documenta `reasoning: "off"`.
+  Não confundir contratos nem inferir estado pelo flag. Runner oficial não
+  foi alterado; script/relatórios brutos em `runs/research-qwen-20261001/`.
+  Série anterior confirmou reasoning no Qwen3.5-4B (6991 tokens em 32 cenas).
+  Ablação real 32×3, mesmo Q4_K_M/schema/temperatura/contexto: native
+  79/96 (p50 3275,4 ms; p95 8019,3); off via reasoning_effort=none
+  70/96 (p50 330,1 ms; p95 550,5). Zero infra/truncamento; reasoning em
+  96/96 native e 0/96 off. Velocidade ~10× com queda de qualidade; não
+  recomendar desligamento global como qualidade equivalente. Modelo do
+  experimento descarregado ao final; nenhum peso novo baixado.
+  Pesquisa/ablação textual não aprovam visão, E2E ou mudança do default B1.
+
+## Melhorias medidas para 6 GB (02/10/2026)
+
+- Relatório: `docs/melhorias-6gb-2026-10-02.md` (+ HTML). Perfis **P1** (Qwen3-4B-Instruct-2507 +
+  MAI-UI-2B, 5,3 GB), **P2** (com GUI-Owl) e **U3** (Qwen3-VL-4B unificado, 4,9 GB) com preset
+  medido; **não mudam o default B1**. Tudo offline (simulador `evals.trajectory_bench`, bateria
+  visual `evals.ground_bench`): sem E2E no Windows/Sandbox.
+- `done` cita IDs `E1..` das evidências confirmadas (antes todo `done` era vetado). Schema por ação
+  (`planner.features: dynschema`), exemplos (`fewshot`), checklist (`plan`), veto de ambiguidade
+  (`guards.py`), `click_text`/`fill`/`save_as`/`perceive wait:` (opt-in `tools`).
+- Visão: protocolo por família (`vocaela.default_protocol`): `pyauto` MAI-UI/GUI-Owl, `p2d`
+  Qwen3-VL, `json` resto; escala sempre 0..1000. Zoom desligado (piorou).
+- Runtime próprio: `runtime.backend` cpu|vulkan|cuda (antes só CPU: `ngl` nunca usava a GPU),
+  `kv_cache`, `mmproj_offload`, `parallel`; navegador abre com `--force-renderer-accessibility`.
+- Com imagem, 4B em contexto 8192 estoura 6 GB; use 4096. Suite no Linux: 474 testes, 0 erros.
+
