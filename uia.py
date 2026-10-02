@@ -202,6 +202,14 @@ def active_window_snapshot(timeout: float = 5.0,
     def _elapsed_ms() -> float:
         return (time.perf_counter() - t0) * 1000.0
 
+    import platform_backend
+
+    if platform_backend.active() is not None:
+        # backend visual (Wayland): sem árvore de acessibilidade; honesto, não "vazio por acaso"
+        _set_diag(status="error", error="sem UIA neste backend (modo visual: visual_action/OCR)",
+                  count=0, max_elements=max_elements, elapsed_ms=_elapsed_ms())
+        return [], "", None
+
     try:
         active = _active_window()
         if active is None:

@@ -28,6 +28,10 @@ def _grab_virtual() -> tuple[Image.Image, tuple[int, int]]:
     esquerda/acima do primário. mss.monitors[0] é a caixa envolvente de
     todos, não o primário.
     """
+    import platform_backend
+
+    if platform_backend.active() is not None:  # Wayland: portal ScreenCast (mss só vê preto)
+        return platform_backend.active().grab()
     with mss.mss() as sct:
         mon = sct.monitors[0]
         shot = sct.grab(mon)

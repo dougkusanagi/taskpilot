@@ -57,6 +57,10 @@ def open_app(target: str) -> str:
     Windows): por isso aguarda a janela (polling generoso — Chrome com
     perfis pode levar >10s) e RELATA o resultado.
     """
+    import platform_backend
+
+    if platform_backend.active() is not None:
+        return platform_backend.active().open_app(target)
     key = target.strip().lower()
     exe = APP_COMMANDS.get(key)
     if exe is None:
@@ -138,6 +142,10 @@ def focus_window(title_substr: str, timeout: float = 3.0) -> bool:
     cheio. Ranking: exato > prefixo > palavra > substring; desempate
     prefere aba nova/documento novo.
     """
+    import platform_backend
+
+    if platform_backend.active() is not None:
+        return platform_backend.active().focus_window(title_substr)
     from pywinauto import Desktop
 
     from overlay import is_overlay_title

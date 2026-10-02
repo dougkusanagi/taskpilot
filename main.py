@@ -91,6 +91,9 @@ def main() -> None:
     ap.add_argument("--record", action="store_true",
                     help="grava em runs/<id>/sft.jsonl cada decisão do planner (prompt, resposta, "
                          "desfecho) p/ treino futuro; só local")
+    ap.add_argument("--platform", default="", choices=["", "wayland"],
+                    help="PROTÓTIPO: backend físico alternativo (wayland = portais "
+                         "ScreenCast+RemoteDesktop; pede aprovação no GNOME)")
     ap.add_argument("--ui", action="store_true",
                     help="tray + janela Spotlight com ditado (requer: uv sync --extra ui)")
     args = ap.parse_args()
@@ -172,8 +175,16 @@ def main() -> None:
         print("instrução vazia.")
         raise SystemExit(2)
 
+    import platform_backend
+
+    plat = args.platform or cfg.get("platform", {}).get("backend", "")
+    if plat and not cfg.get("dry_run"):
+        platform_backend.enable(plat)
     from loop import run
-    summary = run(instruction, cfg, dry_run=bool(cfg.get("dry_run", False)))
+    try:
+        summary = run(instruction, cfg, dry_run=bool(cfg.get("dry_run", False)))
+    finally:
+        platform_backend.disable()
     print(json.dumps(summary, indent=2, ensure_ascii=False))
 
 

@@ -26,6 +26,9 @@ except Exception as _exc:  # Linux sem X11/Xlib compatível: o módulo ainda pre
 
     pyautogui = _PyAutoGuiUnavailable()
 
+import platform_backend
+
+pyautogui = platform_backend.wrap_input(pyautogui)  # identidade no Windows; opt-in p/ Wayland
 pyautogui.FAILSAFE = True  # mouse no canto superior-esquerdo aborta
 pyautogui.PAUSE = 0.15
 
@@ -35,6 +38,8 @@ _SEND_KEYS_SPECIAL = set("+^%~(){}")
 
 
 def _virtual_screen() -> tuple[int, int, int, int]:
+    if platform_backend.active() is not None:
+        return platform_backend.active().screen_rect()
     import ctypes
 
     u = ctypes.windll.user32
@@ -68,6 +73,9 @@ def _type_unicode(text: str) -> None:
     pyautogui.typewrite só mapeia ASCII 32..127 no Windows e descarta o
     resto em silêncio ("Olá" virava "Ol").
     """
+    if platform_backend.active() is not None:
+        platform_backend.active().input.type_text(text)
+        return
     from pywinauto.keyboard import send_keys
 
     send_keys(escape_for_send_keys(text), with_spaces=True,
