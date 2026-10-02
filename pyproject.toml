@@ -25,6 +25,12 @@ ui = [
   "numpy>=1.26",
 ]
 
+# OCR local com caixas (click_text) sem Tesseract: modelos ONNX embutidos, só CPU.
+# Instalar: uv sync --extra ocr
+ocr = [
+  "rapidocr-onnxruntime>=1.3",
+]
+
 [dependency-groups]
 dev = ["ruff>=0.6"]
 

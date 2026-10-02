@@ -78,6 +78,19 @@ def focused_value(max_len: int = 80) -> str:
         return ""
 
 
+def focused_control_type() -> str:
+    """Tipo UIA do elemento com foco de teclado (`Edit`, `Document`...), "" se não der."""
+    try:
+        from pywinauto.controls.uiawrapper import UIAWrapper
+        from pywinauto.uia_defines import IUIA
+        from pywinauto.uia_element_info import UIAElementInfo
+
+        el = IUIA().iuia.GetFocusedElement()
+        return str(UIAWrapper(UIAElementInfo(el)).element_info.control_type or "")
+    except Exception:
+        return ""
+
+
 def _active_window():
     """Wrapper da janela ativa ou None (filtro de overlay incluído).
 

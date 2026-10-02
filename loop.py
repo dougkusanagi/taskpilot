@@ -400,7 +400,7 @@ def _sequence_to_actions(dec: PlannerDecision) -> list[Action]:
 # (texto da captura; indisponível = fato honesto, sem backend no ambiente).
 # Fatos voltam como observação (dados), nunca como evidência confirmada
 # nem como instrução.
-PERCEPTION_SPECS = ("uia_refresh", "read_focused", "expand:<nome>", "ocr")
+PERCEPTION_SPECS = ("uia_refresh", "read_focused", "expand:<nome>", "ocr", "wait:<texto>")
 PERCEPTION_BUDGET_DEFAULT = 6
 
 
@@ -414,9 +414,13 @@ def _parse_perception(spec: str) -> tuple[str, str]:
         arg = s[len("expand:"):].strip()
         if arg:
             return "expand", arg
+    if low.startswith("wait:"):
+        arg = s[len("wait:"):].strip()
+        if arg:
+            return "wait", arg
     raise RuntimeError(
         f"perceive({spec!r}) inválido: use uia_refresh, read_focused, "
-        "ocr ou expand:<nome visível na árvore>"
+        "ocr, expand:<nome visível na árvore> ou wait:<texto a esperar>"
     )
 
 
@@ -440,9 +444,11 @@ def _run_perception(
     expand_fn=None,
     capture_fn=None,
     ocr_fn=None,
+    sleep_fn=None,
+    clock_fn=None,
 ) -> str:
     """Releitura read-only: NENHUM input físico. Retorna fatos p/ o prompt."""
-    del cfg
+    wait_s = float((cfg or {}).get("perception", {}).get("wait_s", 8.0))
     base, arg = _parse_perception(spec)
     spec_norm = f"{base}:{arg}" if arg else base
     from schemas import new_id as _new_id
@@ -471,6 +477,33 @@ def _run_perception(
                 f"(backend={res.get('backend', '?')}: "
                 f"{str(res.get('reason', ''))[:150]}); use UIA/visão"
             )
+    elif base == "wait":
+        # Espera ATIVA (só lê a árvore): em vez de o modelo repetir `wait` às cegas, devolve
+        # o fato de o texto ter aparecido ou não dentro do prazo.
+        import ocr as _ocr
+
+        sleep, clock = sleep_fn or time.sleep, clock_fn or time.monotonic
+        snap = snapshot_fn or active_window_snapshot
+        want = " ".join(_ocr._fold(arg).split())
+        t_start, seen_in, title = clock(), "", ""
+        while True:
+            items, title, _w = snap()
+            shown = " ".join(_ocr._fold(" ".join(format_ui_names(items, limit=80)) + " " + title)
+                             .split())
+            if want in shown:
+                seen_in = "árvore de acessibilidade"
+                break
+            if clock() - t_start >= wait_s:
+                break
+            sleep(0.5)
+        waited = clock() - t_start
+        facts = (
+            f"perceive(wait:{arg} @{obs_id}): "
+            + (f"{arg!r} apareceu em {waited:.1f}s ({seen_in}); window={title[:80]!r}"
+               if seen_in else
+               f"{arg!r} NÃO apareceu em {waited:.1f}s; window={title[:80]!r}; "
+               "não repita wait: mude de abordagem (perceive ocr, clique ou pergunte)")
+        )
     elif base == "read_focused":
         _items, title, _w = (snapshot_fn or active_window_snapshot)()
         read = (focused_fn or focused_value)()
@@ -982,6 +1015,33 @@ def _decide_planner(
             reason=f"planner perceive({spec_norm})",
         ), t
 
+    if dec.type == "save_as":
+        return _save_as_decision(dec, t), t
+
+    if dec.type == "click_text":
+        import ocr as _ocr
+
+        if ctx.get("no_vision"):
+            raise RuntimeError("click_text: captura desabilitada (no_vision)")
+        img, origin = _capture_frame(cfg, title, t)
+        words = _ocr.read_words(img)
+        return _click_text_decision(dec, img, origin, words, t), t
+
+    if dec.type == "fill":
+        if not (dec.text or "").strip():
+            raise RuntimeError("fill precisa de text (o valor a digitar)")
+        hit, note = _resolve_uia(items, dec.target or "", wrect, state_title=title)
+        if hit is None:
+            raise RuntimeError(note if note.startswith("alvo ambíguo") else
+                               f"fill: campo {dec.target!r} não está na árvore de acessibilidade; "
+                               "use click_text/visual_action e depois type_text")
+        steps = [hit, Action(type="hotkey", key="ctrl+a"), Action(type="type", text=dec.text)]
+        return Decision(action=hit, source="uia", confidence=None, kind="sequence", steps=steps,
+                        sequence_guard="fill_focus",
+                        expected_effect=f"campo {dec.target} preenchido",
+                        observation_ref=t.get("observation_id", ""),
+                        reason=f'fill("{dec.target}")'), t
+
     if dec.type == "uia_click":
         hit, note = _resolve_uia(items, dec.target or "", wrect, state_title=title)
         if hit is not None:
@@ -1002,24 +1062,7 @@ def _decide_planner(
         t["escalated"] = "uia_miss->vision"
 
     # visual_action: screenshot SÓ agora -> Vocaela -> coords 0..1 -> físico
-    s0 = time.perf_counter()
-    img, origin, full = capture_for_vision(max_long_edge=int(cfg.get("screenshot_max_width", 1024)))
-    t["screenshot_ms"] = round((time.perf_counter() - s0) * 1000, 1)
-    try:
-        from obs import frame_ref_for
-
-        frame = frame_ref_for(origin, (img.size[0], img.size[1]),
-                              title, t.get("observation_id", ""))
-        t["frame"] = frame.model_dump()
-        t["visual_title"] = title
-    except Exception:
-        pass
-    try:
-        from obs import LAST_PNG
-
-        img.save(LAST_PNG)  # prova/depuração do que o Vocaela viu
-    except Exception:
-        pass
+    img, origin = _capture_frame(cfg, title, t)
     try:
         va, vms = vocaela.act_sync(img, dec.instruction or "", history=ctx.get("hist_labels", []))
     except Exception as e:
@@ -1036,6 +1079,109 @@ def _decide_planner(
         confidence=None,
         reason=f'visual "{dec.instruction}" -> {va.type}({va.x},{va.y})',
     ), t
+
+
+_EDITABLE_TYPES = ("edit", "document", "combobox", "text")
+
+
+def _sequence_step_guard(guard: str, prim: Action, expected_title: str, title_fn,
+                         focus_type_fn) -> str:
+    """Guarda ANTES de cada primitiva depois da 1ª (puro, testável). "" = pode executar.
+
+    - sem guarda especial: `type` só se a janela não mudou (modal/foco inesperado interrompe);
+    - save_dialog: `type` só se o diálogo Salvar abriu (nunca digita o nome no documento);
+    - fill: `ctrl+a` só se o clique deixou um campo editável com foco (nunca seleciona/apaga
+      o documento por engano).
+    """
+    if guard == "save_dialog":
+        if prim.type == "type":
+            cur = title_fn() or ""
+            if not any(k in cur.lower() for k in ("salvar", "save")):
+                return ("save_as interrompido: o diálogo Salvar não abriu "
+                        f"(janela: {cur!r}); nada foi digitado")
+        return ""
+    if guard == "fill_focus":
+        if prim.type == "hotkey" and (prim.key or "").lower() == "ctrl+a":
+            kind = (focus_type_fn() or "").lower()
+            if kind not in _EDITABLE_TYPES:
+                return ("fill interrompido: o clique não deixou um campo editável com foco "
+                        f"(foco: {kind or 'desconhecido'}); nada foi selecionado nem digitado")
+        return ""
+    if prim.type == "type":
+        cur = title_fn() or ""
+        if cur and expected_title and cur != expected_title:
+            return (f"sequência interrompida: foco mudou {expected_title!r} -> {cur!r} "
+                    "antes de type; reobserve")
+    return ""
+
+
+def _capture_frame(cfg: dict, title: str, t: dict):
+    """Captura a janela ativa p/ visão/OCR e registra o frame (guarda de frame obsoleto)."""
+    s0 = time.perf_counter()
+    img, origin, _full = capture_for_vision(
+        max_long_edge=int(cfg.get("screenshot_max_width", 1024)))
+    t["screenshot_ms"] = round((time.perf_counter() - s0) * 1000, 1)
+    try:
+        from obs import frame_ref_for
+
+        frame = frame_ref_for(origin, (img.size[0], img.size[1]),
+                              title, t.get("observation_id", ""))
+        t["frame"] = frame.model_dump()
+        t["visual_title"] = title
+    except Exception:
+        pass
+    try:
+        from obs import LAST_PNG
+
+        img.save(LAST_PNG)  # prova/depuração do que a visão/OCR viu
+    except Exception:
+        pass
+    return img, origin
+
+
+_FILENAME_BAD = set('\\/:*?"<>|')
+
+
+def _click_text_decision(dec: PlannerDecision, img, origin, words: dict, t: dict) -> Decision:
+    """Resolve `click_text` sobre as palavras do OCR (puro p/ teste). Ambíguo/ausente = erro
+    honesto ao planner; nunca clica no escuro."""
+    import ocr as _ocr
+
+    want = (dec.text or "").strip()
+    if not want:
+        raise RuntimeError("click_text precisa de text (o texto visível a clicar)")
+    if not words.get("ok"):
+        raise RuntimeError(f"click_text: OCR indisponível ({words.get('reason', '?')}); "
+                           "use uia_click ou visual_action")
+    found = _ocr.find_text(words.get("words", []), want)
+    if found["status"] == "ambiguous":
+        lugares = "; ".join(f"({m['center'][0]},{m['center'][1]})" for m in found["matches"][:4])
+        raise RuntimeError(f"click_text ambíguo: {want!r} aparece em {len(found['matches'])} "
+                           f"lugares ({lugares}); desambigue (visual_action com contexto)")
+    if found["status"] != "ok":
+        raise RuntimeError(f"click_text: {want!r} não está legível na tela (OCR leu "
+                           f"{len(words.get('words', []))} linhas); tente visual_action")
+    w, h = img.size
+    from vocaela import VisualAction
+
+    va = VisualAction(type="click", x=found["center"][0] / w, y=found["center"][1] / h)
+    t["ocr"] = {"backend": words.get("backend"), "ms": words.get("ms"), "box": found["box"]}
+    return Decision(action=visual_to_action(va, (w, h), origin), source="ocr", confidence=None,
+                    reason=f'click_text("{want}") -> ({found["center"][0]},{found["center"][1]})')
+
+
+def _save_as_decision(dec: PlannerDecision, t: dict) -> Decision:
+    name = (dec.text or "").strip()
+    if not name or len(name) > 100 or any(c in _FILENAME_BAD for c in name) or name in (".", ".."):
+        raise RuntimeError(f"save_as: nome de arquivo inválido {name!r} (sem pasta nem "
+                           "caracteres reservados)")
+    steps = [Action(type="hotkey", key="ctrl+s"), Action(type="wait", ms=900),
+             Action(type="type", text=name), Action(type="hotkey", key="enter")]
+    return Decision(action=steps[0], source="planner", confidence=None, kind="sequence",
+                    steps=steps, sequence_guard="save_dialog",
+                    expected_effect=f"documento salvo como {name}",
+                    observation_ref=t.get("observation_id", ""),
+                    reason=f"planner save_as({name})")
 
 
 def decide(
@@ -1239,7 +1385,7 @@ def _foreground_title() -> str:
 def _visual_stale_note(dec: Decision, tm: dict) -> str:
     """Alvo visual de frame obsoleto? Mudança de janela/modal entre a captura
     e o clique invalida as coords (R2). Leitura nova, sem decidir nada."""
-    if getattr(dec, "source", "") != "vocaela":
+    if getattr(dec, "source", "") not in ("vocaela", "ocr"):
         return ""
     expected = (tm.get("visual_title") or "").strip()
     if not expected:
@@ -1420,6 +1566,9 @@ def run(instruction: str, cfg: dict, dry_run: bool = False) -> dict:
     """
     dry_run = bool(dry_run or cfg.get("dry_run", False))
     max_steps = int(cfg.get("max_steps", 30))
+    import tools as _tools
+
+    _tools.configure(cfg)  # flags do navegador (acessibilidade da página p/ o UIA)
     print(f"Task: {instruction}" + (" [dry-run]" if dry_run else ""))
     print(f"Stop: {safety.HOTKEY} | Ctrl+C no terminal.")
     if LOG.exists():
@@ -1770,18 +1919,12 @@ def run(instruction: str, cfg: dict, dry_run: bool = False) -> dict:
                             if safety.stop_requested():
                                 raise RuntimeError("sequência interrompida: stop")
                             if i > 0:
-                                _it, cur_title, _wr = active_window_snapshot()
-                                if (
-                                    prim.type == "type"
-                                    and cur_title
-                                    and expected_title
-                                    and cur_title != expected_title
-                                ):
-                                    raise RuntimeError(
-                                        f"sequência interrompida: foco mudou "
-                                        f"{expected_title!r} -> {cur_title!r} "
-                                        f"antes de type; reobserve"
-                                    )
+                                problem = _sequence_step_guard(
+                                    dec.sequence_guard, prim, expected_title,
+                                    lambda: active_window_snapshot()[1],
+                                    uia.focused_control_type)
+                                if problem:
+                                    raise RuntimeError(problem)
                             parts.append(execute(prim))
                         desc = f"sequence({'+'.join(parts)})"
                 else:

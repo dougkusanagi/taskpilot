@@ -59,7 +59,7 @@ class TestCleanup(unittest.TestCase):
         import schemas
 
         self.assertEqual(set(schemas.SourceType.__args__),
-                         {"planner", "uia", "vocaela"})
+                         {"planner", "uia", "vocaela", "ocr"})
 
     def test_obs_sem_helpers_vlm_generico(self):
         import obs
