@@ -416,7 +416,7 @@ class TestProductionSuite(unittest.TestCase):
     def test_state_and_last_result_reach_the_prompt(self):
         case = next(c for c in bench.load_cases() if c["id"] == "salvar-pendente")
         user = bench.production_messages(case)[1]["content"]
-        self.assertIn("Pending requirements", user)
+        self.assertIn("pendências", user)
         for pending in case["state"]["pending"]:
             self.assertIn(pending, user)
         for evidence in case["state"]["evidence_ids"]:
