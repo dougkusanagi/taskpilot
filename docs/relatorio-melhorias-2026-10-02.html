@@ -1,0 +1,120 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Melhorias para 6 GB — 02/10/2026</title>
+<style>
+  :root { --bg:#f6f7f9; --card:#fff; --ink:#1b2430; --mute:#5d6b7d; --line:#e2e6ec; --bar:#d5dce8;
+          --a:#2f6fed; --good:#1f9d6b; --warn:#d98a00; --bad:#d4483b; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg:#12161c; --card:#1a2029; --ink:#e7ecf3; --mute:#9aa7b8; --line:#2a3340; --bar:#34404f;
+            --a:#6a9bff; --good:#3ec28f; --warn:#f0b13a; --bad:#ff7a6b; } }
+  * { box-sizing:border-box }
+  body { margin:0; background:var(--bg); color:var(--ink); font:16px/1.55 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif }
+  main { max-width:980px; margin:0 auto; padding:28px 16px 64px }
+  h1 { font-size:1.6rem; margin:0 0 4px } h2 { font-size:1.15rem; margin:34px 0 8px }
+  .sub { color:var(--mute); margin:0 0 18px }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:16px 18px; margin:12px 0 }
+  .verdict { border-left:5px solid var(--good) }
+  .grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:12px }
+  .kpi b { display:block; font-size:1.7rem; line-height:1.1 } .kpi span { color:var(--mute); font-size:.9rem }
+  .pair { display:grid; grid-template-columns:minmax(150px,230px) 1fr 120px; gap:10px; align-items:center; padding:5px 0; font-size:.92rem }
+  .pair .t { display:flex; flex-direction:column; gap:3px }
+  .track { background:var(--bar); border-radius:6px; height:13px; overflow:hidden }
+  .fill { height:100%; border-radius:6px }
+  .before { background:var(--mute); opacity:.55 }
+  .val { text-align:right; font-variant-numeric:tabular-nums; color:var(--mute); font-size:.85rem }
+  .legend { color:var(--mute); font-size:.85rem; margin:4px 0 8px }
+  table { width:100%; border-collapse:collapse; font-size:.9rem } th,td { text-align:left; padding:6px 8px; border-bottom:1px solid var(--line); vertical-align:top }
+  th { color:var(--mute); font-weight:600 }
+  .tag { display:inline-block; padding:1px 8px; border-radius:99px; font-size:.78rem; font-weight:600; border:1px solid currentColor }
+  .good { color:var(--good) } .warn { color:var(--warn) } .bad { color:var(--bad) }
+  ul { margin:6px 0 0; padding-left:20px } li { margin:4px 0 }
+  .foot { color:var(--mute); font-size:.85rem; margin-top:30px }
+  @media (max-width:560px) { .pair { grid-template-columns:1fr 90px } .pair .track-col { grid-column:1 / 3 } }
+</style>
+</head>
+<body>
+<main>
+  <h1>Melhorias para rodar o taskpilot em 6 GB</h1>
+  <p class="sub">02/10/2026 · RTX 2060 6 GB · llama.cpp CUDA (o mesmo do runtime próprio) · tudo offline, sem clique real</p>
+
+  <div class="card verdict">
+    <b>Conclusão:</b> duas configurações agora cabem em 6 GB e passam em todos os testes de trajetória:
+    <b>P1</b> (Qwen3-4B + MAI-UI-2B, 5,3 GB) e <b>U3</b> (Qwen3-VL-4B único, 4,9 GB). O ganho veio de <b>prompt, contrato e
+    ferramentas no Python</b>, não de modelo maior. <b>Ainda não está provado de ponta a ponta</b>: falta rodar no Windows
+    com UIA real e no Sandbox.
+  </div>
+
+  <div class="grid">
+    <div class="card kpi"><b>55/55</b><span>trajetórias concluídas (antes 30/55), incluindo 15/15 em cenários nunca usados p/ ajustar (antes 5/15)</span></div>
+    <div class="card kpi"><b>0 → 80%</b><span>localização do MAI-UI-2B só com o prompt certo, zero cliques falsos</span></div>
+    <div class="card kpi"><b>5,3 GB</b><span>planner 4B + localizador 2B juntos na GPU (com os padrões do LM Studio não cabiam)</span></div>
+    <div class="card kpi"><b>0 erros</b><span>na suite de testes do Linux (eram 49); 474 testes</span></div>
+  </div>
+
+  <h2>Antes → depois</h2>
+  <p class="legend">Barra cinza = antes; barra colorida = depois.</p>
+  <div class="card" id="pairs"></div>
+
+  <h2>Perfis novos</h2>
+  <div class="card">
+    <table>
+      <tr><th>Perfil</th><th>Modelos</th><th>VRAM de pico</th><th>Trajetórias</th><th>Localização</th><th>Alvo ausente</th></tr>
+      <tr><td><b>P1</b></td><td>Qwen3-4B-Instruct-2507 + MAI-UI-2B</td><td>5,3 GB</td><td>55/55</td><td>84% · 121 ms</td><td><span class="tag good">6/6, 0 cliques falsos</span></td></tr>
+      <tr><td><b>P2</b></td><td>Qwen3-4B + GUI-Owl-1.5-2B</td><td>~5,3 GB</td><td>= P1</td><td>75% · 174 ms</td><td><span class="tag good">0 cliques falsos</span></td></tr>
+      <tr><td><b>U3</b></td><td>Qwen3-VL-4B-Instruct (um processo)</td><td>4,9 GB</td><td>55/55</td><td>86% · 272 ms</td><td><span class="tag bad">0/6, 3 cliques falsos</span></td></tr>
+    </table>
+    <p class="legend" style="margin-top:8px">VRAM = GPU inteira (modelos + ~0,8 GB do desktop). Para alvos que podem não existir, prefira o P1.</p>
+  </div>
+
+  <h2>O que moveu o ponteiro</h2>
+  <div class="card"><ul>
+    <li><b>Contrato do <code>done</code> consertado:</b> o loop exigia evidências idênticas ao texto confirmado, mas o prompt nunca ensinava a citá-las — todo <code>done</code> era vetado. Agora são IDs curtos (<code>E1</code>, <code>E2</code>…).</li>
+    <li><b>Schema por ação:</b> cada ação só aceita os campos dela, <code>uia_click</code> só aceita nomes que estão na tela e <code>done</code> só existe com evidência confirmada.</li>
+    <li><b>Exemplos curtos</b> de outros aplicativos (+0 a +23 pontos) e <b>checklist do pedido</b> gerado uma vez e guardado pelo Python.</li>
+    <li><b>Veto de ambiguidade:</b> "Abra o perfil de Ana" com "Ana pessoal"/"Ana trabalho" vira <code>ask</code>, nunca um chute.</li>
+    <li><b>Protocolo certo por modelo:</b> cada modelo de visão obedece ao <i>seu</i> formato, e todos respondem em escala 0–1000.</li>
+    <li><b>Memória:</b> projetor de imagem na CPU, KV quantizado e <code>--parallel 1</code>. E o runtime baixava llama.cpp <i>só de CPU</i>: agora escolhe CUDA/Vulkan.</li>
+  </ul></div>
+
+  <h2>Não funcionou</h2>
+  <div class="card"><ul>
+    <li><b>Zoom em duas etapas:</b> piorou todos os modelos medidos (e aumentou cliques falsos). Fica desligado.</li>
+    <li><b>Raciocínio curto (<code>why</code>):</b> dobra a latência e não ajuda.</li>
+    <li><b><code>recipes</code> e ferramentas novas</b> (<code>fill</code>, <code>save_as</code>, <code>click_text</code>): sem ganho líquido no simulador (31–35/40 contra 36–40/40 sem elas). O <code>click_text</code> por OCR funciona sozinho (18/19, 0 errados), mas fica opt-in.</li>
+    <li><b>MiniCPM5-2B (planner atual):</b> 12/25 mesmo com tudo ligado. Segue o mais fraco.</li>
+  </ul></div>
+
+  <h2>Ressalvas</h2>
+  <div class="card"><ul>
+    <li>Ajustei o simulador várias vezes quando ele rejeitava caminhos legítimos; o último ajuste (RenameFile) foi feito depois de ver o resultado cego daquele cenário. Só 3 cenários cegos.</li>
+    <li>Os exemplos do prompt foram ajustados olhando falhas dos cenários "ajustados" (100%). O número de generalização é o dos cegos: <b>5/15 → 15/15</b>.</li>
+    <li>Não verificado no Windows: flag de acessibilidade do Chrome, OCR do Windows, backend CUDA/Vulkan do runtime próprio, DPI e multi-monitor.</li>
+    <li>Treino (fine-tuning) <b>não foi feito</b>: só a gravação de trajetórias (<code>--record</code>) e o exportador de dados.</li>
+  </ul></div>
+
+  <p class="foot">Detalhes e como usar: <code>docs/melhorias-6gb-2026-10-02.md</code> · dados em <code>runs/final/</code> e <code>runs/exp-*</code> (local) · perfis: <code>main.py --profile P1|P2|U3</code></p>
+</main>
+<script>
+const rows = [
+  ['Trajetórias (55 episódios)', 55, 100, '30/55 → 55/55'],
+  ['…só cenários cegos (15)', 33, 100, '5/15 → 15/15'],
+  ['Localização MAI-UI-2B', 0, 84, '0% → 84%'],
+  ['Localização GUI-Owl-1.5-2B', 11, 75, '11% → 75%'],
+  ['Localização Qwen3-VL-2B', 39, 77, '39% → 77%'],
+  ['Localização Qwen3-VL-4B', 63, 86, '63% → 86%'],
+  ['Planner Qwen3-4B (32 cenas, prompt real)', 39, 62, '39% → 62%'],
+  ['Planner Qwen3.5-4B (32 cenas, prompt real)', 56, 76, '56% → 76%'],
+];
+const color = v => v >= 75 ? 'var(--good)' : v >= 50 ? 'var(--a)' : 'var(--warn)';
+document.getElementById('pairs').innerHTML = rows.map(r => `
+  <div class="pair"><div>${r[0]}</div>
+    <div class="track-col" style="display:grid;gap:3px">
+      <div class="track"><div class="fill before" style="width:${r[1]}%"></div></div>
+      <div class="track"><div class="fill" style="width:${r[2]}%;background:${color(r[2])}"></div></div>
+    </div><div class="val">${r[3]}</div></div>`).join('');
+</script>
+</body>
+</html>
