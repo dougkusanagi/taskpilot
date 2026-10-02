@@ -26,6 +26,27 @@ _FOCUS_HINTS = {
 }
 
 
+# Navegadores só expõem a árvore de acessibilidade da PÁGINA (links, campos, botões) ao UIA quando
+# detectam um leitor de tela — sem isso o snapshot traz só a moldura da janela (run 20/09: 6
+# itens). Esta flag força a árvore. Só vale ao iniciar um processo novo (janela já aberta usa as
+# flags de quem a abriu). Configurável: config.launch.browser_args.
+BROWSER_EXES = ("chrome", "msedge", "brave")
+BROWSER_ARGS: tuple[str, ...] = ("--force-renderer-accessibility",)
+
+
+def configure(cfg: dict | None) -> None:
+    """Aplica `launch.browser_args` da config (vazio desliga a flag)."""
+    global BROWSER_ARGS
+    args = (cfg or {}).get("launch", {}).get("browser_args")
+    if args is not None:
+        BROWSER_ARGS = tuple(str(a) for a in args)
+
+
+def launch_args(exe: str) -> tuple[str, ...]:
+    """Argumentos extras do processo (puro): só navegadores recebem a flag de acessibilidade."""
+    return BROWSER_ARGS if exe in BROWSER_EXES else ()
+
+
 def open_app(target: str) -> str:
     """Abre app da whitelist via ShellExecute (App Paths resolve msedge etc.).
 
@@ -53,10 +74,14 @@ def _launch(exe: str) -> None:
     import os
     import subprocess
 
+    extra = launch_args(exe)
     try:
-        os.startfile(exe)
+        if extra:
+            os.startfile(exe, arguments=" ".join(extra))
+        else:
+            os.startfile(exe)
     except OSError:
-        subprocess.Popen([exe], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        subprocess.Popen([exe, *extra], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
 
 _BROWSER_SUFFIXES = (

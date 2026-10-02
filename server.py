@@ -16,6 +16,7 @@ vivo (ou com outro modelo) = erro honesto, nunca matamos processo alheio.
 from __future__ import annotations
 
 import os
+import shutil
 import socket
 import subprocess
 import time
@@ -89,6 +90,24 @@ LLAMA_ZIP_URL = (
     f"{LLAMA_TAG}/llama-{LLAMA_TAG}-bin-win-cpu-x64.zip"
 )
 LLAMA_EXE = BIN_DIR / "llama-server.exe"
+BACKEND_MARK = BIN_DIR / ".backend"  # backend do llama-server extraído (cpu|vulkan|cuda)
+
+# Backends do llama.cpp (assets da release LLAMA_TAG, conferidos na API do GitHub):
+#  cpu    18 MB  roda em qualquer PC (padrão histórico; ngl não tem efeito)
+#  vulkan 32 MB  GPU NVIDIA/AMD/Intel só com o driver; ~60-80% da velocidade do CUDA
+#  cuda   ~150 MB + cudart ~390 MB; a mais rápida em NVIDIA (precisa driver recente)
+BACKENDS = ("cpu", "vulkan", "cuda")
+
+
+def llama_urls(backend: str = "cpu") -> list[str]:
+    """URLs do(s) zip(s) do llama.cpp para o backend (puro, testável)."""
+    if backend not in BACKENDS:
+        raise ValueError(f"runtime.backend inválido: {backend!r}; use {BACKENDS}")
+    base = f"https://github.com/ggml-org/llama.cpp/releases/download/{LLAMA_TAG}/"
+    if backend == "cuda":
+        return [base + f"llama-{LLAMA_TAG}-bin-win-cuda-12.4-x64.zip",
+                base + "cudart-llama-bin-win-cuda-12.4-x64.zip"]
+    return [base + f"llama-{LLAMA_TAG}-bin-win-{backend}-x64.zip"]
 
 # Parâmetros conservadores p/ máquina comum (CPU). Overridable via config.json
 # → seção "runtime" (auto_start, host, ngl p/ GPU, threads, ctx).
@@ -159,8 +178,11 @@ def _extract_zip(zip_path: Path, dest: Path) -> None:
     if not LLAMA_EXE.exists():
         for cand in dest.rglob("llama-server.exe"):
             if cand.resolve() != LLAMA_EXE.resolve():
-                LLAMA_EXE.parent.mkdir(parents=True, exist_ok=True)
-                cand.replace(LLAMA_EXE)
+                # sobe a pasta INTEIRA (as DLLs do ggml/CUDA precisam ficar ao lado do exe)
+                for item in cand.parent.iterdir():
+                    target = LLAMA_EXE.parent / item.name
+                    if not target.exists():
+                        item.replace(target)
             break
 
 
@@ -215,15 +237,24 @@ def ensure_assets(progress=print, cfg: dict | None = None) -> dict:
     """
     MODELS_DIR.mkdir(parents=True, exist_ok=True)
 
+    backend = str((cfg or {}).get("runtime", {}).get("backend", "cpu"))
+    urls = llama_urls(backend)
+    have = BACKEND_MARK.read_text(encoding="utf-8").strip() if BACKEND_MARK.exists() else "cpu"
+    if LLAMA_EXE.exists() and have != backend:
+        progress(f"runtime.backend mudou ({have} -> {backend}): baixando outro llama.cpp...")
+        shutil.rmtree(BIN_DIR, ignore_errors=True)
     if not LLAMA_EXE.exists():
-        progress(f"baixando llama.cpp {LLAMA_TAG} (CPU x64, 1ª vez)...")
-        zp = MODELS_DIR / "llama.zip"
-        _download(LLAMA_ZIP_URL, zp, min_bytes=10_000_000, progress=progress)
-        _extract_zip(zp, BIN_DIR)
+        progress(f"baixando llama.cpp {LLAMA_TAG} ({backend}, 1ª vez)...")
+        for n, url in enumerate(urls):
+            zp = MODELS_DIR / f"llama{n}.zip"
+            _download(url, zp, min_bytes=10_000_000, progress=progress)
+            _extract_zip(zp, BIN_DIR)
         if not LLAMA_EXE.exists():
             raise RuntimeError(
-                f"llama-server.exe não apareceu em {BIN_DIR} após extrair {LLAMA_ZIP_URL}"
+                f"llama-server.exe não apareceu em {BIN_DIR} após extrair {urls}"
             )
+        BACKEND_MARK.parent.mkdir(parents=True, exist_ok=True)
+        BACKEND_MARK.write_text(backend, encoding="utf-8")
 
     selected = planner_gguf_for(cfg or {})
     unified_qwen = selected is QWEN3_VL_GGUF
@@ -257,6 +288,9 @@ def _server_args(role: str, gguf: Path, mmproj: Path | None, port: int, cfg: dic
     if threads <= 0:
         threads = DEFAULT_THREADS
     ctx = int(rt.get("ctx", DEFAULT_CTX))
+    backend = str(rt.get("backend", "cpu"))
+    if backend != "cpu" and ngl == 0:
+        ngl = 99  # GPU: com ngl=0 o backend GPU rodaria tudo na CPU
     args = [
         str(LLAMA_EXE),
         "-m",
@@ -274,6 +308,17 @@ def _server_args(role: str, gguf: Path, mmproj: Path | None, port: int, cfg: dic
     ]
     if mmproj is not None:
         args += ["--mmproj", str(mmproj)]
+        if not bool(rt.get("mmproj_offload", True)):
+            # encoder de imagem na CPU: libera ~0,8 GB e o buffer de computação na GPU
+            args += ["--no-mmproj-offload"]
+    parallel = int(rt.get("parallel", 0) or 0)
+    if parallel > 0:
+        args += ["-np", str(parallel)]  # 1 = uma geração por vez (sem slots extras de KV)
+    kv = str(rt.get("kv_cache", "f16"))
+    if kv != "f16":
+        if kv not in ("q8_0", "q4_0"):
+            raise ValueError(f"runtime.kv_cache inválido: {kv!r}; use f16, q8_0 ou q4_0")
+        args += ["-fa", "on", "-ctk", kv, "-ctv", kv]  # KV quantizado exige flash attention
     if role == "planner":
         # jinja: o template oficial do MiniCPM5 (planner.py conta com ele p/
         # chat_template_kwargs.enable_thinking).

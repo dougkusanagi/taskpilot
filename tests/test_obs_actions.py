@@ -143,7 +143,7 @@ class TestToolsWhitelist(unittest.TestCase):
         self.tools = tools
         self.opened: list[str] = []
         self._orig = (getattr(os, "startfile", None), tools.time.sleep, tools.focus_window)
-        os.startfile = self.opened.append
+        os.startfile = lambda exe, **kw: self.opened.append(exe)
         tools.time.sleep = lambda s: None
         tools.focus_window = lambda hint, timeout=2.0: True  # open foca; sem GUI
 
@@ -165,7 +165,7 @@ class TestToolsWhitelist(unittest.TestCase):
         import os
         import subprocess
 
-        def boom(_):
+        def boom(_, **kw):
             raise OSError("sem App Paths")
         os.startfile = boom
         calls: list = []
@@ -175,7 +175,28 @@ class TestToolsWhitelist(unittest.TestCase):
             self.tools.open_app("msedge")
         finally:
             subprocess.Popen = orig
-        self.assertEqual(calls, [["msedge"]])  # lista, nunca shell=True
+        # lista, nunca shell=True; navegador novo sobe com a flag de acessibilidade da página
+        self.assertEqual(calls, [["msedge", "--force-renderer-accessibility"]])
+
+    def test_navegador_recebe_flag_de_acessibilidade_e_apps_comuns_nao(self):
+        calls = []
+        import os
+        os.startfile = lambda exe, **kw: calls.append((exe, kw))
+        self.tools.open_app("chrome")
+        self.tools.open_app("notepad")
+        self.assertEqual(calls[0], ("chrome", {"arguments": "--force-renderer-accessibility"}))
+        self.assertEqual(calls[1], ("notepad", {}))
+
+    def test_flag_do_navegador_e_configuravel_e_pode_ser_desligada(self):
+        original = self.tools.BROWSER_ARGS
+        self.addCleanup(lambda: setattr(self.tools, "BROWSER_ARGS", original))
+        self.tools.configure({"launch": {"browser_args": []}})
+        self.assertEqual(self.tools.launch_args("chrome"), ())
+        self.tools.configure({"launch": {"browser_args": ["--x", "--y"]}})
+        self.assertEqual(self.tools.launch_args("msedge"), ("--x", "--y"))
+        self.assertEqual(self.tools.launch_args("calc"), ())
+        self.tools.configure({})  # sem seção launch: mantém o que já estava
+        self.assertEqual(self.tools.launch_args("brave"), ("--x", "--y"))
 
     def test_fora_da_whitelist_recusa(self):
         for bad in ("powershell", "notepad & del x", 'cmd /c start "" x'):

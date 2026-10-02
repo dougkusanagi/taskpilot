@@ -226,3 +226,43 @@ class TestRuntimeDefaults(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
+
+
+class TestBackendsAndMemoryFlags(unittest.TestCase):
+    def cfg(self, **runtime):
+        return {"runtime": runtime}
+
+    def test_urls_per_backend(self):
+        cpu = server.llama_urls("cpu")
+        self.assertEqual(len(cpu), 1)
+        self.assertTrue(cpu[0].endswith("bin-win-cpu-x64.zip"))
+        self.assertTrue(server.llama_urls("vulkan")[0].endswith("bin-win-vulkan-x64.zip"))
+        cuda = server.llama_urls("cuda")
+        self.assertEqual(len(cuda), 2)  # binário + cudart
+        self.assertIn("cudart", cuda[1])
+        with self.assertRaises(ValueError):
+            server.llama_urls("metal")
+
+    def test_gpu_backend_offloads_by_default_but_respects_explicit_ngl(self):
+        args = server._server_args("planner", Path("p.gguf"), None, 8091,
+                                   self.cfg(backend="vulkan"))
+        self.assertEqual(args[args.index("-ngl") + 1], "99")
+        args = server._server_args("planner", Path("p.gguf"), None, 8091,
+                                   self.cfg(backend="vulkan", ngl=20))
+        self.assertEqual(args[args.index("-ngl") + 1], "20")
+        args = server._server_args("planner", Path("p.gguf"), None, 8091, self.cfg())
+        self.assertEqual(args[args.index("-ngl") + 1], "0")
+
+    def test_memory_flags_are_opt_in(self):
+        base = server._server_args("vision", Path("v.gguf"), Path("m.gguf"), 8082, self.cfg())
+        for flag in ("-np", "-ctk", "--no-mmproj-offload"):
+            self.assertNotIn(flag, base)
+        args = server._server_args("vision", Path("v.gguf"), Path("m.gguf"), 8082,
+                                   self.cfg(parallel=1, kv_cache="q8_0", mmproj_offload=False))
+        self.assertEqual(args[args.index("-np") + 1], "1")
+        self.assertEqual(args[args.index("-ctk") + 1], "q8_0")
+        self.assertEqual(args[args.index("-ctv") + 1], "q8_0")
+        self.assertEqual(args[args.index("-fa") + 1], "on")
+        self.assertIn("--no-mmproj-offload", args)
+        with self.assertRaises(ValueError):
+            server._server_args("planner", Path("p.gguf"), None, 8091, self.cfg(kv_cache="q2"))
