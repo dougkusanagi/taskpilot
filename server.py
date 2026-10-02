@@ -16,6 +16,7 @@ vivo (ou com outro modelo) = erro honesto, nunca matamos processo alheio.
 from __future__ import annotations
 
 import os
+import re
 import shutil
 import socket
 import subprocess
@@ -80,6 +81,41 @@ QWEN3_VL_MMPROJ = {
         "https://huggingface.co/unsloth/Qwen3-VL-2B-Instruct-GGUF/resolve/main/mmproj-F16.gguf"
     ),
 }
+
+# Perfis medidos em 01/10 (P1/P2/U3, ver config.PROFILES): GGUFs públicos (HEAD 200 conferido).
+# Chave = nome do modelo normalizado (minúsculas, não-alfanuméricos -> "-").
+_HF = "https://huggingface.co/"
+GGUF_REGISTRY: dict[str, dict] = {
+    "qwen3-4b-instruct-2507": {  # planner: melhor em trajetórias (sem raciocínio, ~2,5 GB)
+        "gguf": {"file": "Qwen3-4B-Instruct-2507-Q4_K_M.gguf", "url": _HF
+                 + "unsloth/Qwen3-4B-Instruct-2507-GGUF/resolve/main/"
+                 "Qwen3-4B-Instruct-2507-Q4_K_M.gguf"}},
+    "mai-ui-2b": {  # localizador: 80% / 0 cliques falsos / ~170 ms (~1,2 GB + projetor 0,8 GB)
+        "gguf": {"file": "MAI-UI-2B.Q5_K_S.gguf", "url": _HF
+                 + "mradermacher/MAI-UI-2B-GGUF/resolve/main/MAI-UI-2B.Q5_K_S.gguf"},
+        "mmproj": {"file": "MAI-UI-2B.mmproj-f16.gguf", "url": _HF
+                   + "mradermacher/MAI-UI-2B-GGUF/resolve/main/MAI-UI-2B.mmproj-f16.gguf"}},
+    "gui-owl-1.5-2b-instruct": {
+        "gguf": {"file": "GUI-Owl-1.5-2B-Instruct.Q5_K_S.gguf", "url": _HF
+                 + "mradermacher/GUI-Owl-1.5-2B-Instruct-GGUF/resolve/main/"
+                 "GUI-Owl-1.5-2B-Instruct.Q5_K_S.gguf"},
+        "mmproj": {"file": "GUI-Owl-1.5-2B-Instruct.mmproj-f16.gguf", "url": _HF
+                   + "mradermacher/GUI-Owl-1.5-2B-Instruct-GGUF/resolve/main/"
+                   "GUI-Owl-1.5-2B-Instruct.mmproj-f16.gguf"}},
+    "qwen3-vl-4b-instruct": {  # unificado: planeja (25/25) e localiza (81%) num processo só
+        "gguf": {"file": "Qwen3-VL-4B-Instruct-Q4_K_M.gguf", "url": _HF
+                 + "unsloth/Qwen3-VL-4B-Instruct-GGUF/resolve/main/"
+                 "Qwen3-VL-4B-Instruct-Q4_K_M.gguf"},
+        "mmproj": {"file": "mmproj-Qwen3-VL-4B-Instruct-F16.gguf", "url": _HF
+                   + "unsloth/Qwen3-VL-4B-Instruct-GGUF/resolve/main/mmproj-F16.gguf"}},
+}
+
+
+def registry_entry(model: str) -> dict | None:
+    """Entrada do GGUF_REGISTRY para o nome do modelo (puro)."""
+    key = re.sub(r"[^a-z0-9.]+", "-", str(model or "").lower()).strip("-")
+    return GGUF_REGISTRY.get(key)
+
 
 # Release fixa do llama.cpp (binários Windows x64 CPU); atualize o tag de vez
 # em quando. CPU-only de propósito: roda em qualquer PC; quem quiser GPU pode
@@ -256,17 +292,22 @@ def ensure_assets(progress=print, cfg: dict | None = None) -> dict:
         BACKEND_MARK.parent.mkdir(parents=True, exist_ok=True)
         BACKEND_MARK.write_text(backend, encoding="utf-8")
 
-    selected = planner_gguf_for(cfg or {})
-    unified_qwen = selected is QWEN3_VL_GGUF
+    cfg = cfg or {}
+    reg_planner = registry_entry(cfg.get("planner", {}).get("model", ""))
+    reg_vision = registry_entry(cfg.get("vision", {}).get("model", ""))
+    selected = reg_planner["gguf"] if reg_planner else planner_gguf_for(cfg)
+    unified_qwen = bool(reg_planner and reg_planner.get("mmproj")) or selected is QWEN3_VL_GGUF
     inv: dict[str, tuple[Path, dict, int]] = {
-        "planner_gguf": (
-            MODELS_DIR / planner_gguf_for(cfg or {})["file"],
-            planner_gguf_for(cfg or {}),
-            100_000_000,
-        ),
+        "planner_gguf": (MODELS_DIR / selected["file"], selected, 100_000_000),
     }
     if unified_qwen:
-        inv["planner_mmproj"] = (MODELS_DIR / QWEN3_VL_MMPROJ["file"], QWEN3_VL_MMPROJ, 100_000_000)
+        mm = reg_planner["mmproj"] if reg_planner else QWEN3_VL_MMPROJ
+        inv["planner_mmproj"] = (MODELS_DIR / mm["file"], mm, 100_000_000)
+    elif reg_vision:
+        inv["vision_gguf"] = (MODELS_DIR / reg_vision["gguf"]["file"], reg_vision["gguf"],
+                              100_000_000)
+        inv["mmproj"] = (MODELS_DIR / reg_vision["mmproj"]["file"], reg_vision["mmproj"],
+                         100_000_000)
     else:
         inv["vision_gguf"] = (MODELS_DIR / VISION_GGUF["file"], VISION_GGUF, 100_000_000)
         inv["mmproj"] = (MODELS_DIR / VISION_MMPROJ["file"], VISION_MMPROJ, 10_000_000)

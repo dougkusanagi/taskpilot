@@ -38,6 +38,20 @@ class TestGoalAmbiguity(unittest.TestCase):
                          ["ANA TRABALHO"])
 
 
+class TestPositionalRequests(unittest.TestCase):
+    RESULTS = ["Gatos - Wikipédia", "Gatos fofos"]
+
+    def test_choosing_by_position_is_not_ambiguous(self):
+        for goal in ("Pesquise gatos e abra o primeiro resultado", "Open the first result",
+                     "clique no segundo item de gatos", "abra qualquer resultado de gatos",
+                     "abra o 1º resultado de gatos"):
+            self.assertEqual(amb(goal, "Gatos - Wikipédia", self.RESULTS), [], goal)
+
+    def test_without_a_position_the_same_names_are_ambiguous(self):
+        self.assertEqual(amb("Abra o resultado de gatos", "Gatos - Wikipédia", self.RESULTS),
+                         ["Gatos fofos"])
+
+
 class TestGoalConflict(unittest.TestCase):
     PROFILES = ["Ana pessoal", "Ana trabalho"]
 

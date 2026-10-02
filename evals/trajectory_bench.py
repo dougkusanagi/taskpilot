@@ -30,7 +30,7 @@ from planner import (
 )
 from recipes import recipes_for
 
-MAX_STEPS = 8
+MAX_STEPS = 12
 MAX_INVALID = 2
 MAX_SAME_ACTION = 3
 
@@ -227,9 +227,8 @@ class NotepadSave(Sim):
             if name.casefold() != "nota.txt":
                 self.window = f"{name} - Notepad"
                 return f"Arquivo salvo como {name} (o pedido era nota.txt)."
-            self.window = "nota.txt - Notepad"
-            self.evidence["ev-arquivo"] = "arquivo salvo"
-            return "Arquivo salvo."
+            self.fname = name
+            return self.confirm_save()
         if t == "type_text" and self.dialog:
             self.fname = d["text"]
             self.elements = [f"Edit:Nome do arquivo={self.fname}", "Button:Salvar",
@@ -445,8 +444,286 @@ class CookieBanner(Sim):
         return self.no_effect()
 
 
+class FormFill(Sim):
+    goal = "Preencha o formulário com nome Maria Souza e e-mail maria@exemplo.com e envie."
+    category = "formulario"
+    VALUES = {"nome": ("Maria Souza", "ev-nome"), "e-mail": ("maria@exemplo.com", "ev-email")}
+
+    def __init__(self):
+        super().__init__()
+        self.window = "Cadastro - Google Chrome"
+        self.fields = {"nome": "", "e-mail": ""}
+        self.required = ["ev-nome", "ev-email", "ev-envio"]
+        self.focus = ""
+        self.refresh()
+
+    def refresh(self):
+        def shown(label: str, field: str) -> str:
+            return f"Edit:{label}" + (f"={self.fields[field]}" if self.fields[field] else "")
+
+        self.elements = [shown("Nome", "nome"), shown("E-mail", "e-mail"), "Button:Enviar"]
+
+    def put(self, field: str, text: str) -> str:
+        self.fields[field] = text
+        want, key = self.VALUES[field]
+        if text.strip().casefold() == want.casefold():
+            self.evidence[key] = f"{field} preenchido"
+        else:
+            self.evidence.pop(key, None)
+        self.refresh()
+        return f"Campo {field} preenchido."
+
+    def fill(self, name, text):
+        if name not in self.fields:
+            return self.no_effect("campo não encontrado")
+        return self.put(name, text)
+
+    def apply(self, d):
+        common = self.handle_common(d)
+        if common is not None:
+            return common
+        if d["type"] == "type_text":
+            if not self.focus:
+                return self.no_effect("nenhum campo de texto focado")
+            return self.put(self.focus, d["text"])
+        if d["type"] == "hotkey" and keys_of(d) == "ctrl+a":
+            return "Conteúdo do campo selecionado." if self.focus else self.no_effect()
+        name = self.clicked(d)
+        if name in self.fields:
+            self.focus = name
+            return f"Campo {name} focado."
+        if name == "enviar":
+            if "ev-nome" in self.evidence and "ev-email" in self.evidence:
+                self.window, self.elements = "Obrigado - Google Chrome", ["Text:Cadastro enviado"]
+                self.evidence["ev-envio"] = "formulário enviado"
+                return "Formulário enviado."
+            return "Aviso: nome ou e-mail faltando ou incorreto."
+        return self.no_effect()
+
+
+class OverwriteSave(NotepadSave):
+    goal = ("Digite 'ola mundo' no Bloco de Notas e salve como nota.txt, substituindo o arquivo "
+            "que já existe.")
+    category = "modal-confirmacao"
+
+    def __init__(self):
+        super().__init__()
+        self.modal = False
+
+    def confirm_save(self):
+        if self.fname.strip().casefold() != "nota.txt":
+            return super().confirm_save()
+        self.modal, self.dialog = True, False
+        self.window = "Confirmar Salvar como"
+        self.elements = ["Text:nota.txt já existe. Deseja substituí-lo?", "Button:Sim",
+                         "Button:Não"]
+        return "O arquivo já existe: confirmação de substituição aberta."
+
+    def apply(self, d):
+        if not self.modal:
+            return super().apply(d)
+        common = self.handle_common(d)
+        if common is not None:
+            return common
+        name = self.clicked(d)
+        if name == "sim":
+            self.modal, self.window = False, "nota.txt - Notepad"
+            self.elements = [f"Edit:Editor={self.typed}"]
+            self.evidence["ev-arquivo"] = "arquivo salvo (substituído)"
+            return "Arquivo substituído e salvo."
+        if name in ("não", "nao"):
+            self.modal, self.dialog = False, True
+            self.window = "Salvar como"
+            self.elements = ["Edit:Nome do arquivo", "Button:Salvar", "Button:Cancelar"]
+            return "Substituição recusada; diálogo Salvar como de volta."
+        if d["type"] == "press_key" and d["key"].lower() == "enter":
+            return self.apply({"type": "uia_click", "target": "Sim"})
+        return self.no_effect("a confirmação de substituição bloqueia a janela")
+
+
+class WrongWindow(Sim):
+    goal = "Digite 'ola' no Bloco de Notas."
+    category = "janela-errada"
+
+    def __init__(self):
+        super().__init__()
+        self.window = "Calculadora"
+        self.elements = ["Text:Exibição=0", "Button:1", "Button:2", "Button:Mais", "Button:Igual"]
+        self.required = ["ev-texto"]
+
+    def apply(self, d):
+        common = self.handle_common(d)
+        if common is not None:
+            return common
+        t = d["type"]
+        if t == "open_app" and d["app"] == "notepad" and "Notepad" not in self.window:
+            self.window, self.elements = "Sem título - Notepad", ["Edit:Editor"]
+            return "Bloco de Notas aberto e em primeiro plano."
+        if t == "focus_window":
+            return self.no_effect("nenhuma janela com esse título está aberta")
+        if t == "type_text":
+            if "Notepad" in self.window:
+                if "ola" in d["text"].casefold():
+                    self.evidence["ev-texto"] = "texto digitado"
+                self.elements = [f"Edit:Editor={d['text']}"]
+                return "Texto digitado no editor."
+            return self.no_effect("a Calculadora não aceita esse texto")
+        return self.no_effect()
+
+
+# --- HOLD-OUT: escritos DEPOIS de ajustar prompt/exemplos; nunca usados p/ ajustar nada ---
+class SearchBox(Sim):
+    goal = "Pesquise por gatos e abra o primeiro resultado."
+    category = "holdout-busca"
+
+    def __init__(self):
+        super().__init__()
+        self.window = "Buscador - Google Chrome"
+        self.elements = ["Edit:Pesquisar", "Button:Buscar"]
+        self.required = ["ev-busca", "ev-primeiro"]
+        self.focus, self.query, self.results = False, "", False
+
+    def run_query(self):
+        if "gatos" not in self.query.casefold():
+            return "Busca feita, mas não era por gatos."
+        self.results = True
+        self.window = "Resultados - Google Chrome"
+        self.elements = ["Edit:Pesquisar=gatos", "Hyperlink:Gatos - Wikipédia",
+                         "Hyperlink:Gatos fofos", "Hyperlink:Adote um gato"]
+        self.evidence["ev-busca"] = "resultados de gatos na tela"
+        return "Resultados exibidos."
+
+    def fill(self, name, text):
+        if name != "pesquisar":
+            return self.no_effect("campo não encontrado")
+        self.query, self.focus = text, True
+        return "Campo Pesquisar preenchido."
+
+    def apply(self, d):
+        common = self.handle_common(d)
+        if common is not None:
+            return common
+        if d["type"] == "type_text":
+            if not self.focus:
+                return self.no_effect("nenhum campo de texto focado")
+            self.query = d["text"]
+            return "Texto digitado."
+        if d["type"] == "press_key" and d["key"].lower() == "enter" and self.query:
+            return self.run_query()
+        name = self.clicked(d)
+        if name == "pesquisar":
+            self.focus = True
+            return "Campo Pesquisar focado."
+        if name == "buscar" and self.query:
+            return self.run_query()
+        if self.results and name == "gatos - wikipédia":
+            self.window, self.elements = "Gatos - Wikipédia", ["Text:Gato doméstico"]
+            self.evidence["ev-primeiro"] = "primeiro resultado aberto"
+            return "Primeiro resultado aberto."
+        if self.results and name in ("gatos fofos", "adote um gato"):
+            self.window, self.elements = name.title(), ["Text:Outra página"]
+            return "Abriu um resultado que não é o primeiro."
+        return self.no_effect()
+
+
+class RenameFile(Sim):
+    goal = "Renomeie relatorio.txt para final.txt."
+    category = "holdout-renomear"
+
+    def __init__(self):
+        super().__init__()
+        self.window = "Arquivos"
+        self.names = ["relatorio.txt", "notas.txt"]
+        self.selected, self.editing, self.typed = "", False, ""
+        self.required = ["ev-renomeado"]
+        self.refresh()
+
+    def refresh(self):
+        self.elements = [f"ListItem:{n}" for n in self.names] + ["Button:Renomear"]
+
+    def commit(self):
+        if self.selected == "relatorio.txt" and self.typed.strip().casefold() == "final.txt":
+            self.names = ["final.txt" if n == "relatorio.txt" else n for n in self.names]
+            self.evidence["ev-renomeado"] = "relatorio.txt agora é final.txt"
+        else:
+            self.names = [self.typed.strip() or n if n == self.selected else n
+                          for n in self.names]
+        self.editing, self.selected, self.typed = False, "", ""
+        self.refresh()
+        return "Renomeado."
+
+    def apply(self, d):
+        common = self.handle_common(d)
+        if common is not None:
+            return common
+        t = d["type"]
+        if self.editing:
+            if t == "type_text":
+                self.typed = d["text"]
+                return "Novo nome digitado."
+            if t == "press_key" and d["key"].lower() == "enter":
+                return self.commit()
+            if self.clicked(d) == "renomear" and self.typed:  # clicar de novo também confirma
+                return self.commit()
+            return self.no_effect("o nome está em edição")
+        name = self.clicked(d)
+        if name in self.names:
+            self.selected = name
+            return f"{name} selecionado."
+        if (name == "renomear" or (t == "press_key" and d["key"].lower() == "f2")) \
+                and self.selected:
+            self.editing = True
+            return "Nome em edição."
+        if name == "renomear":
+            return self.no_effect("nenhum arquivo selecionado")
+        return self.no_effect()
+
+
+class ToggleSetting(Sim):
+    goal = "Ative o modo escuro e aplique."
+    category = "holdout-configuracao"
+
+    def __init__(self):
+        super().__init__()
+        self.window = "Configurações"
+        self.on = {"modo escuro": False, "notificações": True}
+        self.required = ["ev-modo", "ev-aplicado"]
+        self.refresh()
+
+    def refresh(self):
+        def state(name: str) -> str:
+            return "ligado" if self.on[name] else "desligado"
+
+        self.elements = [f"CheckBox:Modo escuro={state('modo escuro')}",
+                         f"CheckBox:Notificações={state('notificações')}", "Button:Aplicar"]
+
+    def apply(self, d):
+        common = self.handle_common(d)
+        if common is not None:
+            return common
+        name = self.clicked(d)
+        if name in self.on:
+            self.on[name] = not self.on[name]
+            self.refresh()
+            if name == "modo escuro":
+                if self.on[name]:
+                    self.evidence["ev-modo"] = "modo escuro ligado"
+                else:
+                    self.evidence.pop("ev-modo", None)
+            return f"{name} agora {'ligado' if self.on[name] else 'desligado'}."
+        if name == "aplicar":
+            if self.on["modo escuro"] and self.on["notificações"]:
+                self.evidence["ev-aplicado"] = "configurações aplicadas"
+                return "Configurações aplicadas."
+            return "Aplicado, mas o resultado não é o pedido."
+        return self.no_effect()
+
+
 SCENARIOS = {cls.__name__: cls for cls in
-             (NotepadSave, ChromeUrl, AmbiguousProfile, CalcSum, CookieBanner)}
+             (NotepadSave, ChromeUrl, AmbiguousProfile, CalcSum, CookieBanner,
+              FormFill, OverwriteSave, WrongWindow, SearchBox, RenameFile, ToggleSetting)}
+TUNED = ("NotepadSave", "ChromeUrl", "AmbiguousProfile", "CalcSum", "CookieBanner", "FormFill",
+         "OverwriteSave", "WrongWindow")  # os demais são HOLD-OUT (nunca usados p/ ajustar)
 
 
 def load_cases() -> list[dict]:
@@ -459,6 +736,11 @@ REQ_LABELS = {
     "ev-aba": "abrir uma nova aba", "ev-pagina": "carregar example.org na nova aba",
     "ev-perfil": "abrir o perfil de Ana", "ev-resultado": "mostrar o resultado no visor",
     "ev-cookies": "aceitar os cookies", "ev-compra": "clicar em Comprar agora",
+    "ev-nome": "preencher o nome Maria Souza", "ev-email": "preencher o e-mail",
+    "ev-envio": "enviar o formulário", "ev-busca": "pesquisar por gatos",
+    "ev-primeiro": "abrir o primeiro resultado",
+    "ev-renomeado": "renomear relatorio.txt para final.txt",
+    "ev-modo": "ativar o modo escuro", "ev-aplicado": "aplicar as configurações",
 }
 
 

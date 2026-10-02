@@ -327,6 +327,43 @@ def parse_qwen_grounding(text: str) -> VisualAction:
     raise ValueError(f"Qwen grounding inválido: {text[:200]!r}")
 
 
+# Prompts de grounding por família (medidos na bateria `ground`: cada modelo obedece ao SEU formato).
+#  json   protocolo histórico de produção: {"x","y"} em 0..1
+#  p2d    nativo do Qwen3-VL: {"point_2d":[x,y]} em 0..1000
+#  pyauto nativo dos especialistas GUI (MAI-UI, GUI-Owl): click(x, y) em 0..1000
+# Medido: todos respondem em 0..1000 mesmo quando o prompt pede pixels (pixel => 0..12% de acerto).
+GROUNDING_PROMPTS = {
+    "json": (QWEN_GROUNDING_SYSTEM, "Instruction: {instruction}\nReturn ONLY the JSON point."),
+    "p2d": ("You are a GUI grounding model. Locate the UI element the user describes and answer "
+            "with ONLY its center as JSON: {\"point_2d\": [x, y]} with x and y in 0..1000 "
+            "(relative to the image width and height). If it is not visible answer "
+            "{\"point_2d\": null}.", "Locate: {instruction}"),
+    "pyauto": ("You are a GUI agent. Given a screenshot and an instruction, answer with ONLY one "
+               "call: click(x, y) where x and y are the element center in 0..1000 (relative to "
+               "the image width and height). If the element is not visible answer: not visible.",
+               "Instruction: {instruction}"),
+}
+PROTOCOLS = tuple(GROUNDING_PROMPTS)
+
+
+def default_protocol(model: str) -> str:
+    """Protocolo de grounding do modelo (puro): especialistas GUI -> pyauto, Qwen3-VL -> p2d,
+    o resto -> json (histórico). Medido em 01/10: Qwen3-VL-2B 39%->77%, MAI-UI 0%->82%,
+    GUI-Owl 11%->77%. Qwen3.5 não melhora com p2d, por isso continua em json."""
+    name = str(model or "").lower().replace("_", "-")
+    if "mai-ui" in name or "gui-owl" in name:
+        return "pyauto"
+    if "qwen3-vl" in name:
+        return "p2d"
+    return "json"
+
+
+def is_grounding_family(model: str) -> bool:
+    """Modelos que falam o JSON/point de grounding próprio (Qwen*, GUI-Owl, MAI-UI)."""
+    name = str(model or "").lower()
+    return any(k in name for k in ("qwen", "gui-owl", "mai-ui"))
+
+
 # --- grounding tolerante a formato/escala + zoom em duas etapas ---------------------------------
 COORD_MODES = ("unit", "auto", "1000", "pixel")
 _NUM = r"-?\d+(?:\.\d+)?"
@@ -445,13 +482,18 @@ class QwenGroundingAdapter:
     def __init__(self, base_url: str = "http://127.0.0.1:8082/v1",
                  model: str = "Qwen3-VL-2B-Instruct",
                  timeout_s: float = 180.0, max_long_edge: int = 1024,
-                 zoom: bool = False, coords: str = "unit", zoom_frac: float = 0.35):
+                 zoom: bool = False, coords: str | None = None, zoom_frac: float = 0.35,
+                 protocol: str | None = None):
         self.base_url = base_url.rstrip("/")
         self.model = model
         self.timeout_s = timeout_s
         self.max_long_edge = max_long_edge
-        # Padrão = comportamento histórico (0..1 estrito, 1 chamada). `zoom` e `coords=auto`
-        # só devem ligar depois de medidos na bateria `ground` do model_bench.
+        # protocolo/escala: derivados do modelo quando não informados (ver default_protocol).
+        # `zoom` ficou desligado: na bateria `ground` piorou todos os modelos medidos.
+        self.protocol = protocol or default_protocol(model)
+        if self.protocol not in PROTOCOLS:
+            raise ValueError(f"vision.protocol inválido: {self.protocol!r}; use {PROTOCOLS}")
+        coords = coords or ("unit" if self.protocol == "json" else "1000")
         if coords not in COORD_MODES:
             raise ValueError(f"vision.coords inválido: {coords!r}; use {COORD_MODES}")
         self.zoom, self.coords, self.zoom_frac = bool(zoom), coords, float(zoom_frac)
@@ -494,14 +536,15 @@ class QwenGroundingAdapter:
         return parse_point_any(content, size, self.coords), (time.perf_counter() - t0) * 1000
 
     def _ask(self, b64: str, instruction: str, history: list[str] | None) -> str:
-        user_text = f"Instruction: {instruction}\nReturn ONLY the JSON point."
+        system, template = GROUNDING_PROMPTS[self.protocol]
+        user_text = template.format(instruction=instruction)
         if history:
             seq = "\n".join(f"- {h[:120]}" for h in history[-3:])
             user_text = (f"Recent actions:\n{seq}\n{user_text}")
         payload = {
             "model": self.model,
             "messages": [
-                {"role": "system", "content": QWEN_GROUNDING_SYSTEM},
+                {"role": "system", "content": system},
                 {"role": "user", "content": [
                     {"type": "text", "text": user_text},
                     {"type": "image_url",

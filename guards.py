@@ -16,6 +16,11 @@ vá ir va go selecione select escolha choose perfil profile conta account botão
 link item menu opção opcao option""".split())
 
 
+# O pedido que escolhe por posição ("o primeiro resultado") já distingue os itens: sem veto.
+_BY_POSITION = frozenset("""primeiro primeira segundo segunda terceiro terceira ultimo ultima
+first second third last qualquer any whichever 1o 2o 3o""".split())
+
+
 def _tokens(text: str) -> set[str]:
     folded = unicodedata.normalize("NFKD", text.casefold())
     folded = "".join(c for c in folded if not unicodedata.combining(c))
@@ -30,6 +35,8 @@ def goal_ambiguity(goal: str, target: str, names: list[str]) -> list[str]:
     Ex.: "Abra o perfil de Ana" com {"Ana pessoal", "Ana trabalho"}.
     """
     want = _tokens(goal)
+    if want & _BY_POSITION or re.search(r"\b[1-9]\s*[ºo°]", goal.casefold()):
+        return []
     mine = _tokens(target)
     cited = mine & want
     if not cited or not (mine - want):

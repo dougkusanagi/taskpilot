@@ -21,6 +21,7 @@ from PIL import Image
 from evals import model_bench as bench
 from evals.model_bench import Suite
 from vocaela import (
+    GROUNDING_PROMPTS,
     QWEN_GROUNDING_SYSTEM,
     _prep_image,
     parse_point_any,
@@ -66,17 +67,8 @@ def image_b64(case: dict) -> str:
 
 # Prompts de grounding. `prod` é o de produção; os outros pedem o formato nativo de cada família
 # (o parser tolerante entende todos): point_2d 0..1000 (Qwen3-VL) e click(x, y) (GUI-Owl).
-PROMPTS = {
-    "prod": (QWEN_GROUNDING_SYSTEM, "Instruction: {instruction}\nReturn ONLY the JSON point."),
-    "p2d": ("You are a GUI grounding model. Locate the UI element the user describes and answer "
-            "with ONLY its center as JSON: {\"point_2d\": [x, y]} with x and y in 0..1000 "
-            "(relative to the image width and height). If it is not visible answer "
-            "{\"point_2d\": null}.", "Locate: {instruction}"),
-    "pyauto": ("You are a GUI agent. Given a screenshot and an instruction, answer with ONLY one "
-               "call: click(x, y) where x and y are the pixel coordinates of the element center "
-               "in the image you see. If the element is not visible answer: not visible.",
-               "Instruction: {instruction}"),
-}
+PROMPTS = {"prod": GROUNDING_PROMPTS["json"], "p2d": GROUNDING_PROMPTS["p2d"],
+           "pyauto": GROUNDING_PROMPTS["pyauto"]}
 
 
 def messages_for(prompt: str, instruction: str, b64: str) -> list[dict]:
@@ -195,8 +187,8 @@ def ground_suite(features: tuple[str, ...] = ()) -> Suite:
     unknown = feats - {"zoom", "auto", "k1000", "pixel", "p2d", "pyauto"}
     if unknown:
         raise ValueError(f"features de ground desconhecidas: {sorted(unknown)}")
-    coords = "auto" if "auto" in feats else "1000" if "k1000" in feats else \
-        "pixel" if "pixel" in feats else ("auto" if feats & {"p2d", "pyauto", "zoom"} else "unit")
+    coords = ("auto" if "auto" in feats else "pixel" if "pixel" in feats else
+              "1000" if "k1000" in feats or feats & {"p2d", "pyauto", "zoom"} else "unit")
     prompt = "p2d" if "p2d" in feats else "pyauto" if "pyauto" in feats else "prod"
     if coords == "unit" and prompt == "prod" and not feats:
         return SUITE

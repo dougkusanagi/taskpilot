@@ -163,6 +163,11 @@ FEWSHOT_BASE = [
     'Goal: Delete the old backup | UI elements: Button:Delete backup 2023, '
     'Button:Delete backup 2024\n=> {"type":"ask","text":"Which backup should I delete: '
     '2023 or 2024?"}',
+    'Goal: Type "hello" in the comment box and post it | UI elements: Edit:Comment, '
+    'Button:Post | no field has focus yet\n=> {"type":"uia_click","target":"Comment"}',
+    'Goal: Type "hello" in the comment box and post it | UI elements: Edit:Comment=hello, '
+    'Button:Post | last result: text typed (the field already shows it)\n=> '
+    '{"type":"uia_click","target":"Post"}',
     'Goal: Turn on dark mode | Task state: pending: none | confirmed evidence: E1=dark mode '
     'switch is on\n=> {"type":"done","evidences":["E1"]}',
     'Goal: Turn on dark mode | Task state: pending: confirm result | no confirmed evidence yet'
@@ -337,7 +342,7 @@ _SINGLE_KEYS = [
 ] + [f"f{i}" for i in range(1, 13)]
 _HOTKEY_PATTERN = (
     r"^(ctrl|alt|shift|win)(\+(ctrl|alt|shift|win))*\+"
-    r"([a-z0-9]|f[1-9]|f1[0-2]|tab|enter|esc|space|home|end|pageup|pagedown|delete|backspace|"
+    r"([a-z0-9=,./;-]|f[1-9]|f1[0-2]|tab|enter|esc|space|home|end|pageup|pagedown|delete|backspace|"
     r"left|right|up|down)$"
 )
 
@@ -606,7 +611,7 @@ class MiniCPMPlanner:
         feats = set(self.features)
         kwargs: dict = {}
         if "dynschema" in feats:
-            kwargs.update(names=list(ui_names), apps=list(PLANNER_APPS),
+            kwargs.update(names=list(ui_names[:40]), apps=list(PLANNER_APPS),  # = nomes do prompt
                           allow_skill=bool(skills_catalog))
             if evidence_ids is not None:
                 kwargs["evidence_ids"] = list(evidence_ids)

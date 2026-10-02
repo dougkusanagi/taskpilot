@@ -6,6 +6,7 @@
 #   scripts/bench-modelos.sh                      # SUITE=text (padrão), 3 repetições
 #   SUITE=production scripts/bench-modelos.sh     # prompt real do planner (reasoning off, 256 tok)
 #   SUITE=trajectory scripts/bench-modelos.sh     # cenários multi-passo em simulador
+#   FEATURES=dynschema,fewshot,plan SUITE=trajectory scripts/bench-modelos.sh   # com recursos
 #   SUITE=ground scripts/bench-modelos.sh         # localizar elementos em screenshots (visão)
 #   scripts/bench-modelos.sh --quick              # smoke; argumentos extras vão ao bench
 #   MODELOS="qwen3.5-4b|native,off|max" scripts/bench-modelos.sh   # subconjunto
@@ -23,6 +24,7 @@ cd "$(dirname "$0")/.."
 
 SUITE=${SUITE:-text}
 REPS=${REPS:-3}
+FEATURES=${FEATURES:-}   # recursos do planner/visão, ex.: FEATURES=dynschema,fewshot,plan
 CONTEXT=8192
 case "$SUITE" in
   text)
@@ -76,7 +78,7 @@ while IFS='|' read -r modelo variacoes gpu; do
   echo "================ $modelo [$variacoes] gpu=$gpu ($(date +%H:%M:%S)) ================"
   uv run python -m evals.model_bench --lmstudio --yes --suite "$SUITE" --gpu "$gpu" \
     --reps "$REPS" --max-tokens "$TOKENS" --context "$CONTEXT" --thinking "$variacoes" \
-    --model "$modelo" --out "$OUT/$slug" \
+    --features "$FEATURES" --model "$modelo" --out "$OUT/$slug" \
     --notes "$SUITE 6GB; $(nvidia-smi --query-gpu=name,memory.total --format=csv,noheader 2>/dev/null)" \
     "$@" 2>&1 | tee "$OUT/$slug.log"
   code=${PIPESTATUS[0]}

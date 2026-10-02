@@ -96,13 +96,62 @@ class TestZoom(unittest.TestCase):
 
 
 class TestAdapterConfig(unittest.TestCase):
-    def test_defaults_keep_historical_behaviour(self):
-        a = v.QwenGroundingAdapter()
-        self.assertEqual((a.zoom, a.coords), (False, "unit"))
+    def test_protocol_is_derived_from_the_model_family(self):
+        for model, want in (("Qwen3-VL-2B-Instruct", "p2d"), ("qwen3-vl-4b-instruct", "p2d"),
+                            ("MAI-UI-2B", "pyauto"), ("gui-owl-1.5-2b-instruct", "pyauto"),
+                            ("Qwen3.5-4B", "json"), ("Vocaela-2", "json")):
+            self.assertEqual(v.default_protocol(model), want, model)
+        self.assertEqual(v.QwenGroundingAdapter().protocol, "p2d")  # modelo padrão: Qwen3-VL-2B
 
-    def test_invalid_coords_mode_fails_early(self):
+    def test_scale_follows_the_protocol_and_can_be_forced_back(self):
+        self.assertEqual(v.QwenGroundingAdapter(model="Qwen3.5-4B").coords, "unit")
+        # p2d e pyauto: os modelos respondem em 0..1000 (medido), não adivinhar em "auto"
+        self.assertEqual(v.QwenGroundingAdapter(model="MAI-UI-2B").coords, "1000")
+        self.assertEqual(v.QwenGroundingAdapter(model="Qwen3-VL-2B").coords, "1000")
+        old = v.QwenGroundingAdapter(protocol="json", coords="unit")  # volta ao histórico
+        self.assertEqual((old.protocol, old.coords, old.zoom), ("json", "unit", False))
+
+    def test_invalid_choices_fail_early(self):
         with self.assertRaises(ValueError):
             v.QwenGroundingAdapter(coords="foo")
+        with self.assertRaises(ValueError):
+            v.QwenGroundingAdapter(protocol="xml")
+
+    def test_families(self):
+        for name in ("Qwen3-VL-2B", "qwen3.5-4b", "GUI-Owl-1.5", "mai-ui-2b"):
+            self.assertTrue(v.is_grounding_family(name), name)
+        for name in ("Vocaela-2-500M", "MiniCPM5-2B"):
+            self.assertFalse(v.is_grounding_family(name), name)
+
+    def test_each_protocol_builds_its_own_prompt_and_parses_its_own_answer(self):
+        import base64
+        import io
+        import json as _json
+
+        sent = []
+
+        def fake_post(base, path, payload, timeout, retries=0):
+            sent.append(payload)
+            answers = {"json": '{"x": 0.5, "y": 0.25}', "p2d": '{"point_2d": [500, 250]}',
+                       "pyauto": "click(500, 250)"}
+            return ({"choices": [{"message": {"content": answers[self.proto]}}]}, 1.0)
+
+        import http_pool
+        original = http_pool.post_json
+        http_pool.post_json = fake_post
+        buf = io.BytesIO()
+        Image.new("RGB", (1024, 512)).save(buf, format="JPEG")
+        image = Image.open(io.BytesIO(buf.getvalue()))
+        try:
+            for self.proto in v.PROTOCOLS:
+                adapter = v.QwenGroundingAdapter(model="x-vl", protocol=self.proto)
+                va, _ms = adapter.act_sync(image, "Click OK")
+                self.assertEqual((va.x, va.y), (0.5, 0.25), self.proto)
+                system = sent[-1]["messages"][0]["content"]
+                self.assertEqual(system, v.GROUNDING_PROMPTS[self.proto][0])
+        finally:
+            http_pool.post_json = original
+        del base64, _json
 
 
 if __name__ == "__main__":

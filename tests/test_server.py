@@ -266,3 +266,68 @@ class TestBackendsAndMemoryFlags(unittest.TestCase):
         self.assertIn("--no-mmproj-offload", args)
         with self.assertRaises(ValueError):
             server._server_args("planner", Path("p.gguf"), None, 8091, self.cfg(kv_cache="q2"))
+
+
+class TestRegistryAndProfiles(unittest.TestCase):
+    def test_registry_resolves_model_names_loosely(self):
+        for name in ("MAI-UI-2B", "mai_ui_2b", " Mai-UI-2B "):
+            self.assertIs(server.registry_entry(name), server.GGUF_REGISTRY["mai-ui-2b"])
+        self.assertIsNotNone(server.registry_entry("Qwen3-4B-Instruct-2507"))
+        self.assertIsNone(server.registry_entry("MiniCPM5-2B"))
+
+    def test_every_registry_file_has_a_public_url_and_a_distinct_name(self):
+        names = set()
+        for key, entry in server.GGUF_REGISTRY.items():
+            for part in ("gguf", "mmproj"):
+                if part in entry:
+                    self.assertTrue(entry[part]["url"].startswith("https://huggingface.co/"), key)
+                    self.assertTrue(entry[part]["file"].endswith(".gguf"), key)
+                    self.assertNotIn(entry[part]["file"], names)
+                    names.add(entry[part]["file"])
+
+    def downloads(self, cfg):
+        got = []
+        with patch.object(server, "_download", lambda url, dest, **k: got.append(dest.name)), \
+                patch.object(Path, "exists", lambda self: self.name == "llama-server.exe"):
+            server.ensure_assets(progress=lambda *_: None, cfg=cfg)
+        return got
+
+    def test_dual_profile_downloads_planner_and_vision_with_projector(self):
+        cfg = cfgmod.apply_profile({"runtime": {}}, "P1")
+        got = self.downloads(cfg)
+        self.assertEqual(sorted(got), sorted([
+            "Qwen3-4B-Instruct-2507-Q4_K_M.gguf", "MAI-UI-2B.Q5_K_S.gguf",
+            "MAI-UI-2B.mmproj-f16.gguf"]))
+
+    def test_unified_profile_downloads_one_model_and_its_projector(self):
+        got = self.downloads(cfgmod.apply_profile({"runtime": {}}, "U3"))
+        self.assertEqual(sorted(got), sorted([
+            "Qwen3-VL-4B-Instruct-Q4_K_M.gguf", "mmproj-Qwen3-VL-4B-Instruct-F16.gguf"]))
+
+    def test_legacy_profiles_still_pick_their_old_files(self):
+        got = self.downloads(cfgmod.apply_profile({"runtime": {}}, "B1"))
+        self.assertIn("MiniCPM5-2B-Q4_K_M.gguf", got)
+        self.assertIn("Vocaela-2-500M-1024R2-Q8_0.gguf", got)
+
+    def test_profile_presets_apply_memory_flags_features_and_protocol(self):
+        cfg = cfgmod.apply_profile({}, "P1")
+        self.assertEqual(cfg["planner"]["features"], ["dynschema", "fewshot", "plan"])
+        self.assertEqual(cfg["vision"]["protocol"], "pyauto")
+        rt = cfg["runtime"]
+        self.assertEqual((rt["kv_cache"], rt["mmproj_offload"], rt["parallel"], rt["ctx"]),
+                         ("q8_0", False, 1, 4096))
+        args = server._server_args("vision", Path("v.gguf"), Path("m.gguf"), 8082, cfg)
+        for flag in ("--no-mmproj-offload", "-np", "-ctk", "-fa"):
+            self.assertIn(flag, args)
+        self.assertEqual(args[args.index("-ngl") + 1], "99")  # backend cuda => offload
+
+    def test_preset_is_copied_not_shared_between_runs(self):
+        a = cfgmod.apply_profile({}, "U3")
+        a["planner"]["features"].append("tools")
+        b = cfgmod.apply_profile({}, "U3")
+        self.assertEqual(b["planner"]["features"], ["dynschema", "fewshot", "plan"])
+
+    def test_legacy_profiles_have_no_preset(self):
+        cfg = cfgmod.apply_profile({}, "B1")
+        self.assertNotIn("features", cfg["planner"])
+        self.assertNotIn("backend", cfg.get("runtime", {}))

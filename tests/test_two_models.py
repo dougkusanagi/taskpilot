@@ -424,7 +424,7 @@ class TestQwenGrounding(unittest.TestCase):
         srv, seen = _make_server('{"x": 0.4, "y": 0.6}')
         try:
             base = f"http://127.0.0.1:{srv.server_port}/v1"
-            ad = vocaela.QwenGroundingAdapter(base_url=base)
+            ad = vocaela.QwenGroundingAdapter(base_url=base, protocol="json")  # protocolo histórico
             va, _ = ad.act_sync(Image.new("RGB", (50, 50), "white"),
                                 "Click the Continue shopping button")
             self.assertEqual((va.type, va.x, va.y), ("click", 0.4, 0.6))

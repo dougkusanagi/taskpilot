@@ -32,6 +32,32 @@ SOLUTIONS = {
         {"type": "uia_click", "target": "Aceitar todos"},
         {"type": "uia_click", "target": "Comprar agora"},
         {"type": "done", "evidences": ["E1", "E2"]}],
+    "FormFill": [
+        {"type": "uia_click", "target": "Nome"}, {"type": "type_text", "text": "Maria Souza"},
+        {"type": "uia_click", "target": "E-mail"},
+        {"type": "type_text", "text": "maria@exemplo.com"},
+        {"type": "uia_click", "target": "Enviar"},
+        {"type": "done", "evidences": ["E1", "E2", "E3"]}],
+    "OverwriteSave": [
+        {"type": "type_text", "text": "ola mundo"}, {"type": "hotkey", "keys": "ctrl+s"},
+        {"type": "type_text", "text": "nota.txt"}, {"type": "uia_click", "target": "Salvar"},
+        {"type": "uia_click", "target": "Sim"},
+        {"type": "done", "evidences": ["E1", "E2"]}],
+    "WrongWindow": [
+        {"type": "open_app", "app": "notepad"}, {"type": "type_text", "text": "ola"},
+        {"type": "done", "evidences": ["E1"]}],
+    "SearchBox": [
+        {"type": "uia_click", "target": "Pesquisar"}, {"type": "type_text", "text": "gatos"},
+        {"type": "press_key", "key": "enter"},
+        {"type": "uia_click", "target": "Gatos - Wikipédia"},
+        {"type": "done", "evidences": ["E1", "E2"]}],
+    "RenameFile": [
+        {"type": "uia_click", "target": "relatorio.txt"}, {"type": "uia_click", "target": "Renomear"},
+        {"type": "type_text", "text": "final.txt"}, {"type": "press_key", "key": "enter"},
+        {"type": "done", "evidences": ["E1"]}],
+    "ToggleSetting": [
+        {"type": "uia_click", "target": "Modo escuro"}, {"type": "uia_click", "target": "Aplicar"},
+        {"type": "done", "evidences": ["E1", "E2"]}],
 }
 
 
@@ -260,9 +286,6 @@ class TestNewToolsInSimulator(unittest.TestCase):
         self.assertNotIn("done", types)  # nenhuma evidência confirmada ainda
 
 
-if __name__ == "__main__":
-    unittest.main()
-
 
 class TestChecklistVariants(unittest.TestCase):
     def test_three_checklist_modes_in_the_prompt(self):
@@ -345,4 +368,113 @@ class TestEquivalentPathsV2(unittest.TestCase):
             {"type": "uia_click", "target": "Barra de endereço"},
             {"type": "type_text", "text": "example.org"}, {"type": "press_key", "key": "enter"},
             {"type": "done", "evidences": ["E1", "E2"]}])
+        self.assertTrue(row["passed"], row["errors"])
+
+
+class TestHarderScenarios(unittest.TestCase):
+    def run_scenario(self, name, actions, features=()):
+        with scripted_client(lambda n: actions if n == name else []) as client:
+            return tb.make_run_case(features)(client, "http://127.0.0.1/v1", "fake",
+                                              {"id": name}, SETTINGS)
+
+    def test_form_with_fill_tool_is_three_steps_shorter(self):
+        row = self.run_scenario("FormFill", [
+            {"type": "fill", "target": "Nome", "text": "Maria Souza"},
+            {"type": "fill", "target": "E-mail", "text": "maria@exemplo.com"},
+            {"type": "uia_click", "target": "Enviar"},
+            {"type": "done", "evidences": ["E1", "E2", "E3"]}])
+        self.assertTrue(row["passed"], row["errors"])
+        self.assertEqual(row["steps"], 4)
+
+    def test_typing_without_a_focused_field_does_nothing_and_wrong_values_are_not_evidence(self):
+        row = self.run_scenario("FormFill", [
+            {"type": "type_text", "text": "Maria Souza"},
+            {"type": "uia_click", "target": "Nome"}, {"type": "type_text", "text": "Maria"},
+            {"type": "uia_click", "target": "Enviar"}])
+        self.assertTrue(row["transcript"][0]["result"].startswith("no visible effect"))
+        self.assertIn("Aviso", row["transcript"][3]["result"])
+        self.assertFalse(row["passed"])
+
+    def test_overwrite_confirmation_blocks_until_answered(self):
+        row = self.run_scenario("OverwriteSave", [
+            {"type": "type_text", "text": "ola mundo"}, {"type": "save_as", "text": "nota.txt"},
+            {"type": "hotkey", "keys": "ctrl+t"}, {"type": "uia_click", "target": "Sim"},
+            {"type": "done", "evidences": ["E1", "E2"]}])
+        self.assertIn("confirmação de substituição aberta", row["transcript"][1]["result"])
+        self.assertIn("bloqueia", row["transcript"][2]["result"])
+        self.assertTrue(row["passed"], row["errors"])
+
+    def test_declining_the_overwrite_returns_to_the_save_dialog(self):
+        row = self.run_scenario("OverwriteSave", [
+            {"type": "type_text", "text": "ola mundo"}, {"type": "save_as", "text": "nota.txt"},
+            {"type": "uia_click", "target": "Não"}])
+        self.assertIn("recusada", row["transcript"][2]["result"])
+
+    def test_wrong_window_needs_open_app_not_focus_window(self):
+        bad = self.run_scenario("WrongWindow", [
+            {"type": "focus_window", "target": "Bloco de Notas"},
+            {"type": "type_text", "text": "ola"}])
+        self.assertTrue(bad["transcript"][0]["result"].startswith("no visible effect"))
+        self.assertFalse(bad["passed"])
+
+
+if __name__ == "__main__":
+    unittest.main()
+
+
+class TestHoldoutScenarios(unittest.TestCase):
+    def run_scenario(self, name, actions):
+        with scripted_client(lambda n: actions if n == name else []) as client:
+            return tb.run_case(client, "http://127.0.0.1/v1", "fake", {"id": name}, SETTINGS)
+
+    def test_holdout_is_separated_from_the_tuned_set(self):
+        holdout = set(tb.SCENARIOS) - set(tb.TUNED)
+        self.assertEqual(holdout, {"SearchBox", "RenameFile", "ToggleSetting"})
+        for name in holdout:
+            self.assertTrue(tb.SCENARIOS[name].category.startswith("holdout"), name)
+
+    def test_open_the_first_result_is_not_vetoed_as_ambiguous(self):
+        row = self.run_scenario("SearchBox", SOLUTIONS["SearchBox"])
+        self.assertTrue(row["passed"], row["errors"])
+        self.assertEqual(row["wasted_actions"], 0)
+
+    def test_search_opening_another_result_does_not_satisfy_the_request(self):
+        row = self.run_scenario("SearchBox", [
+            {"type": "uia_click", "target": "Pesquisar"}, {"type": "type_text", "text": "gatos"},
+            {"type": "press_key", "key": "enter"}, {"type": "uia_click", "target": "Gatos fofos"},
+            {"type": "done", "evidences": ["E1"]}])
+        self.assertFalse(row["passed"])
+
+    def test_rename_needs_the_right_file_and_name_and_selection_first(self):
+        early = self.run_scenario("RenameFile", [{"type": "uia_click", "target": "Renomear"}])
+        self.assertTrue(early["transcript"][0]["result"].startswith("no visible effect"))
+        wrong = self.run_scenario("RenameFile", [
+            {"type": "uia_click", "target": "relatorio.txt"}, {"type": "press_key", "key": "f2"},
+            {"type": "type_text", "text": "outro.txt"}, {"type": "press_key", "key": "enter"},
+            {"type": "done", "evidences": ["E1"]}])
+        self.assertFalse(wrong["passed"])
+
+    def test_clicking_the_wrong_file_is_vetoed_by_the_request(self):
+        row = self.run_scenario("RenameFile", [{"type": "uia_click", "target": "notas.txt"}])
+        self.assertTrue(row["transcript"][0]["result"].startswith("vetado: o pedido"))
+
+    def test_toggle_twice_undoes_it_and_apply_before_enabling_is_not_enough(self):
+        row = self.run_scenario("ToggleSetting", [
+            {"type": "uia_click", "target": "Modo escuro"},
+            {"type": "uia_click", "target": "Modo escuro"},
+            {"type": "uia_click", "target": "Aplicar"}])
+        self.assertIn("agora desligado", row["transcript"][1]["result"])
+        self.assertFalse(row["passed"])
+
+
+class TestRenameConfirmedByButton(unittest.TestCase):
+    def test_clicking_rename_again_confirms_like_many_real_dialogs(self):
+        with scripted_client(lambda n: [
+                {"type": "uia_click", "target": "relatorio.txt"},
+                {"type": "uia_click", "target": "Renomear"},
+                {"type": "type_text", "text": "final.txt"},
+                {"type": "uia_click", "target": "Renomear"},
+                {"type": "done", "evidences": ["E1"]}] if n == "RenameFile" else []) as client:
+            row = tb.run_case(client, "http://127.0.0.1/v1", "fake", {"id": "RenameFile"},
+                              SETTINGS)
         self.assertTrue(row["passed"], row["errors"])

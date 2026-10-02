@@ -18,6 +18,7 @@ Migra config.json legado (base_url/vision_model) automaticamente.
 """
 from __future__ import annotations
 
+import copy
 import json
 from pathlib import Path
 
@@ -44,9 +45,11 @@ DEFAULTS: dict = {
         "base_url": "http://127.0.0.1:8082/v1",
         "model": "Vocaela-2-500M-1024R2",
         "timeout_s": 180,
-        # Só perfis Qwen: zoom em 2 etapas e aceitar 0..1000/pixels (ver bateria `ground`).
+        # Perfis Qwen/GUI-Owl/MAI-UI. "" = derivado do modelo (vocaela.default_protocol:
+        # pyauto p/ MAI-UI e GUI-Owl, p2d p/ Qwen3-VL, json p/ o resto). Zoom: piorou na medição.
+        "protocol": "",
+        "coords": "",
         "zoom": False,
-        "coords": "unit",
         "zoom_frac": 0.35,
     },
     # Ao abrir um navegador novo: flags que fazem o UIA enxergar o conteúdo da página.
@@ -124,6 +127,31 @@ PROFILES: dict = {
            "mode": "dual", "capabilities": ["text", "vision", "grounding",
                                             "structured_output"],
            "note": "Opcional: especialista GUI vs vencedor D1/D2"},
+    # --- perfis MEDIDOS em 01/10 (RTX 2060 6 GB): preset = o que ganhou nas baterias ---
+    "P1": {"planner": "Qwen3-4B-Instruct-2507", "vision": "MAI-UI-2B",
+           "mode": "dual", "capabilities": ["text", "vision", "grounding",
+                                            "structured_output"],
+           "note": "Planner 25/25 + localizador 80% sem cliques falsos; 2 processos ~5,3 GB",
+           "preset": {"planner": {"features": ["dynschema", "fewshot", "plan"]},
+                      "vision": {"protocol": "pyauto"},
+                      "runtime": {"backend": "cuda", "ctx": 4096, "parallel": 1,
+                                  "kv_cache": "q8_0", "mmproj_offload": False}}},
+    "P2": {"planner": "Qwen3-4B-Instruct-2507", "vision": "GUI-Owl-1.5-2B-Instruct",
+           "mode": "dual", "capabilities": ["text", "vision", "grounding",
+                                            "structured_output"],
+           "note": "Como P1 com GUI-Owl (75%); alternativa de especialista GUI",
+           "preset": {"planner": {"features": ["dynschema", "fewshot", "plan"]},
+                      "vision": {"protocol": "pyauto"},
+                      "runtime": {"backend": "cuda", "ctx": 4096, "parallel": 1,
+                                  "kv_cache": "q8_0", "mmproj_offload": False}}},
+    "U3": {"planner": "Qwen3-VL-4B-Instruct", "vision": "Qwen3-VL-4B-Instruct",
+           "mode": "unified", "capabilities": ["text", "vision", "grounding",
+                                               "structured_output"],
+           "note": "Um processo só (~5,1 GB): trajetórias 25/25 e localização 81%",
+           "preset": {"planner": {"features": ["dynschema", "fewshot", "plan"]},
+                      "vision": {"protocol": "p2d"},
+                      "runtime": {"backend": "cuda", "ctx": 4096, "parallel": 1,
+                                  "kv_cache": "q8_0", "mmproj_offload": True}}},
     "E1": {"planner": "Empero-Qwen3.8-2B-Distill", "vision": "Vocaela-2-500M-1024R2",
            "mode": "dual", "capabilities": ["text"],
            "note": "Opcional: avaliar como planner textual"},
@@ -146,6 +174,10 @@ def apply_profile(cfg: dict, name: str) -> dict:
     cfg["profile"] = key
     cfg.setdefault("planner", {})["model"] = PROFILES[key]["planner"]
     cfg.setdefault("vision", {})["model"] = PROFILES[key]["vision"]
+    # Perfis medidos trazem o preset vencedor (recursos do planner, protocolo de visão, flags de
+    # memória do runtime). Escolher o perfil é a intenção explícita: o preset vale sobre o default.
+    for section, values in PROFILES[key].get("preset", {}).items():
+        cfg.setdefault(section, {}).update(copy.deepcopy(values))
     return cfg
 
 
