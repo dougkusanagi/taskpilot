@@ -287,7 +287,8 @@ class TestRegistryAndProfiles(unittest.TestCase):
 
     def downloads(self, cfg):
         got = []
-        with patch.object(server, "_download", lambda url, dest, **k: got.append(dest.name)), \
+        with patch.object(server.sys, "platform", "win32"), \
+                patch.object(server, "_download", lambda url, dest, **k: got.append(dest.name)), \
                 patch.object(Path, "exists", lambda self: self.name == "llama-server.exe"):
             server.ensure_assets(progress=lambda *_: None, cfg=cfg)
         return got
@@ -331,3 +332,13 @@ class TestRegistryAndProfiles(unittest.TestCase):
         cfg = cfgmod.apply_profile({}, "B1")
         self.assertNotIn("features", cfg["planner"])
         self.assertNotIn("backend", cfg.get("runtime", {}))
+
+
+class TestPlatformGuard(unittest.TestCase):
+    def test_non_windows_fails_before_downloading_anything(self):
+        calls = []
+        with patch.object(server.sys, "platform", "linux"), \
+                patch.object(server, "_download", lambda *a, **k: calls.append(a)):
+            with self.assertRaisesRegex(RuntimeError, "só funcionam no Windows"):
+                server.ensure_assets(progress=lambda *_: None, cfg={})
+        self.assertEqual(calls, [])

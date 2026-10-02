@@ -407,6 +407,7 @@ class TestProfilesF4(unittest.TestCase):
                 patch.object(server, "MODELS_DIR", Path(td)),
                 patch.object(server, "LLAMA_EXE", Path(td) / "s.exe"),
                 patch.object(server, "_download") as dl,
+                patch.object(server.sys, "platform", "win32"),
             ):
                 (Path(td) / "s.exe").write_bytes(b"x")
                 dl.side_effect = lambda url, dest, **k: dest.write_bytes(b"g")

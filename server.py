@@ -20,6 +20,7 @@ import re
 import shutil
 import socket
 import subprocess
+import sys
 import time
 import urllib.parse
 import urllib.request
@@ -271,6 +272,14 @@ def ensure_assets(progress=print, cfg: dict | None = None) -> dict:
     Retorna Paths {exe, planner_gguf, vision_gguf, mmproj}.
     Erro honesto (RuntimeError) se download/extração falhar.
     """
+    if sys.platform != "win32":
+        # Os binários baixados são do Windows e o agente (UIA/pyautogui) só roda lá: falhar ANTES
+        # de baixar gigabytes que nunca vão executar.
+        raise RuntimeError(
+            "o runtime próprio e o agente só funcionam no Windows (baixa llama-server.exe). "
+            "Neste sistema, suba um llama-server/LM Studio e use --no-runtime "
+            "(só serve para as baterias de avaliação, não para controlar o desktop)."
+        )
     MODELS_DIR.mkdir(parents=True, exist_ok=True)
 
     backend = str((cfg or {}).get("runtime", {}).get("backend", "cpu"))
