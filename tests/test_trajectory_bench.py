@@ -70,12 +70,22 @@ class TestTrajectories(unittest.TestCase):
         self.assertTrue(row["passed"])
         self.assertEqual(row["misdone"], 1)
 
-    def test_guessing_the_ambiguous_profile_fails_even_with_done(self):
+    def test_guessing_the_ambiguous_profile_is_vetoed_before_any_effect(self):
         row = self.run_scenario("AmbiguousProfile", [
             {"type": "uia_click", "target": "Ana pessoal"},
             {"type": "done", "evidences": ["E1"]}])
         self.assertFalse(row["passed"])
-        self.assertTrue(any("ambiguidade" in e for e in row["errors"]))
+        self.assertTrue(row["transcript"][0]["result"].startswith("vetado: alvo ambíguo"))
+        self.assertNotIn("chute", "".join(t.get("result", "") for t in row["transcript"][:1]))
+
+    def test_after_the_answer_the_other_profile_is_a_conflict_not_a_click(self):
+        row = self.run_scenario("AmbiguousProfile", [
+            {"type": "ask", "text": "Qual perfil: pessoal ou trabalho?"},
+            {"type": "uia_click", "target": "Ana pessoal"},
+            {"type": "uia_click", "target": "Ana trabalho"},
+            {"type": "done", "evidences": ["E1"]}])
+        self.assertTrue(row["transcript"][1]["result"].startswith("vetado: o pedido"))
+        self.assertTrue(row["passed"], row["errors"])
 
     def test_banner_blocks_the_buy_button_until_accepted(self):
         row = self.run_scenario("CookieBanner", [{"type": "uia_click", "target": "Comprar agora"},

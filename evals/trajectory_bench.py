@@ -18,6 +18,7 @@ import time
 import httpx
 
 from evals import model_bench as bench
+from guards import goal_ambiguity, goal_conflict
 from planner import (
     PLAN_SCHEMA,
     PLAN_SYSTEM,
@@ -41,6 +42,10 @@ def label(decision: dict) -> str:
     if t == "fill":
         arg = f"{decision.get('target', '')}={decision.get('text', '')}"
     return f"{t}({str(arg)[:60]})" if arg else t
+
+
+class Veto(Exception):
+    """Ação recusada pelo Python antes de qualquer efeito (como o RuntimeError do loop real)."""
 
 
 class Sim:
@@ -81,14 +86,29 @@ class Sim:
         if d["type"] == "uia_click":
             want = name_of(d)
             want = self.ALIASES.get(want, want)
-            return want if want in names else None
+            return self.vetted(want) if want in names else None
         if d["type"] == "visual_action":
             text = " " + " ".join(re.findall(r"\w+|[+=]", d["instruction"].casefold())) + " "
             hits = [n for n in names if f" {n} " in text]
             hits += [self.ALIASES[a] for a in self.ALIASES
                      if f" {a} " in text and self.ALIASES[a] in names]
-            return max(hits, key=len) if hits else None
+            return self.vetted(max(hits, key=len)) if hits else None
         return None
+
+    def vetted(self, name: str) -> str:
+        """Mesmo veto do loop real: não adivinha entre itens que o pedido não distingue."""
+        shown = [strip_type_prefix(e.split("=", 1)[0]) for e in self.elements]
+        said = f"{self.goal} {self.answer}"  # a resposta do humano esclarece o pedido
+        full = next((x for x in shown if x.casefold() == name), name)
+        wanted = goal_conflict(said, full, shown)
+        if wanted:
+            raise Veto(f"o pedido (com a resposta do humano) indica {wanted[:3]}, não {name!r}; "
+                       "clique no item indicado")
+        rivals = goal_ambiguity(said, full, shown)
+        if rivals:
+            raise Veto(f"alvo ambíguo pelo pedido: {name!r} e {rivals[:3]} casam com o pedido e "
+                       "ele não diz qual; pergunte ao humano com ask, não escolha")
+        return name
 
     def handle_common(self, d: dict) -> str | None:
         """Ferramentas que valem em qualquer tela; None = deixa o cenário decidir."""
@@ -546,7 +566,10 @@ def make_run_case(features: tuple[str, ...] = ()):
                     row["errors"] = [why]
                     break
             else:
-                result = sim.apply(decision)
+                try:
+                    result = sim.apply(decision)
+                except Veto as veto:
+                    result = f"vetado: {veto}"
                 wasted += result.startswith("no visible effect")
                 sim.last = result
                 transcript.append({"step": step, "action": tag, "result": result})

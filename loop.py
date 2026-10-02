@@ -35,6 +35,7 @@ import state as statemod
 import uia
 import verification as verif
 from actions import execute
+from guards import goal_ambiguity, goal_conflict
 from obs import capture_for_vision
 from planner import MiniCPMPlanner, PlannerDecision, strip_type_prefix
 from schemas import Action, Decision
@@ -1062,6 +1063,23 @@ def _decide_planner(
     if dec.type == "uia_click":
         hit, note = _resolve_uia(items, dec.target or "", wrect, state_title=title)
         if hit is not None:
+            # Nunca adivinhar entre itens que o pedido não distingue (perfis de pessoas etc.).
+            said = " ".join(ctx.get("clarifications", []))
+            shown = [str(it.get("name") or "") for it in items]
+            wanted = goal_conflict(f"{instruction} {said}", strip_type_prefix(dec.target or ""),
+                                   shown)
+            if wanted:
+                raise RuntimeError(
+                    f"o pedido (com a resposta do humano) indica {wanted[:3]}, não "
+                    f"{dec.target!r}; clique no item indicado"
+                )
+            rivals = goal_ambiguity(f"{instruction} {said}", strip_type_prefix(dec.target or ""),
+                                    shown)
+            if rivals:
+                raise RuntimeError(
+                    f"alvo ambíguo pelo pedido: {dec.target!r} e {rivals[:3]} casam com o "
+                    "pedido e ele não diz qual; pergunte ao humano com ask, não escolha"
+                )
             return Decision(
                 action=hit, source="uia", confidence=None, reason=f'uia_click("{dec.target}")'
             ), t
@@ -1887,6 +1905,8 @@ def run(instruction: str, cfg: dict, dry_run: bool = False) -> dict:
                         answer = do_ask(question, cfg)
                         desc = f"ask({question[:60]}) => humano: {answer[:80]}"
                         tm["ask"] = {"question": question, "answer": answer}
+                        # a resposta esclarece o pedido: o veto de ambiguidade passa a considerá-la
+                        ctx.setdefault("clarifications", []).append(answer[:200])
                     # Resposta que casa com nome visível vira preferência
                     # lembrada (ex.: perfil do browser) — vale nos próximos.
                     try:

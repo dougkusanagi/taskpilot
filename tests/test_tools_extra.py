@@ -308,3 +308,36 @@ class TestPlanAndRecord(unittest.TestCase):
             lines = (Path(temp) / "sft.jsonl").read_text(encoding="utf-8").splitlines()
         self.assertEqual(len(lines), 1)
         self.assertIn('"run_result": "done"', lines[0])
+
+
+class TestAmbiguityVetoInLoop(unittest.TestCase):
+    ITEMS = [{"id": 0, "name": "Ana pessoal", "type": "Button", "bounds": [0, 0, 100, 30],
+              "context": ""},
+             {"id": 1, "name": "Ana trabalho", "type": "Button", "bounds": [0, 40, 100, 70],
+              "context": ""}]
+
+    def decide(self, goal, target, ctx=None):
+        original = loop.active_window_snapshot
+        loop.active_window_snapshot = lambda: (self.ITEMS, "Perfis", None)
+        try:
+            return loop.decide(goal, 3, ctx or {"hist_labels": []}, CFG,
+                               planner=FakePlanner(PlannerDecision(type="uia_click",
+                                                                   target=target)),
+                               vocaela=Boom())
+        finally:
+            loop.active_window_snapshot = original
+
+    def test_vague_request_vetoes_the_click_and_points_to_ask(self):
+        with self.assertRaisesRegex(RuntimeError, "pergunte ao humano com ask"):
+            self.decide("Abra o perfil de Ana", "Ana pessoal")
+
+    def test_the_humans_answer_to_ask_clarifies_the_request(self):
+        ctx = {"hist_labels": [], "clarifications": ["Ana trabalho"]}
+        dec, _ = self.decide("Abra o perfil de Ana", "Ana trabalho", ctx)
+        self.assertEqual(dec.source, "uia")
+        with self.assertRaisesRegex(RuntimeError, "indica .*Ana trabalho"):
+            self.decide("Abra o perfil de Ana", "Ana pessoal", ctx)  # contradiz a resposta
+
+    def test_specific_request_clicks_normally(self):
+        dec, _ = self.decide("Abra o perfil de Ana trabalho", "Ana trabalho")
+        self.assertEqual((dec.source, dec.action.type), ("uia", "click"))
