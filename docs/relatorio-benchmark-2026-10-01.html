@@ -1,0 +1,188 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Benchmark de modelos locais — 01/10/2026</title>
+<style>
+  :root {
+    --bg:#f6f7f9; --card:#fff; --ink:#1b2430; --mute:#5d6b7d; --line:#e2e6ec;
+    --a:#2f6fed; --good:#1f9d6b; --warn:#d98a00; --bad:#d4483b; --bar:#cfd8e6;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg:#12161c; --card:#1a2029; --ink:#e7ecf3; --mute:#9aa7b8; --line:#2a3340;
+            --a:#6a9bff; --good:#3ec28f; --warn:#f0b13a; --bad:#ff7a6b; --bar:#34404f; }
+  }
+  * { box-sizing:border-box }
+  body { margin:0; background:var(--bg); color:var(--ink);
+         font:16px/1.55 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif; }
+  main { max-width:980px; margin:0 auto; padding:28px 16px 64px }
+  h1 { font-size:1.7rem; margin:0 0 4px }
+  h2 { font-size:1.2rem; margin:36px 0 10px }
+  .sub { color:var(--mute); margin:0 0 20px }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:12px;
+          padding:16px 18px; margin:12px 0 }
+  .verdict { border-left:5px solid var(--warn) }
+  .grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(210px,1fr)); gap:12px }
+  .kpi b { display:block; font-size:1.7rem; line-height:1.1 }
+  .kpi span { color:var(--mute); font-size:.9rem }
+  .row { display:grid; grid-template-columns:minmax(150px,230px) 1fr 92px; gap:10px;
+         align-items:center; padding:4px 0; font-size:.92rem }
+  .row .name { overflow-wrap:anywhere }
+  .row .name small { color:var(--mute) }
+  .track { background:var(--bar); border-radius:6px; height:18px; position:relative; overflow:hidden }
+  .fill { height:100%; border-radius:6px }
+  .val { text-align:right; font-variant-numeric:tabular-nums; color:var(--mute) }
+  .legend { color:var(--mute); font-size:.85rem; margin:4px 0 8px }
+  table { width:100%; border-collapse:collapse; font-size:.92rem }
+  th,td { text-align:left; padding:6px 8px; border-bottom:1px solid var(--line); vertical-align:top }
+  th { color:var(--mute); font-weight:600 }
+  .tag { display:inline-block; padding:1px 8px; border-radius:99px; font-size:.78rem; font-weight:600;
+         border:1px solid currentColor }
+  .good { color:var(--good) } .warn { color:var(--warn) } .bad { color:var(--bad) }
+  ul { margin:6px 0 0; padding-left:20px } li { margin:4px 0 }
+  .foot { color:var(--mute); font-size:.85rem; margin-top:30px }
+  @media (max-width:560px) { .row { grid-template-columns:1fr 70px } .row .track { grid-column:1 / 3 } }
+</style>
+</head>
+<body>
+<main>
+  <h1>Benchmark de modelos locais para o taskpilot</h1>
+  <p class="sub">01/10/2026 · RTX 2060 6 GB · LM Studio · 1 modelo por vez · texto, prompt real do planner e localização em screenshots</p>
+
+  <div class="card verdict">
+    <b>Conclusão curta:</b> nenhum modelo está aprovado para o app. Há dois candidatos claros —
+    <b>Qwen3.5-4B</b> (melhor planejador) e <b>Qwen3-VL-4B-Instruct</b> (melhor localizador, 65%) —
+    mas os números caem bastante com o prompt de produção e a localização ainda erra 1 em cada 3 alvos.
+    O <b>MiniCPM5-2B</b> (planner atual, B1) ficou atrás dos Qwen em tudo que foi medido.
+    Os testes são offline (sem cliques reais), então isso reduz a incerteza mas não prova que o app funciona.
+  </div>
+
+  <div class="grid">
+    <div class="card kpi"><b>83%</b><span>Qwen3.5-4B planejando, com raciocínio (3,4 s por decisão)</span></div>
+    <div class="card kpi"><b>56%</b><span>mesmo modelo no prompt real do app, sem raciocínio (0,35 s)</span></div>
+    <div class="card kpi"><b>65%</b><span>Qwen3-VL-4B achando o elemento certo em screenshots (0,38 s)</span></div>
+    <div class="card kpi"><b>35%</b><span>MiniCPM5-2B (atual) no prompt real do app</span></div>
+  </div>
+
+  <h2>1. Planejar a próxima ação (32 cenas de texto × 3 repetições)</h2>
+  <p class="legend">Acerto da ação e dos argumentos. Prompt do próprio benchmark (um pouco mais favorável que o do app). “raciocínio” = o modelo pensa antes de responder.</p>
+  <div class="card" id="c-text"></div>
+  <ul>
+    <li>Desligar o raciocínio custa 10 a 15 pontos, mas a latência cai ~10×: o Qwen3.5-4B vai de 83% em 3,4 s para 72% em 0,33 s.</li>
+    <li>Os fracos em todos os modelos: <b>memória</b>, <b>recuperação</b> e <b>conclusão</b> (saber quando dar <code>done</code>).</li>
+    <li>O Qwen3-VL-4B-Thinking não tem modo sem raciocínio e derrubou o motor do LM Studio 7 vezes: descartado.</li>
+  </ul>
+
+  <h2>2. Com o prompt real do planner (as mesmas cenas)</h2>
+  <p class="legend">Sem raciocínio e com 256 tokens de saída, como o app roda. A queda mostra o quanto o resultado depende do prompt.</p>
+  <div class="card" id="c-prod"></div>
+  <ul>
+    <li>O Qwen3.5-4B é o único acima de 50%. O Qwen3-VL-4B cai de 75% para 34%: ele se saiu bem com o prompt do benchmark, não com o do app.</li>
+    <li>Isso aponta para o <b>prompt do planner como elo fraco</b>, tão importante quanto a escolha do modelo.</li>
+  </ul>
+
+  <h2>3. Achar o elemento na tela (37 alvos em 12 páginas × 3 repetições)</h2>
+  <p class="legend">Acerto = o ponto cai dentro da caixa do alvo. Protocolo de produção (ponto 0..1). Só o modelo vê os pixels; as caixas vêm da DOM no momento da captura.</p>
+  <div class="card" id="c-ground"></div>
+  <div class="card">
+    <b>Qwen3-VL-4B-Instruct por tipo de alvo</b>
+    <div id="c-cat" style="margin-top:8px"></div>
+    <p class="legend" style="margin-top:8px">Forte: alvos repetidos (tabela) e modais. Fraco: <b>alvos pequenos</b> e <b>botões só com ícone</b>. 3 cliques falsos em alvos inexistentes.</p>
+  </div>
+  <ul>
+    <li>Gemma 4, GUI-Owl e MAI-UI quase não pontuam com este protocolo: respondem em pixels ou em 0–1000, e o parser de produção só aceita 0–1. Um parser tolerante levaria o GUI-Owl de 11% a 28% e o Qwen3-VL de 65% a 68%; não muda o ranking.</li>
+    <li>O Qwen3.5-4B localiza razoavelmente só com raciocínio desligado (53%); ligado, estoura o limite de tokens em 77% das vezes.</li>
+  </ul>
+
+  <h2>4. Cabe em 6 GB?</h2>
+  <div class="card">
+    <table>
+      <tr><th>Situação</th><th>Resultado</th></tr>
+      <tr><td>Planner de texto (3 a 4,7 GB de pico)</td><td><span class="tag good">cabe</span> Qwen3.5-4B ~4,7 GB; Qwen3-4B ~4,5 GB; MiniCPM5-2B ~3,5 GB</td></tr>
+      <tr><td>Qwen3-VL-4B com imagem, contexto 8192</td><td><span class="tag bad">não cabe</span> falha ao alocar buffer na GPU (já 5,6 GB só com o modelo)</td></tr>
+      <tr><td>Qwen3-VL-4B com imagem, contexto 4096</td><td><span class="tag good">cabe</span> ~5,1 GB no total, incluindo ~0,75 GB do desktop</td></tr>
+      <tr><td>Planner 4B + localizador 4B ao mesmo tempo</td><td><span class="tag bad">não cabe</span> sugere perfil unificado (um modelo para os dois papéis)</td></tr>
+    </table>
+    <p class="legend" style="margin-top:8px">Pico medido por nvidia-smi: é a memória da GPU inteira (modelo + desktop + outros processos).</p>
+  </div>
+
+  <h2>5. O que sai disso</h2>
+  <div class="card">
+    <b>Dilema do perfil unificado:</b> o Qwen3.5-4B (sem raciocínio) planeja melhor (56% vs 34% no prompt real) mas localiza pior (53% vs 65%); o Qwen3-VL-4B é o inverso. Nenhum dos dois passa dos 70% nos dois papéis.
+    <ul>
+      <li><b>Não trocar o default B1 ainda.</b> Falta medir sequências de ações e o app de ponta a ponta.</li>
+      <li><b>Melhorar o prompt do planner</b> e medir de novo com a suíte <code>production</code> — é o ganho mais barato.</li>
+      <li><b>Parser de grounding tolerante</b> a escala e ajuste de prompt para cada família (Qwen usa 0–1000 nativamente).</li>
+      <li><b>Alvos pequenos/ícones</b>: testar recorte e zoom em duas etapas antes de clicar.</li>
+      <li><b>Instabilidade do LM Studio</b> com modelos que raciocinam muito (motor cai com “fetch failed”): relevante se for o runtime final.</li>
+    </ul>
+  </div>
+
+  <h2>6. Limites e o que ficou pendente</h2>
+  <div class="card">
+    <ul>
+      <li><b>Trajetórias (várias ações em sequência): sem resultado válido.</b> A primeira rodada deu 0/15 para todos, mas o simulador rejeitava caminhos legítimos (clique visual, menu Arquivo, teclado na calculadora). Corrigi (commit <code>fa40301</code>) e <b>ainda não rodei de novo</b>.</li>
+      <li>Tudo é offline: nenhum clique real, nenhum teste no Sandbox do Windows (gate R4).</li>
+      <li>Cenas escritas por nós e ajustadas após ver falhas; a bateria visual tem só 37 alvos. Diferenças pequenas (poucos pontos) são ruído.</li>
+      <li>Os avaliadores já tiveram falsos negativos corrigidos (perguntas, preço); podem existir outros.</li>
+      <li>Envio ao ZapFast não foi feito: o app não tem CLI/API e o Wayland impede automação segura.</li>
+    </ul>
+  </div>
+
+  <p class="foot">Dados: <code>runs/bench-serie-20261001-183807</code> (texto), <code>runs/bench-production-*</code>, <code>runs/bench-ground-*</code>. Código e testes commitados (362 testes verdes). Gerado automaticamente a partir dos resultados; os percentuais usam todas as tentativas, incluindo erros.</p>
+</main>
+<script>
+const col = p => p >= 75 ? 'var(--good)' : p >= 50 ? 'var(--a)' : p >= 30 ? 'var(--warn)' : 'var(--bad)';
+function bars(id, rows, note) {
+  const el = document.getElementById(id);
+  el.innerHTML = rows.map(r => `
+    <div class="row">
+      <div class="name">${r[0]}${r[3] ? ` <small>${r[3]}</small>` : ''}</div>
+      <div class="track"><div class="fill" style="width:${r[1]}%;background:${col(r[1])}"></div></div>
+      <div class="val">${r[1]}%${r[2] ? ' · ' + r[2] : ''}</div>
+    </div>`).join('');
+}
+bars('c-text', [
+  ['Qwen3.5-4B', 83, '3,4 s', 'raciocínio ligado'],
+  ['Qwen3-VL-4B-Thinking', 81, '6,8 s', 'sempre raciocina'],
+  ['Gemma 4 E2B', 76, '1,9 s', 'raciocínio ligado'],
+  ['Qwen3-VL-4B-Instruct', 75, '0,23 s', 'sem raciocínio'],
+  ['Gemma 4 E4B', 74, '5,7 s', 'raciocínio ligado'],
+  ['Qwen3.5-4B', 72, '0,33 s', 'raciocínio desligado'],
+  ['MiniCPM5-2B (atual)', 70, '6,2 s', 'raciocínio ligado'],
+  ['Qwen3-4B-2507', 66, '0,21 s', 'sem raciocínio'],
+  ['Gemma 4 E2B', 62, '0,37 s', 'raciocínio desligado'],
+  ['Gemma 4 E4B', 60, '1,8 s', 'raciocínio desligado'],
+  ['Nemotron 3 Nano 4B', 47, '1,0 s', 'raciocínio ligado'],
+  ['MiniCPM5-2B (atual)', 47, '0,24 s', 'raciocínio desligado'],
+]);
+bars('c-prod', [
+  ['Qwen3.5-4B', 56, '0,35 s', 'sem raciocínio'],
+  ['Gemma 4 E2B', 44, '1,6 s', '14 respostas truncadas'],
+  ['Qwen3-4B-2507', 41, '0,22 s'],
+  ['MiniCPM5-2B (atual)', 35, '0,21 s'],
+  ['Qwen3-VL-4B-Instruct', 34, '0,24 s'],
+  ['Nemotron 3 Nano 4B', 13, '0,35 s'],
+]);
+bars('c-ground', [
+  ['Qwen3-VL-4B-Instruct', 65, '0,38 s'],
+  ['Qwen3.5-4B', 53, '0,53 s', 'sem raciocínio · 13 erros de motor'],
+  ['Qwen3-VL-4B-Thinking', 41, '6,5 s', 'sempre raciocina'],
+  ['Qwen3.5-4B', 13, '16,6 s', 'raciocínio ligado · trunca'],
+  ['Gemma 4 E2B', 12, '0,56 s', 'raciocínio ligado'],
+  ['GUI-Owl 1.5 2B', 11, '0,23 s', '28% com parser tolerante'],
+  ['Gemma 4 E4B', 7, '1,7 s', 'raciocínio ligado'],
+  ['MAI-UI 2B', 0, '0,26 s', 'formato incompatível'],
+]);
+bars('c-cat', [
+  ['Alvo repetido (tabela)', 100, '12/12'],
+  ['Modal/overlay', 100, '9/9'],
+  ['Canvas sem DOM', 80, '12/15'],
+  ['Sites reais', 63, '30/48'],
+  ['Só ícone', 40, '6/15'],
+  ['Alvo pequeno', 25, '3/12'],
+]);
+</script>
+</body>
+</html>
