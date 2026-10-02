@@ -15,23 +15,23 @@ SOLUTIONS = {
     "NotepadSave": [
         {"type": "type_text", "text": "ola mundo"}, {"type": "hotkey", "keys": "ctrl+s"},
         {"type": "type_text", "text": "nota.txt"}, {"type": "uia_click", "target": "Salvar"},
-        {"type": "done", "evidences": ["ev-texto", "ev-arquivo"]}],
+        {"type": "done", "evidences": ["E1", "E2"]}],
     "ChromeUrl": [
         {"type": "hotkey", "keys": "ctrl+t"}, {"type": "type_text", "text": "example.org"},
         {"type": "press_key", "key": "enter"},
-        {"type": "done", "evidences": ["ev-aba", "ev-pagina"]}],
+        {"type": "done", "evidences": ["E1", "E2"]}],
     "AmbiguousProfile": [
         {"type": "ask", "text": "Qual perfil: Ana pessoal ou Ana trabalho?"},
         {"type": "uia_click", "target": "Button:Ana trabalho"},
-        {"type": "done", "evidences": ["ev-perfil"]}],
+        {"type": "done", "evidences": ["E1"]}],
     "CalcSum": [
         {"type": "uia_click", "target": "2"}, {"type": "uia_click", "target": "Mais"},
         {"type": "uia_click", "target": "3"}, {"type": "uia_click", "target": "Igual"},
-        {"type": "done", "evidences": ["ev-resultado"]}],
+        {"type": "done", "evidences": ["E1"]}],
     "CookieBanner": [
         {"type": "uia_click", "target": "Aceitar todos"},
         {"type": "uia_click", "target": "Comprar agora"},
-        {"type": "done", "evidences": ["ev-cookies", "ev-compra"]}],
+        {"type": "done", "evidences": ["E1", "E2"]}],
 }
 
 
@@ -65,7 +65,7 @@ class TestTrajectories(unittest.TestCase):
                 self.assertEqual(row["wasted_actions"], 0)
 
     def test_premature_done_is_refused_and_counted(self):
-        row = self.run_scenario("ChromeUrl", [{"type": "done", "evidences": ["ev-pagina"]},
+        row = self.run_scenario("ChromeUrl", [{"type": "done", "evidences": ["E1"]},
                                               *SOLUTIONS["ChromeUrl"]])
         self.assertTrue(row["passed"])
         self.assertEqual(row["misdone"], 1)
@@ -73,7 +73,7 @@ class TestTrajectories(unittest.TestCase):
     def test_guessing_the_ambiguous_profile_fails_even_with_done(self):
         row = self.run_scenario("AmbiguousProfile", [
             {"type": "uia_click", "target": "Ana pessoal"},
-            {"type": "done", "evidences": ["ev-perfil"]}])
+            {"type": "done", "evidences": ["E1"]}])
         self.assertFalse(row["passed"])
         self.assertTrue(any("ambiguidade" in e for e in row["errors"]))
 
@@ -99,7 +99,7 @@ class TestTrajectories(unittest.TestCase):
         row = self.run_scenario("CookieBanner", [
             {"type": "uia_click", "target": "Button:Aceitar todos"},
             {"type": "uia_click", "target": "Button:Comprar agora"},
-            {"type": "done", "evidences": ["ev-cookies", "ev-compra"]}])
+            {"type": "done", "evidences": ["E1", "E2"]}])
         self.assertTrue(row["passed"])
 
     def test_equivalent_paths_are_accepted(self):
@@ -107,23 +107,23 @@ class TestTrajectories(unittest.TestCase):
         paths = {
             "CookieBanner": [{"type": "visual_action", "instruction": "Click the Aceitar todos button"},
                              {"type": "visual_action", "instruction": "Clique em Comprar agora"},
-                             {"type": "done", "evidences": ["ev-cookies", "ev-compra"]}],
+                             {"type": "done", "evidences": ["E1", "E2"]}],
             "CalcSum": [{"type": "type_text", "text": "2+3"}, {"type": "press_key", "key": "enter"},
-                        {"type": "done", "evidences": ["ev-resultado"]}],
+                        {"type": "done", "evidences": ["E1"]}],
             "NotepadSave": [{"type": "type_text", "text": "ola mundo"},
                             {"type": "uia_click", "target": "Arquivo"},
                             {"type": "uia_click", "target": "Salvar"},
                             {"type": "type_text", "text": "nota.txt"},
                             {"type": "uia_click", "target": "Salvar"},
-                            {"type": "done", "evidences": ["ev-texto", "ev-arquivo"]}],
+                            {"type": "done", "evidences": ["E1", "E2"]}],
             "ChromeUrl": [{"type": "uia_click", "target": "Nova guia"},
                           {"type": "type_text", "text": "https://example.org"},
                           {"type": "press_key", "key": "enter"},
-                          {"type": "done", "evidences": ["ev-aba", "ev-pagina"]}],
+                          {"type": "done", "evidences": ["E1", "E2"]}],
             "AmbiguousProfile": [{"type": "ask", "text": "Qual perfil?"},
                                  {"type": "visual_action",
                                   "instruction": "Click the Ana trabalho button"},
-                                 {"type": "done", "evidences": ["ev-perfil"]}],
+                                 {"type": "done", "evidences": ["E1"]}],
         }
         for name, actions in paths.items():
             with self.subTest(name):
@@ -135,7 +135,7 @@ class TestTrajectories(unittest.TestCase):
         row = self.run_scenario("ChromeUrl", [
             {"type": "hotkey", "keys": "ctrl+l"}, {"type": "type_text", "text": "example.org"},
             {"type": "press_key", "key": "enter"},
-            {"type": "done", "evidences": ["ev-pagina"]}])
+            {"type": "done", "evidences": ["E1"]}])
         self.assertFalse(row["passed"])
         self.assertEqual(row["misdone"], 1)
 
@@ -148,9 +148,9 @@ class TestTrajectories(unittest.TestCase):
         messages = tb.step_messages(sim, ["type_text(ola)"])
         self.assertEqual(messages[0]["content"], bench.PLANNER_SYSTEM)
         text = messages[1]["content"]
-        self.assertIn("Pending requirements", text)
+        self.assertIn("pendências", text)
         self.assertIn("type_text(ola)", text)
-        self.assertNotIn("ev-arquivo = ", text)
+        self.assertNotIn("ev-arquivo", text)
 
     def test_runs_through_shared_runner_and_summarizes(self):
         with scripted_client(lambda n: SOLUTIONS[n]) as client:
@@ -160,6 +160,90 @@ class TestTrajectories(unittest.TestCase):
         extra = tb.extra_summary(rows)
         self.assertEqual(extra["Cenários concluídos"], f"{len(SOLUTIONS)}/{len(SOLUTIONS)}")
         self.assertGreater(rows[0]["tokens_per_s"], 0)
+
+
+class TestNewToolsInSimulator(unittest.TestCase):
+    def run_scenario(self, name, actions, features=()):
+        with scripted_client(lambda n: actions if n == name else []) as client:
+            return tb.make_run_case(features)(client, "http://127.0.0.1/v1", "fake",
+                                              {"id": name}, SETTINGS)
+
+    def test_fill_and_save_as_shorten_the_notepad_scenario(self):
+        row = self.run_scenario("NotepadSave", [
+            {"type": "fill", "target": "Editor", "text": "ola mundo"},
+            {"type": "save_as", "text": "nota.txt"},
+            {"type": "done", "evidences": ["E1", "E2"]}])
+        self.assertTrue(row["passed"], row["errors"])
+        self.assertEqual(row["steps"], 3)
+
+    def test_save_as_with_another_name_does_not_satisfy_the_request(self):
+        row = self.run_scenario("NotepadSave", [
+            {"type": "fill", "target": "Editor", "text": "ola mundo"},
+            {"type": "save_as", "text": "outro.txt"},
+            {"type": "done", "evidences": ["E1"]}])
+        self.assertFalse(row["passed"])
+        self.assertIn("pedido era nota.txt", row["transcript"][1]["result"])
+
+    def test_click_text_is_the_same_target_as_a_visual_click(self):
+        row = self.run_scenario("CookieBanner", [
+            {"type": "click_text", "text": "Aceitar todos"},
+            {"type": "click_text", "text": "Comprar agora"},
+            {"type": "done", "evidences": ["E1", "E2"]}])
+        self.assertTrue(row["passed"], row["errors"])
+
+    def test_fill_in_the_address_bar_and_wait_perception(self):
+        row = self.run_scenario("ChromeUrl", [
+            {"type": "uia_click", "target": "Nova guia"},
+            {"type": "fill", "target": "Barra de endereço", "text": "example.org"},
+            {"type": "press_key", "key": "enter"},
+            {"type": "perceive", "perception": "wait:Example Domain"},
+            {"type": "done", "evidences": ["E1", "E2"]}])
+        self.assertTrue(row["passed"], row["errors"])
+        self.assertIn("apareceu", row["transcript"][3]["result"])
+        self.assertEqual(row["wasted_actions"], 0)
+
+    def test_wait_for_something_that_never_shows_says_so(self):
+        row = self.run_scenario("CalcSum", [{"type": "perceive", "perception": "wait:Concluído"}])
+        self.assertIn("NÃO apareceu", row["transcript"][0]["result"])
+
+    def test_done_must_cite_ids_not_internal_keys(self):
+        row = self.run_scenario("ChromeUrl", [
+            {"type": "hotkey", "keys": "ctrl+t"}, {"type": "type_text", "text": "example.org"},
+            {"type": "press_key", "key": "enter"},
+            {"type": "done", "evidences": ["ev-aba", "ev-pagina"]},
+            {"type": "done", "evidences": ["E1", "E2"]}])
+        self.assertTrue(row["passed"])
+        self.assertEqual(row["misdone"], 1)
+
+    def test_prompt_shows_confirmed_evidence_with_ids_and_human_pending_items(self):
+        sim = tb.NotepadSave()
+        text = tb.step_messages(sim, [])[1]["content"]
+        self.assertIn("pendências: digitar o texto no editor; salvar o arquivo como nota.txt", text)
+        sim.evidence["ev-texto"] = "texto digitado"
+        text = tb.step_messages(sim, [])[1]["content"]
+        self.assertIn("evidências confirmadas: E1=texto digitado", text)
+
+    def test_features_change_system_prompt_recipes_and_schema(self):
+        sim = tb.NotepadSave()
+        base = tb.step_messages(sim, [], ())
+        full = tb.step_messages(sim, [], ("fewshot", "recipes"))
+        self.assertNotIn("App notes", base[1]["content"])
+        self.assertIn("App notes", full[1]["content"])
+        self.assertIn("Examples of the format only", full[0]["content"])
+        payloads = []
+
+        def handler(request):
+            payloads.append(json.loads(request.content))
+            return httpx.Response(200, json={"usage": {}, "choices": [
+                {"finish_reason": "stop", "message": {"content": '{"type":"wait","ms":10}'}}]})
+
+        with httpx.Client(transport=httpx.MockTransport(handler)) as client:
+            tb.make_run_case(("dynschema",))(client, "http://x/v1", "fake",
+                                             {"id": "NotepadSave"}, SETTINGS)
+        schema = payloads[0]["response_format"]["json_schema"]["schema"]
+        self.assertIn("anyOf", schema)
+        self.assertEqual(sorted(schema["anyOf"][0]["properties"]["target"]["enum"]),
+                         ["Arquivo", "Editor"])  # só o que está na tela, sem o tipo
 
 
 if __name__ == "__main__":

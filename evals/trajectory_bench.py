@@ -18,7 +18,14 @@ import time
 import httpx
 
 from evals import model_bench as bench
-from planner import PLANNER_SYSTEM, build_prompt, strip_type_prefix
+from planner import (
+    MiniCPMPlanner,
+    build_prompt,
+    build_system,
+    planner_json_schema,
+    strip_type_prefix,
+)
+from recipes import recipes_for
 
 MAX_STEPS = 8
 MAX_INVALID = 2
@@ -29,6 +36,8 @@ def label(decision: dict) -> str:
     t = decision["type"]
     arg = next((decision[k] for k in ("app", "target", "text", "key", "keys", "instruction",
                                       "perception", "skill") if decision.get(k)), "")
+    if t == "fill":
+        arg = f"{decision.get('target', '')}={decision.get('text', '')}"
     return f"{t}({str(arg)[:60]})" if arg else t
 
 
@@ -41,13 +50,18 @@ class Sim:
     def __init__(self):
         self.window = ""
         self.elements: list[str] = []
-        self.evidence: dict[str, str] = {}
+        self.evidence: dict[str, str] = {}  # chave interna -> descrição, na ordem de aquisição
+        self.flags: set[str] = set()
         self.required: list[str] = []
         self.last = "Nenhuma ação anterior."
         self.answer = ""
 
     def pending(self):
         return [r for r in self.required if r not in self.evidence]
+
+    def evidence_ids(self) -> dict[str, str]:
+        """`E1`.. -> chave interna, na ordem em que as evidências foram confirmadas."""
+        return {f"E{i + 1}": key for i, key in enumerate(self.evidence)}
 
     def observation(self):
         return {"window": self.window, "elements": list(self.elements)}
@@ -74,15 +88,37 @@ class Sim:
             return max(hits, key=len) if hits else None
         return None
 
+    def handle_common(self, d: dict) -> str | None:
+        """Ferramentas que valem em qualquer tela; None = deixa o cenário decidir."""
+        if d["type"] == "perceive":
+            spec = d.get("perception") or ""
+            if spec.lower().startswith("wait:"):
+                want = spec[5:].strip().casefold()
+                if want and want in " ".join(self.visible_names() + [self.window.casefold()]):
+                    return f"{spec[5:].strip()!r} apareceu na tela"
+                return (f"{spec[5:].strip()!r} NÃO apareceu em 8 s; não repita wait: mude de "
+                        "abordagem")
+            return f"leitura: janela {self.window!r}; elementos {', '.join(self.elements)}"
+        if d["type"] == "click_text":  # texto visível = mesmo alvo que o clique visual
+            return self.apply({"type": "visual_action", "instruction": d.get("text") or ""})
+        if d["type"] == "fill":
+            return self.fill(strip_type_prefix(d.get("target") or "").casefold(),
+                             d.get("text") or "")
+        return None
+
+    def fill(self, name: str, text: str) -> str:
+        return self.no_effect("campo não encontrado")
+
     def apply(self, d: dict) -> str:  # pragma: no cover - contrato
         raise NotImplementedError
 
     def done(self, d: dict) -> tuple[bool, str]:
         if self.pending():
             return False, f"done recusado: pendências {self.pending()}"
-        given = set(d.get("evidences") or [])
-        if not given or not given <= set(self.evidence):
-            return False, "done recusado: evidências ausentes ou desconhecidas"
+        known = self.evidence_ids()
+        given = {str(e).strip().upper() for e in (d.get("evidences") or [])}
+        if not given or not given <= set(known):
+            return False, "done recusado: evidências ausentes ou desconhecidas (cite E1, E2…)"
         return True, "ok"
 
 
@@ -108,12 +144,29 @@ class NotepadSave(Sim):
     def base_elements(self):
         return [f"Edit:Editor={self.typed}" if self.typed else "Edit:Editor", "Menu:Arquivo"]
 
+    def fill(self, name, text):
+        if name == "editor" and not self.dialog:
+            self.typed = text
+            if "ola mundo" in self.typed.casefold():
+                self.evidence["ev-texto"] = "texto digitado"
+            self.elements = self.base_elements()
+            return "Campo Editor preenchido."
+        if name == "nome do arquivo" and self.dialog:
+            self.fname = text
+            self.elements = [f"Edit:Nome do arquivo={self.fname}", "Button:Salvar",
+                             "Button:Cancelar"]
+            return "Nome digitado."
+        return self.no_effect("campo não encontrado")
+
     def open_dialog(self):
         self.dialog, self.menu, self.window = True, False, "Salvar como"
         self.elements = ["Edit:Nome do arquivo", "Button:Salvar", "Button:Cancelar"]
         return "Diálogo Salvar como aberto."
 
     def apply(self, d):
+        common = self.handle_common(d)
+        if common is not None:
+            return common
         t = d["type"]
         if t == "type_text" and not self.dialog:
             self.typed += d["text"]
@@ -124,6 +177,14 @@ class NotepadSave(Sim):
             return "Texto digitado no editor."
         if t == "hotkey" and keys_of(d) == "ctrl+s" and not self.dialog:
             return self.open_dialog()
+        if t == "save_as" and not self.dialog:
+            name = (d.get("text") or "").strip()
+            if name.casefold() != "nota.txt":
+                self.window = f"{name} - Notepad"
+                return f"Arquivo salvo como {name} (o pedido era nota.txt)."
+            self.window = "nota.txt - Notepad"
+            self.evidence["ev-arquivo"] = "arquivo salvo"
+            return "Arquivo salvo."
         if t == "type_text" and self.dialog:
             self.fname = d["text"]
             self.elements = [f"Edit:Nome do arquivo={self.fname}", "Button:Salvar",
@@ -159,6 +220,14 @@ class ChromeUrl(Sim):
         self.required = ["ev-aba", "ev-pagina"]
         self.tab, self.focused, self.typed = False, False, ""
 
+    def fill(self, name, text):
+        if name == "barra de endereço" and (self.tab or "barra de endereço" in
+                                             " ".join(self.visible_names())):
+            self.focused, self.typed = True, text
+            self.elements = [f"Edit:Barra de endereço={text}", "Pane:Página"]
+            return "URL digitada na barra."
+        return self.no_effect("campo não encontrado")
+
     def new_tab(self):
         self.tab, self.focused, self.typed = True, True, ""
         self.window = "Nova guia - Google Chrome"
@@ -167,6 +236,9 @@ class ChromeUrl(Sim):
         return "Nova aba aberta."
 
     def apply(self, d):
+        common = self.handle_common(d)
+        if common is not None:
+            return common
         t = d["type"]
         if t == "hotkey" and keys_of(d) == "ctrl+t" and not self.tab:
             return self.new_tab()
@@ -207,6 +279,9 @@ class AmbiguousProfile(Sim):
         self.required, self.asked = ["ev-perfil"], False
 
     def apply(self, d):
+        common = self.handle_common(d)
+        if common is not None:
+            return common
         if d["type"] == "ask":
             self.asked = True
             self.answer = "Ana trabalho"
@@ -214,7 +289,7 @@ class AmbiguousProfile(Sim):
         name = self.clicked(d)
         if name in ("ana pessoal", "ana trabalho"):
             if not self.asked:
-                self.evidence["_chute"] = "clique sem perguntar"
+                self.flags.add("chute")
                 return "Perfil aberto, mas a escolha era ambígua e não foi confirmada."
             if name == "ana trabalho":
                 self.window, self.elements = "Ana trabalho", ["Text:Bem-vinda, Ana"]
@@ -224,7 +299,7 @@ class AmbiguousProfile(Sim):
         return self.no_effect()
 
     def done(self, d):
-        if "_chute" in self.evidence:
+        if "chute" in self.flags:
             return False, "falha: abriu perfil sem esclarecer a ambiguidade"
         return super().done(d)
 
@@ -263,6 +338,9 @@ class CalcSum(Sim):
         return True
 
     def apply(self, d):
+        common = self.handle_common(d)
+        if common is not None:
+            return common
         if d["type"] == "type_text":  # a calculadora aceita teclado quando focada
             if all(self.feed(ch) for ch in d["text"].replace(" ", "")):
                 self.show()
@@ -298,6 +376,9 @@ class CookieBanner(Sim):
         self.required, self.banner = ["ev-cookies", "ev-compra"], True
 
     def apply(self, d):
+        common = self.handle_common(d)
+        if common is not None:
+            return common
         name = self.clicked(d)
         if name == "comprar agora":
             if self.banner:
@@ -325,78 +406,113 @@ def load_cases() -> list[dict]:
             for name, cls in SCENARIOS.items()]
 
 
-def step_messages(sim: Sim, history: list[str]) -> list[dict]:
-    pend = sim.pending()
-    summary = ("Pending requirements: " + ", ".join(pend) if pend else "All requirements met.")
-    summary += "\nAvailable evidence IDs: " + (", ".join(
-        k for k in sim.evidence if not k.startswith("_")) or "(none yet)")
+REQ_LABELS = {
+    "ev-texto": "digitar o texto no editor", "ev-arquivo": "salvar o arquivo como nota.txt",
+    "ev-aba": "abrir uma nova aba", "ev-pagina": "carregar example.org na nova aba",
+    "ev-perfil": "abrir o perfil de Ana", "ev-resultado": "mostrar o resultado no visor",
+    "ev-cookies": "aceitar os cookies", "ev-compra": "clicar em Comprar agora",
+}
+
+
+def step_messages(sim: Sim, history: list[str], features: tuple[str, ...] = ()) -> list[dict]:
+    """Prompt de um passo no formato do planner real: estado compacto com pendências e
+    "evidências confirmadas: E1=…" (a checklist de pendências vem do simulador; o loop real
+    ainda não a gera)."""
+    parts = []
+    pend = [REQ_LABELS.get(k, k) for k in sim.pending()]
+    if pend:
+        parts.append("pendências: " + "; ".join(pend))
+    ids = sim.evidence_ids()
+    if ids:
+        parts.append("evidências confirmadas: " + "; ".join(
+            f"{eid}={sim.evidence[key]}" for eid, key in ids.items()))
     obs = sim.observation()
-    user = build_prompt(sim.goal, obs["window"], obs["elements"], history, task_summary=summary,
-                        last_result="" if sim.last.startswith("Nenhuma ação") else sim.last)
-    return [{"role": "system", "content": PLANNER_SYSTEM}, {"role": "user", "content": user}]
+    recipes = recipes_for(sim.window) if "recipes" in features else ""
+    user = build_prompt(sim.goal, obs["window"], obs["elements"], history,
+                        task_summary=" | ".join(parts) or "todas as pendências cumpridas",
+                        last_result="" if sim.last.startswith("Nenhuma ação") else sim.last,
+                        recipes=recipes)
+    return [{"role": "system", "content": build_system(features)},
+            {"role": "user", "content": user}]
 
 
-def run_case(client: httpx.Client, url: str, model: str, case: dict, settings: dict) -> dict:
-    sim = SCENARIOS[case["id"]]()
-    history: list[str] = []
-    transcript, invalid, wasted, misdone, same = [], 0, 0, 0, 0
-    started = time.perf_counter()
-    row = {"passed": False, "format_valid": True, "pure_json": False, "decision": None,
-           "error_kind": "semantic", "errors": [], "raw_response": None}
-    tokens = 0
-    for step in range(1, MAX_STEPS + 1):
-        payload = bench.build_payload(model, step_messages(sim, history), settings, True)
-        response = client.post(f"{url}/chat/completions", json=payload)
-        response.raise_for_status()
-        data = response.json()
-        tokens += (data.get("usage") or {}).get("completion_tokens", 0) or 0
-        choice = data["choices"][0]
-        if choice.get("finish_reason") == "length":
-            row.update(error_kind="truncated", errors=[f"passo {step}: saída truncada"])
-            break
-        try:
-            raw, pure = bench.parse_response(choice["message"].get("content", ""))
-            row["pure_json"] = pure or row["pure_json"]
-            decision = bench.validate_decision(raw)
-        except (ValueError, KeyError, TypeError, AttributeError) as exc:
-            invalid += 1
-            transcript.append({"step": step, "invalid": str(exc)[:200]})
-            sim.last = f"Invalid planner output: {str(exc)[:160]}"
-            if invalid > MAX_INVALID:
-                row.update(error_kind="format", format_valid=False,
-                           errors=[f"passo {step}: {invalid} respostas inválidas"])
+def make_run_case(features: tuple[str, ...] = ()):
+    probe = MiniCPMPlanner(features=features)
+
+    def step_schema(sim: Sim) -> dict:
+        kwargs = probe.schema_kwargs(list(sim.elements))
+        if "dynschema" in features:
+            kwargs["evidence_ids"] = list(sim.evidence_ids())
+        return planner_json_schema(**kwargs)
+
+    def run_case(client: httpx.Client, url: str, model: str, case: dict, settings: dict) -> dict:
+        sim = SCENARIOS[case["id"]]()
+        history: list[str] = []
+        transcript, invalid, wasted, misdone, same = [], 0, 0, 0, 0
+        started = time.perf_counter()
+        row = {"passed": False, "format_valid": True, "pure_json": False, "decision": None,
+               "error_kind": "semantic", "errors": [], "raw_response": None}
+        tokens = 0
+        for step in range(1, MAX_STEPS + 1):
+            payload = bench.build_payload(model, step_messages(sim, history, features), settings,
+                                          True, step_schema(sim) if features else None)
+            response = client.post(f"{url}/chat/completions", json=payload)
+            response.raise_for_status()
+            data = response.json()
+            tokens += (data.get("usage") or {}).get("completion_tokens", 0) or 0
+            choice = data["choices"][0]
+            if choice.get("finish_reason") == "length":
+                row.update(error_kind="truncated", errors=[f"passo {step}: saída truncada"])
                 break
-            continue
-        tag = label(decision)
-        same = same + 1 if history and history[-1] == tag else 1
-        history.append(tag)
-        if decision["type"] == "done":
-            ok, why = sim.done(decision)
-            transcript.append({"step": step, "action": tag, "result": why})
-            if ok:
-                row["passed"], row["error_kind"] = True, ""
-                break
-            misdone += 1
-            sim.last = why
-            if why.startswith("falha"):
-                row["errors"] = [why]
+            try:
+                raw, pure = bench.parse_response(choice["message"].get("content", ""))
+                row["pure_json"] = pure or row["pure_json"]
+                decision = bench.validate_decision(raw)
+            except (ValueError, KeyError, TypeError, AttributeError) as exc:
+                invalid += 1
+                transcript.append({"step": step, "invalid": str(exc)[:200]})
+                sim.last = f"Invalid planner output: {str(exc)[:160]}"
+                if invalid > MAX_INVALID:
+                    row.update(error_kind="format", format_valid=False,
+                               errors=[f"passo {step}: {invalid} respostas inválidas"])
+                    break
+                continue
+            tag = label(decision)
+            same = same + 1 if history and history[-1] == tag else 1
+            history.append(tag)
+            if decision["type"] == "done":
+                ok, why = sim.done(decision)
+                transcript.append({"step": step, "action": tag, "result": why})
+                if ok:
+                    row["passed"], row["error_kind"] = True, ""
+                    break
+                misdone += 1
+                sim.last = why
+                if why.startswith("falha"):
+                    row["errors"] = [why]
+                    break
+            else:
+                result = sim.apply(decision)
+                wasted += result.startswith("no visible effect")
+                sim.last = result
+                transcript.append({"step": step, "action": tag, "result": result})
+            if same >= MAX_SAME_ACTION:
+                row["errors"] = [f"passo {step}: {tag} repetido {same}x"]
                 break
         else:
-            result = sim.apply(decision)
-            wasted += result.startswith("no visible effect")
-            sim.last = result
-            transcript.append({"step": step, "action": tag, "result": result})
-        if same >= MAX_SAME_ACTION:
-            row["errors"] = [f"passo {step}: {tag} repetido {same}x"]
-            break
-    else:
-        row["errors"] = [f"limite de {MAX_STEPS} passos sem concluir"]
-    if not row["passed"] and not row["errors"]:
-        row["errors"] = ["falhou"]
-    row.update(elapsed_ms=round((time.perf_counter() - started) * 1000, 1),
-               steps=len(transcript), wasted_actions=wasted, misdone=misdone, invalid=invalid,
-               transcript=transcript, usage={"completion_tokens": tokens}, final=sim.last)
-    return row
+            row["errors"] = [f"limite de {MAX_STEPS} passos sem concluir"]
+        if not row["passed"] and not row["errors"]:
+            row["errors"] = ["falhou"]
+        row.update(elapsed_ms=round((time.perf_counter() - started) * 1000, 1),
+                   steps=len(transcript), wasted_actions=wasted, misdone=misdone,
+                   invalid=invalid, transcript=transcript, usage={"completion_tokens": tokens},
+                   final=sim.last)
+        return row
+
+    return run_case
+
+
+run_case = make_run_case()  # sem recursos: prompt/schema de produção de base
 
 
 def extra_summary(rows: list[dict]) -> dict:
@@ -410,13 +526,19 @@ def extra_summary(rows: list[dict]) -> dict:
     return out
 
 
-SUITE = bench.Suite(
-    name="trajectory", title="Trajetórias multi-passo em simulador de desktop",
-    scope=("Cenários determinísticos de vários passos; o modelo recebe o resultado de cada ação.",
-           f"Prompt real do planner; limite de {MAX_STEPS} passos, {MAX_INVALID} respostas "
-           "inválidas e repetição 3x.",
-           "É um simulador: não prova E2E nem uso do desktop real."),
-    load=load_cases, messages=lambda case: [], evaluate=lambda c, d, ms: {},
-    system=PLANNER_SYSTEM, quick=lambda cases: cases, use_schema=True,
-    run_case=run_case, extra_summary=extra_summary,
-    fingerprint=lambda cases: json.dumps([c["id"] for c in cases]))
+def trajectory_suite(features: tuple[str, ...] = ()) -> bench.Suite:
+    feats = tuple(features)
+    return bench.Suite(
+        name="trajectory", title="Trajetórias multi-passo em simulador de desktop",
+        scope=("Cenários determinísticos de vários passos; o modelo recebe o resultado de cada "
+               "ação." + (f" Recursos do planner: {', '.join(feats)}." if feats else ""),
+               f"Prompt real do planner; limite de {MAX_STEPS} passos, {MAX_INVALID} respostas "
+               "inválidas e repetição 3x. A lista de pendências vem do simulador.",
+               "É um simulador: não prova E2E nem uso do desktop real."),
+        load=load_cases, messages=lambda case: [], evaluate=lambda c, d, ms: {},
+        system=build_system(feats), quick=lambda cases: cases, use_schema=True,
+        run_case=make_run_case(feats) if feats else run_case, extra_summary=extra_summary,
+        fingerprint=lambda cases: json.dumps([c["id"] for c in cases]))
+
+
+SUITE = trajectory_suite()
