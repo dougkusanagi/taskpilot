@@ -18,7 +18,8 @@ SOLUTIONS = {
         {"type": "done", "evidences": ["ev-texto", "ev-arquivo"]}],
     "ChromeUrl": [
         {"type": "hotkey", "keys": "ctrl+t"}, {"type": "type_text", "text": "example.org"},
-        {"type": "press_key", "key": "enter"}, {"type": "done", "evidences": ["ev-pagina"]}],
+        {"type": "press_key", "key": "enter"},
+        {"type": "done", "evidences": ["ev-aba", "ev-pagina"]}],
     "AmbiguousProfile": [
         {"type": "ask", "text": "Qual perfil: Ana pessoal ou Ana trabalho?"},
         {"type": "uia_click", "target": "Button:Ana trabalho"},
@@ -100,6 +101,47 @@ class TestTrajectories(unittest.TestCase):
             {"type": "uia_click", "target": "Button:Comprar agora"},
             {"type": "done", "evidences": ["ev-cookies", "ev-compra"]}])
         self.assertTrue(row["passed"])
+
+    def test_equivalent_paths_are_accepted(self):
+        """Caminhos que um usuário usaria e o app de produção permite não podem reprovar."""
+        paths = {
+            "CookieBanner": [{"type": "visual_action", "instruction": "Click the Aceitar todos button"},
+                             {"type": "visual_action", "instruction": "Clique em Comprar agora"},
+                             {"type": "done", "evidences": ["ev-cookies", "ev-compra"]}],
+            "CalcSum": [{"type": "type_text", "text": "2+3"}, {"type": "press_key", "key": "enter"},
+                        {"type": "done", "evidences": ["ev-resultado"]}],
+            "NotepadSave": [{"type": "type_text", "text": "ola mundo"},
+                            {"type": "uia_click", "target": "Arquivo"},
+                            {"type": "uia_click", "target": "Salvar"},
+                            {"type": "type_text", "text": "nota.txt"},
+                            {"type": "uia_click", "target": "Salvar"},
+                            {"type": "done", "evidences": ["ev-texto", "ev-arquivo"]}],
+            "ChromeUrl": [{"type": "uia_click", "target": "Nova guia"},
+                          {"type": "type_text", "text": "https://example.org"},
+                          {"type": "press_key", "key": "enter"},
+                          {"type": "done", "evidences": ["ev-aba", "ev-pagina"]}],
+            "AmbiguousProfile": [{"type": "ask", "text": "Qual perfil?"},
+                                 {"type": "visual_action",
+                                  "instruction": "Click the Ana trabalho button"},
+                                 {"type": "done", "evidences": ["ev-perfil"]}],
+        }
+        for name, actions in paths.items():
+            with self.subTest(name):
+                row = self.run_scenario(name, actions)
+                self.assertTrue(row["passed"], row["errors"])
+                self.assertEqual(row["wasted_actions"], 0)
+
+    def test_navigating_in_the_current_tab_does_not_satisfy_a_new_tab_request(self):
+        row = self.run_scenario("ChromeUrl", [
+            {"type": "hotkey", "keys": "ctrl+l"}, {"type": "type_text", "text": "example.org"},
+            {"type": "press_key", "key": "enter"},
+            {"type": "done", "evidences": ["ev-pagina"]}])
+        self.assertFalse(row["passed"])
+        self.assertEqual(row["misdone"], 1)
+
+    def test_clicking_an_item_that_is_not_on_screen_has_no_effect(self):
+        row = self.run_scenario("NotepadSave", [{"type": "uia_click", "target": "Salvar"}])
+        self.assertTrue(row["transcript"][0]["result"].startswith("no visible effect"))
 
     def test_prompt_is_the_production_one_and_hides_the_rules(self):
         sim = tb.NotepadSave()

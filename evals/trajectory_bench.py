@@ -12,6 +12,7 @@ de resultado. Não toca mouse/teclado/tela; o "desktop" é só este simulador.
 from __future__ import annotations
 
 import json
+import re
 import time
 
 import httpx
@@ -35,6 +36,7 @@ class Sim:
     """Estado + regras de um cenário. Subclasses implementam `apply`."""
     goal = ""
     category = "trajetoria"
+    ALIASES: dict[str, str] = {}
 
     def __init__(self):
         self.window = ""
@@ -53,6 +55,25 @@ class Sim:
     def no_effect(self, why=""):
         return "no visible effect" + (f": {why}" if why else "")
 
+    def visible_names(self) -> list[str]:
+        return [strip_type_prefix(e.split("=", 1)[0]).casefold() for e in self.elements]
+
+    def clicked(self, d: dict) -> str | None:
+        """Elemento VISÍVEL que a ação clica: `uia_click` por nome, ou `visual_action` cuja
+        instrução cita o nome do elemento (o app de produção permite os dois caminhos)."""
+        names = self.visible_names()
+        if d["type"] == "uia_click":
+            want = name_of(d)
+            want = self.ALIASES.get(want, want)
+            return want if want in names else None
+        if d["type"] == "visual_action":
+            text = " " + " ".join(re.findall(r"\w+|[+=]", d["instruction"].casefold())) + " "
+            hits = [n for n in names if f" {n} " in text]
+            hits += [self.ALIASES[a] for a in self.ALIASES
+                     if f" {a} " in text and self.ALIASES[a] in names]
+            return max(hits, key=len) if hits else None
+        return None
+
     def apply(self, d: dict) -> str:  # pragma: no cover - contrato
         raise NotImplementedError
 
@@ -69,15 +90,28 @@ def name_of(d: dict, key="target") -> str:
     return strip_type_prefix(d.get(key) or "").casefold()
 
 
+def keys_of(d: dict) -> str:
+    return (d.get("keys") or "").lower().replace(" ", "")
+
+
 class NotepadSave(Sim):
     goal = "Digite 'ola mundo' no Bloco de Notas e salve como nota.txt."
     category = "salvar-arquivo"
+    MENU = ["MenuItem:Novo", "MenuItem:Salvar", "MenuItem:Salvar como"]
 
     def __init__(self):
         super().__init__()
         self.window, self.elements = "Sem título - Notepad", ["Edit:Editor", "Menu:Arquivo"]
         self.required = ["ev-texto", "ev-arquivo"]
-        self.dialog, self.typed, self.fname = False, "", ""
+        self.dialog, self.menu, self.typed, self.fname = False, False, "", ""
+
+    def base_elements(self):
+        return [f"Edit:Editor={self.typed}" if self.typed else "Edit:Editor", "Menu:Arquivo"]
+
+    def open_dialog(self):
+        self.dialog, self.menu, self.window = True, False, "Salvar como"
+        self.elements = ["Edit:Nome do arquivo", "Button:Salvar", "Button:Cancelar"]
+        return "Diálogo Salvar como aberto."
 
     def apply(self, d):
         t = d["type"]
@@ -85,27 +119,32 @@ class NotepadSave(Sim):
             self.typed += d["text"]
             if "ola mundo" in self.typed.casefold():
                 self.evidence["ev-texto"] = "texto digitado"
-            self.elements = [f"Edit:Editor={self.typed}", "Menu:Arquivo"]
+            self.elements = self.base_elements()
+            self.menu = False
             return "Texto digitado no editor."
-        if t == "hotkey" and d["keys"].lower().replace(" ", "") == "ctrl+s" and not self.dialog:
-            self.dialog, self.window = True, "Salvar como"
-            self.elements = ["Edit:Nome do arquivo", "Button:Salvar", "Button:Cancelar"]
-            return "Diálogo Salvar como aberto."
+        if t == "hotkey" and keys_of(d) == "ctrl+s" and not self.dialog:
+            return self.open_dialog()
         if t == "type_text" and self.dialog:
             self.fname = d["text"]
             self.elements = [f"Edit:Nome do arquivo={self.fname}", "Button:Salvar",
                              "Button:Cancelar"]
             return "Nome digitado."
-        if t == "uia_click" and self.dialog and name_of(d) == "salvar":
+        name = self.clicked(d)
+        if name == "arquivo" and not self.dialog:
+            self.menu, self.elements = True, self.MENU
+            return "Menu Arquivo aberto."
+        if name == "salvar" and self.menu:
+            return self.open_dialog()
+        if name == "salvar" and self.dialog:
             if self.fname.strip().casefold() != "nota.txt":
                 return "Aviso: nome do arquivo vazio ou diferente do pedido."
             self.dialog, self.window = False, "nota.txt - Notepad"
             self.elements = [f"Edit:Editor={self.typed}"]
             self.evidence["ev-arquivo"] = "arquivo salvo"
             return "Arquivo salvo."
-        if t == "uia_click" and self.dialog and name_of(d) == "cancelar":
+        if name == "cancelar" and self.dialog:
             self.dialog, self.window = False, "Sem título - Notepad"
-            self.elements = [f"Edit:Editor={self.typed}", "Menu:Arquivo"]
+            self.elements = self.base_elements()
             return "Diálogo cancelado."
         return self.no_effect()
 
@@ -117,31 +156,42 @@ class ChromeUrl(Sim):
     def __init__(self):
         super().__init__()
         self.window, self.elements = "Google - Google Chrome", ["Button:Nova guia", "Pane:Página"]
-        self.required, self.tab, self.typed = ["ev-pagina"], False, ""
+        self.required = ["ev-aba", "ev-pagina"]
+        self.tab, self.focused, self.typed = False, False, ""
+
+    def new_tab(self):
+        self.tab, self.focused, self.typed = True, True, ""
+        self.window = "Nova guia - Google Chrome"
+        self.elements = ["Edit:Barra de endereço", "Pane:Página"]
+        self.evidence["ev-aba"] = "nova aba aberta"
+        return "Nova aba aberta."
 
     def apply(self, d):
         t = d["type"]
-        if t == "hotkey" and d["keys"].lower() == "ctrl+t" and not self.tab:
-            self.tab, self.window = True, "Nova guia - Google Chrome"
-            self.elements = ["Edit:Barra de endereço", "Pane:Página"]
-            return "Nova aba aberta."
-        if t == "uia_click" and name_of(d) == "nova guia" and not self.tab:
-            self.tab, self.window = True, "Nova guia - Google Chrome"
-            self.elements = ["Edit:Barra de endereço", "Pane:Página"]
-            return "Nova aba aberta."
-        if t == "hotkey" and d["keys"].lower() == "ctrl+l":
+        if t == "hotkey" and keys_of(d) == "ctrl+t" and not self.tab:
+            return self.new_tab()
+        if self.clicked(d) == "nova guia" and not self.tab:
+            return self.new_tab()
+        if t == "hotkey" and keys_of(d) in ("ctrl+l", "f6", "alt+d"):
+            self.focused = True
             return "Barra de endereço focada."
-        if t == "type_text" and self.tab:
+        if t == "type_text":
+            if not self.focused:
+                return self.no_effect("nenhum campo de texto focado")
             self.typed = d["text"]
             self.elements = [f"Edit:Barra de endereço={self.typed}", "Pane:Página"]
             return "URL digitada na barra."
-        if t == "press_key" and d["key"].lower() == "enter" and self.tab and self.typed:
-            if "example.org" in self.typed:
-                self.window = "Example Domain - Google Chrome"
-                self.elements = ["Hyperlink:Learn more", "Pane:Página"]
-                self.evidence["ev-pagina"] = "example.org carregado"
-                return "Página carregada: Example Domain."
-            return "Página carregada, mas não é o endereço pedido."
+        if t == "press_key" and d["key"].lower() == "enter" and self.typed:
+            if "example.org" not in self.typed:
+                return "Página carregada, mas não é o endereço pedido."
+            self.window = "Example Domain - Google Chrome"
+            self.elements = ["Hyperlink:Learn more", "Pane:Página"]
+            self.focused = False
+            if self.tab:
+                self.evidence["ev-pagina"] = "example.org carregado na nova aba"
+                return "Página carregada na nova aba: Example Domain."
+            self.typed = ""
+            return "Página carregada na aba atual (o pedido era numa nova aba)."
         if t == "open_app" and d["app"] == "chrome":
             return "Chrome já está ativo; nada mudou."
         return self.no_effect()
@@ -157,16 +207,16 @@ class AmbiguousProfile(Sim):
         self.required, self.asked = ["ev-perfil"], False
 
     def apply(self, d):
-        t = d["type"]
-        if t == "ask":
+        if d["type"] == "ask":
             self.asked = True
             self.answer = "Ana trabalho"
             return "Resposta do usuário: Ana trabalho"
-        if t == "uia_click" and name_of(d) in ("ana pessoal", "ana trabalho"):
+        name = self.clicked(d)
+        if name in ("ana pessoal", "ana trabalho"):
             if not self.asked:
                 self.evidence["_chute"] = "clique sem perguntar"
                 return "Perfil aberto, mas a escolha era ambígua e não foi confirmada."
-            if name_of(d) == "ana trabalho":
+            if name == "ana trabalho":
                 self.window, self.elements = "Ana trabalho", ["Text:Bem-vinda, Ana"]
                 self.evidence["ev-perfil"] = "perfil aberto"
                 return "Perfil Ana trabalho aberto."
@@ -182,38 +232,59 @@ class AmbiguousProfile(Sim):
 class CalcSum(Sim):
     goal = "Calcule 2 + 3 na calculadora."
     category = "multi-clique"
+    ALIASES = {"+": "mais", "=": "igual", "plus": "mais", "soma": "mais", "somar": "mais",
+               "adicionar": "mais", "equals": "igual", "c": "limpar", "clear": "limpar"}
 
     def __init__(self):
         super().__init__()
         self.window = "Calculadora"
         self.elements = ["Text:Exibição=0", "Button:1", "Button:2", "Button:3", "Button:Mais",
                          "Button:Igual", "Button:Limpar"]
-        self.required, self.expr, self.shown = ["ev-resultado"], "", "0"
+        self.required, self.expr = ["ev-resultado"], ""
 
-    def apply(self, d):
-        if d["type"] != "uia_click":
-            return self.no_effect()
-        n = name_of(d)
-        if n in ("1", "2", "3"):
-            self.expr += n
-            self.shown = self.expr
-        elif n == "mais":
+    def show(self):
+        self.elements[0] = f"Text:Exibição={self.expr or '0'}"
+
+    def feed(self, ch: str) -> bool:
+        if ch in "123":
+            self.expr += ch
+        elif ch == "+" and self.expr and not self.expr.endswith("+"):
             self.expr += "+"
-            self.shown = self.expr
-        elif n == "igual":
+        elif ch in "=\n":
             try:
                 total = sum(int(p) for p in self.expr.split("+") if p)
             except ValueError:
-                return self.no_effect()
-            self.shown, self.expr = str(total), str(total)
-            if self.shown == "5":
+                return False
+            self.expr = str(total)
+            if self.expr == "5":
                 self.evidence["ev-resultado"] = "visor mostra 5"
-        elif n == "limpar":
-            self.expr, self.shown = "", "0"
+        else:
+            return False
+        return True
+
+    def apply(self, d):
+        if d["type"] == "type_text":  # a calculadora aceita teclado quando focada
+            if all(self.feed(ch) for ch in d["text"].replace(" ", "")):
+                self.show()
+                return f"Visor: {self.expr}"
+            return self.no_effect("caractere não suportado")
+        if d["type"] == "press_key" and d["key"].lower() == "enter":
+            self.feed("=")
+            self.show()
+            return f"Visor: {self.expr}"
+        name = self.clicked(d)
+        if name in ("1", "2", "3"):
+            self.feed(name)
+        elif name == "mais":
+            self.feed("+")
+        elif name == "igual":
+            self.feed("=")
+        elif name == "limpar":
+            self.expr = ""
         else:
             return self.no_effect()
-        self.elements[0] = f"Text:Exibição={self.shown}"
-        return f"Visor: {self.shown}"
+        self.show()
+        return f"Visor: {self.expr or '0'}"
 
 
 class CookieBanner(Sim):
@@ -224,24 +295,21 @@ class CookieBanner(Sim):
         super().__init__()
         self.window = "Loja Azul - Google Chrome"
         self.elements = ["Button:Aceitar todos", "Button:Rejeitar", "Button:Comprar agora"]
-        self.required, self.banner, self.accepted = ["ev-cookies", "ev-compra"], True, False
+        self.required, self.banner = ["ev-cookies", "ev-compra"], True
 
     def apply(self, d):
-        if d["type"] != "uia_click":
-            return self.no_effect()
-        n = name_of(d)
-        if n == "comprar agora":
+        name = self.clicked(d)
+        if name == "comprar agora":
             if self.banner:
                 return self.no_effect("o aviso de cookies cobre a página")
             self.evidence["ev-compra"] = "compra iniciada"
             return "Compra iniciada."
-        if n == "aceitar todos" and self.banner:
+        if name == "aceitar todos" and self.banner:
             self.banner = False
-            self.accepted = True
             self.elements = ["Button:Comprar agora"]
             self.evidence["ev-cookies"] = "cookies aceitos"
             return "Cookies aceitos; aviso fechado."
-        if n == "rejeitar" and self.banner:
+        if name == "rejeitar" and self.banner:
             self.banner = False
             self.elements = ["Button:Comprar agora"]
             return "Cookies rejeitados (o pedido era aceitar)."
