@@ -84,6 +84,9 @@ def compact(state: TaskState) -> str:
     parts = [f"objetivo: {state.objective[:150]}"]
     if state.subgoal and state.subgoal != state.objective:
         parts.append(f"subobjetivo: {state.subgoal[:150]}")
+    if state.requirements:
+        parts.append("requisitos do pedido: " + "; ".join(
+            f"({i}) {r[:80]}" for i, r in enumerate(state.requirements[:6], 1)))
     if state.done_items:
         parts.append("concluídas: " + "; ".join(state.done_items[-5:]))
     if state.pending:
@@ -91,7 +94,10 @@ def compact(state: TaskState) -> str:
     if state.recent_failures:
         parts.append("falhas recentes: " + "; ".join(state.recent_failures[-3:]))
     if state.evidences:
-        parts.append("evidências confirmadas: " + "; ".join(state.evidences[-5:]))
+        # IDs estáveis (posição na lista): o planner cita "E2" no done em vez de copiar o texto.
+        start = max(0, len(state.evidences) - 5)
+        parts.append("evidências confirmadas: " + "; ".join(
+            f"E{start + i + 1}={e[:120]}" for i, e in enumerate(state.evidences[start:])))
     if state.facts:
         parts.append("fatos: " + "; ".join(f"{k}={v}" for k, v in list(state.facts.items())[-5:]))
     return " | ".join(parts)

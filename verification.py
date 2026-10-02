@@ -115,6 +115,17 @@ def confirm_effect(
     return False, "enviado; confirmação pendente na próxima observação"
 
 
+def resolve_evidence_ref(ref: str, state_evidences: list[str]) -> str:
+    """`E2` -> texto da 2ª evidência confirmada (como o estado compacto mostra); outro texto fica
+    como veio. ID fora do intervalo não resolve (continua desconhecido e o done é vetado)."""
+    import re
+
+    m = re.fullmatch(r"\s*[Ee](\d+)\s*", str(ref))
+    if m and 1 <= int(m.group(1)) <= len(state_evidences):
+        return state_evidences[int(m.group(1)) - 1]
+    return ref
+
+
 def done_evidence_ok(
     proposed: list[str], state_evidences: list[str], hist_labels: list[str] | None = None
 ) -> tuple[bool, str]:
@@ -126,6 +137,7 @@ def done_evidence_ok(
     _ = hist_labels
     if not proposed:
         return False, "done vetado: sem evidências"
+    proposed = [resolve_evidence_ref(e, state_evidences) for e in proposed]
     desconhecidas = [e for e in proposed if e not in state_evidences]
     if desconhecidas:
         return False, f"done vetado: evidência obsoleta/ausente: {desconhecidas[0][:80]}"

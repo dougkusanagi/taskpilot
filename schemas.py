@@ -25,7 +25,7 @@ from pydantic import BaseModel, Field, model_validator
 ActionType = Literal["click", "double_click", "right_click", "middle_click", "move",
                      "drag", "type", "scroll", "hotkey", "open", "focus", "wait",
                      "answer", "done", "ask", "perceive"]
-SourceType = Literal["planner", "uia", "vocaela"]
+SourceType = Literal["planner", "uia", "vocaela", "ocr"]
 
 DecisionKind = Literal["action", "perception", "skill", "sequence", "question", "finish"]
 CompletionStatus = Literal["success", "partial", "blocked", "cancelled"]
@@ -104,6 +104,9 @@ class TaskState(BaseModel):
 
     objective: str = ""
     subgoal: str = ""
+    # Checklist do pedido, gerado UMA vez no início (planner.plan_requirements) e guardado pelo
+    # Python: o modelo não precisa lembrar o que falta; o done exige evidência p/ cada item.
+    requirements: list[str] = Field(default_factory=list)
     pending: list[str] = Field(default_factory=list)
     done_items: list[str] = Field(default_factory=list)
     evidences: list[str] = Field(default_factory=list)
@@ -131,6 +134,9 @@ class Decision(BaseModel):
     # F6/R1: sequência de até 3 primitivas (action = 1ª primitiva,
     # representativa; execução usa steps).
     steps: list[Action] = Field(default_factory=list)
+    # Guarda extra entre as primitivas de uma sequência (ex.: "save_dialog" = só digita o nome
+    # se o diálogo Salvar realmente abriu).
+    sequence_guard: str = ""
 
     @model_validator(mode="after")
     def _discriminated(self) -> Decision:

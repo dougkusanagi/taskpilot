@@ -139,24 +139,25 @@ def validate_decision(raw: dict) -> dict:
         raise ValueError(f"campos proibidos: {sorted(extra)}")
     decision = PlannerDecision.model_validate(raw, strict=True).model_dump(exclude_none=True)
     required = {
-        "open_app": "app", "focus_window": "target", "type_text": "text",
-        "press_key": "key", "hotkey": "keys", "uia_click": "target",
-        "visual_action": "instruction", "perceive": "perception", "ask": "text",
-        "answer": "text", "use_skill": "skill", "done": "evidences",
-        "sequence": "steps",
+        "open_app": ("app",), "focus_window": ("target",), "type_text": ("text",),
+        "press_key": ("key",), "hotkey": ("keys",), "uia_click": ("target",),
+        "visual_action": ("instruction",), "perceive": ("perception",), "ask": ("text",),
+        "answer": ("text",), "use_skill": ("skill",), "done": ("evidences",),
+        "sequence": ("steps",), "click_text": ("text",), "fill": ("target", "text"),
+        "save_as": ("text",),
     }
-    field = required.get(decision["type"])
-    active = {"type", "task_update", "ms"} | ({field} if field else set())
+    fields = required.get(decision["type"], ())
+    active = {"type", "task_update", "ms", "why"} | set(fields)
     if decision["type"] == "use_skill":
         active.add("args")
     if any(value is not None and key not in active for key, value in raw.items()):
         raise ValueError("argumentos incompatíveis com o tipo da decisão")
     if decision["type"] != "wait" and decision["ms"] != 0:
         raise ValueError("ms só pode ser usado em wait")
-    if field and not decision.get(field):
-        raise ValueError(f"{decision['type']} exige {field}")
-    if field and field not in ("steps", "evidences"):
-        if not str(decision[field]).strip():
+    for field in fields:
+        if not decision.get(field):
+            raise ValueError(f"{decision['type']} exige {field}")
+        if field not in ("steps", "evidences") and not str(decision[field]).strip():
             raise ValueError(f"{field} vazio")
     if decision["type"] == "wait" and not 0 < decision.get("ms", 0) <= 10000:
         raise ValueError("wait exige 0 < ms <= 10000")
@@ -283,6 +284,7 @@ class Suite:
     warmup_case: dict | None = None
     use_schema: bool = True
     run_case: Callable | None = None  # (client, url, model, case, settings) -> row, multi-passo
+    schema_for: Callable[[dict], dict] | None = None  # schema por cena (enum de alvos etc.)
     extra_summary: Callable[[list[dict]], dict] | None = None
     fingerprint: Callable[[list[dict]], str] | None = None
 
@@ -305,8 +307,14 @@ def production_messages(case: dict) -> list[dict]:
     obs, state = case["observation"], case["state"]
     summary = ""
     if state.get("pending") or state.get("evidence_ids"):
-        summary = ("Pending requirements: " + "; ".join(state.get("pending", [])) +
-                   "\nAvailable evidence IDs: " + ", ".join(state.get("evidence_ids", [])))
+        # mesmo formato do state.compact real: "pendências: ... | evidências confirmadas: ID=..."
+        parts = []
+        if state.get("pending"):
+            parts.append("pendências: " + "; ".join(state["pending"]))
+        if state.get("evidence_ids"):
+            parts.append("evidências confirmadas: " + "; ".join(
+                f"{i}=confirmado" for i in state["evidence_ids"]))
+        summary = " | ".join(parts)
     last = case.get("last_result", "")
     user = build_prompt(case["goal"], obs.get("window", ""), list(obs.get("elements", [])), [],
                         task_summary=summary,
@@ -316,14 +324,47 @@ def production_messages(case: dict) -> list[dict]:
     return [{"role": "system", "content": PLANNER_SYSTEM}, {"role": "user", "content": user}]
 
 
-PRODUCTION_SUITE = Suite(
-    name="production", title="Comparação textual com o prompt do planner de produção",
-    scope=("Mesmas 32 cenas e oráculos, enviadas com PLANNER_SYSTEM + build_prompt (planner.py).",
-           "Use --max-tokens 256 para reproduzir o orçamento real; reasoning ligado trunca nele.",
-           "Resultados de desenvolvimento; não provam E2E, visão nem o loop completo."),
-    load=load_cases, messages=production_messages, evaluate=evaluate_response,
-    system=PLANNER_SYSTEM, quick=lambda cases: select_cases(cases, True, 0),
-    warmup_case=WARMUP_CASE)
+def production_suite(features: tuple[str, ...] = ()) -> Suite:
+    """Suíte `production` com os recursos do planner pedidos (ver planner.PLANNER_FEATURES).
+
+    Sem recursos é o prompt/schema de produção de base. Com `dynschema` o schema de cada cena
+    restringe os alvos aos nomes visíveis e as evidências aos IDs do estado, como o planner faria.
+    """
+    from planner import MiniCPMPlanner, build_system, recipes_for
+
+    feats = tuple(features)
+    probe = MiniCPMPlanner(features=feats)  # valida nomes; reaproveita schema_kwargs
+
+    def messages(case: dict) -> list[dict]:
+        out = production_messages(case)
+        out[0]["content"] = build_system(feats)
+        if "recipes" in feats:
+            notes = recipes_for(case["observation"].get("window", ""))
+            if notes:
+                out[1]["content"] = out[1]["content"].replace(
+                    "\nChoose the next action.",
+                    f"\nApp notes:\n{notes}\n\nChoose the next action.")
+        return out
+
+    def schema_for(case: dict) -> dict:
+        kwargs = probe.schema_kwargs(list(case["observation"].get("elements", [])),
+                                     ", ".join(case["observation"].get("skills", [])))
+        if "dynschema" in feats:
+            kwargs["evidence_ids"] = list(case["state"].get("evidence_ids", []))
+        return planner_json_schema(**kwargs)
+
+    return Suite(
+        name="production", title="Comparação textual com o prompt do planner de produção",
+        scope=("Mesmas 32 cenas e oráculos, enviadas com PLANNER_SYSTEM + build_prompt "
+               "(planner.py)" + (f"; recursos: {', '.join(feats)}." if feats else "."),
+               "Use --max-tokens 256 (orçamento real); reasoning ligado trunca nele.",
+               "Resultados de desenvolvimento; não provam E2E, visão nem o loop completo."),
+        load=load_cases, messages=messages, evaluate=evaluate_response,
+        system=build_system(feats), quick=lambda cases: select_cases(cases, True, 0),
+        warmup_case=WARMUP_CASE, schema_for=schema_for if feats else None)
+
+
+PRODUCTION_SUITE = production_suite()
 
 
 class GpuSampler:
@@ -464,13 +505,13 @@ EFFORTS = ("low", "medium", "high")
 THINKING_MODES = ("native", "on", "off") + EFFORTS
 
 
-def build_payload(model, messages, settings, use_schema=True) -> dict:
+def build_payload(model, messages, settings, use_schema=True, schema=None) -> dict:
     payload = {"model": model, "messages": messages, "temperature": settings["temperature"],
                "max_tokens": settings["max_tokens"], "stream": False}
     if use_schema and settings["format"] == "schema":
         payload["response_format"] = {
             "type": "json_schema", "json_schema": {"name": "decision",
-            "strict": True, "schema": planner_json_schema()}}
+            "strict": True, "schema": schema or planner_json_schema()}}
     thinking = settings["thinking"]
     if thinking in ("on", "off"):
         payload["chat_template_kwargs"] = {"enable_thinking": thinking == "on"}
@@ -490,7 +531,8 @@ def run_requests(client, url, model, cases, reps, settings, emit, suite=None):
         # Rotaciona casos para reduzir viés de ordem entre repetições.
         shift = rep % len(cases)
         for case in cases[shift:] + cases[:shift]:
-            payload = build_payload(model, suite.messages(case), settings, suite.use_schema)
+            payload = build_payload(model, suite.messages(case), settings, suite.use_schema,
+                                    suite.schema_for(case) if suite.schema_for else None)
             t0 = time.perf_counter()
             try:
                 if suite.run_case:
@@ -583,6 +625,8 @@ def main(argv=None) -> int:
                     help="text = prompt do benchmark; production = prompt real do planner; "
                          "trajectory = cenários multi-passo; ground = localizar elementos "
                          "em screenshots")
+    ap.add_argument("--features", default="",
+                    help="recursos do planner (production): tools,fewshot,recipes,dynschema,why")
     ap.add_argument("--url", default="http://127.0.0.1:1234/v1")
     ap.add_argument("--list", action="store_true", help="listar IDs reais do servidor")
     ap.add_argument("--model", action="append",
@@ -619,7 +663,8 @@ def main(argv=None) -> int:
                 print(json.dumps(models, ensure_ascii=False, indent=2))
                 return 0
             args.model = resolve_models(args.model, [m["id"] for m in models])
-            suite = PRODUCTION_SUITE if args.suite == "production" else TEXT_SUITE
+            features = tuple(f for f in args.features.split(",") if f)
+            suite = production_suite(features) if args.suite == "production" else TEXT_SUITE
             if args.suite == "ground":
                 from evals.ground_bench import SUITE as suite
                 args.format = "prompt"
@@ -641,7 +686,7 @@ def main(argv=None) -> int:
                         "url": url, "models_advertised": models, "notes": args.notes,
                         "platform": platform.platform(), "python": platform.python_version(),
                         "cases_sha256": hashlib.sha256(case_text.encode()).hexdigest(),
-                        "suite": suite.name,
+                        "suite": suite.name, "features": list(features),
                         "images_sha256": suite.fingerprint(cases) if suite.fingerprint else None,
                         "prompt_sha256": hashlib.sha256(suite.system.encode()).hexdigest(),
                         "system_prompt": suite.system, "warmups": [], "interrupted": False,
