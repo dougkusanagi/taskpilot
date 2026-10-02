@@ -361,3 +361,11 @@ abaixo são legado a substituir conforme o plano vigente, não regras a perpetua
   `kv_cache`, `mmproj_offload`, `parallel`; navegador abre com `--force-renderer-accessibility`.
 - Com imagem, 4B em contexto 8192 estoura 6 GB; use 4096. Suite no Linux: 474 testes, 0 erros.
 
+## Protótipo Wayland/Linux (02/10/2026)
+
+- `platform_backend/` (opt-in `--platform wayland`): captura+input pelos portais ScreenCast/RemoteDesktop,
+  ponte em processo separado (python do sistema com `gi`). Default/Windows inalterados; sem opt-in o
+  Linux segue recusando ação física. Guia e medições: `docs/prototipo-wayland-2026-10-02.md`.
+- Quirks: `mss` no Wayland = tela preta; AT-SPI devolve bounds `(0,0)` em janela Wayland nativa; Chrome
+  do usuário roda com ozone wayland. Execução real (diálogo do portal + loop com modelos) ainda não
+  verificada em 02/10; nenhum teste automatizado abre sessão no desktop.
