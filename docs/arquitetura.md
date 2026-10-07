@@ -55,7 +55,8 @@ são acionáveis por `activate`; `click_xy` nunca recebe (0,0) por falta de dado
 - **A · Semântica:** `activate(ref)`, `set_text(ref, text)`, `type(text)`, `key(combo)`, `read(ref)`, `wait_for(text)`.
 - **B · Texto na tela:** `click_text(label)` por OCR com caixas (recusa ambiguidade e ausência).
 - **C · Visão:** `click_visual(description)` — o próprio modelo localiza no screenshot (imagem reduzida, ~768 px).
-- Sempre: `ask(question)`, `done(answer, evidence)`, `fail(reason)`. `answer` é a resposta ao usuário (ex.: o menor preço);
+- Sempre: `handoff(motivo)` (passa o controle ao usuário: CAPTCHA, login, 2FA, pagamento; traz a aba à frente, notifica, espera
+  "continuar" com timeout e **relê o estado** para confirmar que o bloqueio sumiu), `ask(question)`, `done(answer, evidence)`, `fail(reason)`. `answer` é a resposta ao usuário (ex.: o menor preço);
   `evidence` lista as leituras que a sustentam (ref + url/trecho). Resposta sem evidência rastreável é vetada.
 Cada degrau só é tentado se o anterior não achou o alvo; o orquestrador registra qual degrau resolveu.
 
@@ -105,6 +106,10 @@ Padrão **negar**. Camadas independentes (defesa em profundidade):
    por padrão; liberar exige modo explícito "confirmar cada ação".
 3. **Confirmação humana por ação**, independente de grant: enviar mensagem/e-mail, publicar, apagar, comprar/pagar, alterar
    conta ou segurança, aceitar termos/OAuth, baixar arquivo, instalar.
+3b. **CAPTCHA e verificações anti-robô: o agente não tenta resolver nem contornar.** Detecta (iframes reCAPTCHA/hCaptcha/Turnstile,
+    páginas "Robot Check") e faz `handoff`. Motivos: viola os termos dos sites e arrisca bloqueio da conta; modelos pequenos não
+    resolvem desafios modernos (muitos são comportamentais). Usar o Chrome real e logado, em ritmo humano e sem abas em paralelo,
+    já reduz a frequência.
 4. **Segredos fora do alcance:** o agente nunca lê nem digita senha, código 2FA ou campo de cartão (pede ao usuário e espera);
    cookies/localStorage não são expostos ao modelo; o modelo não executa JavaScript próprio (só scripts fixos do projeto).
 5. **Injeção de prompt:** texto de página é **dado não confiável**, marcado como tal no prompt; instruções vindas da página
@@ -147,3 +152,7 @@ lidos em uma memória estruturada (ex.: lista de {título, preço, url}) em vez 
 5. Adaptadores de desktop semânticos (AT-SPI/UIA) e escada OCR/visão para apps que não são web.
 6. Aceite ao vivo no Chrome real, com o usuário presente (Amazon, e-mail, notícias).
 
+## 7. Futuro (fora do MVP, já previsto)
+- **Tarefas agendadas** (ex.: resumo de notícias toda manhã): tool `schedule(tarefa, cron)`. Execução **sem o usuário** exige
+  grants prévios e restritos a `read`; sem `handoff` possível — se aparecer CAPTCHA/login, adia e notifica; resultado entregue
+  como arquivo/notificação; só roda com a máquina ligada e o Chrome aberto. Ações irreversíveis nunca rodam sem confirmação.
