@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Refazendo do zero em 6 GB — 07/10/2026</title>
+<style>
+:root{--bg:#fff;--fg:#1d2430;--mut:#5b6678;--card:#f4f6fa;--line:#dde2ea;--ok:#157347;--warn:#b26a00;--bad:#b3261e;--acc:#2456c8;--acc2:#7a3fc8}
+@media(prefers-color-scheme:dark){:root{--bg:#10141b;--fg:#e6e9ef;--mut:#9aa5b8;--card:#19202b;--line:#2b3445;--ok:#4cc38a;--warn:#e0a23a;--bad:#ff7b72;--acc:#7aa2ff;--acc2:#b794f6}}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.55 system-ui,sans-serif}
+main{max-width:920px;margin:0 auto;padding:24px 16px 72px}
+h1{font-size:1.7rem;margin:.2em 0}h2{margin-top:2em;border-bottom:1px solid var(--line);padding-bottom:.2em}
+.lead,small{color:var(--mut)}
+.card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:14px 16px;margin:12px 0}
+table{border-collapse:collapse;width:100%;font-size:.93rem;display:block;overflow-x:auto}
+th,td{border-bottom:1px solid var(--line);padding:6px 10px;text-align:left;vertical-align:top}th{color:var(--mut);white-space:nowrap}
+.ok{color:var(--ok);font-weight:600}.warn{color:var(--warn);font-weight:600}.bad{color:var(--bad);font-weight:600}
+.tier{border-left:5px solid var(--acc);padding:8px 14px;margin:8px 0;background:var(--card);border-radius:0 8px 8px 0}
+.tier.b{border-color:var(--acc2)}.tier.c{border-color:var(--warn)}
+.vram{display:flex;height:34px;border-radius:8px;overflow:hidden;border:1px solid var(--line);font-size:.78rem;color:#fff}
+.vram div{display:flex;align-items:center;justify-content:center;white-space:nowrap;overflow:hidden}
+code{background:var(--card);padding:1px 5px;border-radius:4px}
+svg{width:100%;height:auto}svg text{fill:var(--fg);font:13px system-ui}
+</style></head><body><main>
+<h1>Se eu refizesse do zero, com 6 GB de VRAM</h1>
+<p class="lead">Resposta curta: <b>um modelo só</b> (VLM de 4B), usado como cérebro; e a maior parte do trabalho feita por <b>ferramentas estruturadas</b>, não por visão. Números de VRAM são estimativas minhas (marcadas); os de latência atuais foram medidos na RTX 2060.</p>
+
+<div class="card"><b>Tese:</b> nos modelos pequenos, a qualidade vem menos de “inteligência” e mais de <i>dar a eles uma interface onde acertar é fácil</i> (nome exato do botão, texto como texto, comando como comando) e de <i>verificar o resultado de forma independente</i>. Visão vira reserva, não base.</div>
+
+<h2>1. Arquitetura em camadas</h2>
+<svg viewBox="0 0 860 330" role="img" aria-label="Camadas: modelo, orquestrador, ferramentas">
+<rect x="10" y="10" width="840" height="60" rx="10" fill="none" stroke="currentColor" opacity=".35"/>
+<text x="24" y="36" font-weight="700">1 · Cérebro: 1 VLM de 4B residente (Q4) — planeja, escolhe ferramenta, lê imagem só quando pedida</text>
+<text x="24" y="58">thinking desligado por padrão; liga só quando o monitor de “travado” dispara</text>
+<rect x="10" y="85" width="840" height="75" rx="10" fill="none" stroke="currentColor" opacity=".35"/>
+<text x="24" y="110" font-weight="700">2 · Orquestrador em Python (determinístico) — NUNCA decide o objetivo</text>
+<text x="24" y="132">estado compacto em texto (árvore diffada) · memória curta · verificador por leitura de campo · vetos · parada de emergência</text>
+<text x="24" y="150">monitor de travado/marcos → thinking → pergunta ao usuário</text>
+<rect x="10" y="175" width="270" height="140" rx="10" fill="none" stroke="var(--acc)" stroke-width="2"/>
+<text x="22" y="200" font-weight="700">A · Semântica (preferida)</text>
+<text x="22" y="222">AT-SPI / UIA: clicar, digitar,</text><text x="22" y="240">ler valor, por NOME</text>
+<text x="22" y="262">atalhos de teclado</text><text x="22" y="280">navegador: árvore + refs</text><text x="22" y="298">skills/CLIs em allowlist</text>
+<rect x="295" y="175" width="270" height="140" rx="10" fill="none" stroke="var(--acc2)" stroke-width="2"/>
+<text x="307" y="200" font-weight="700">B · Texto na tela</text>
+<text x="307" y="222">OCR com caixas (CPU, ~1 s)</text><text x="307" y="240">acha o rótulo → coordenadas</text><text x="307" y="262">para apps sem árvore</text>
+<rect x="580" y="175" width="270" height="140" rx="10" fill="none" stroke="var(--warn)" stroke-width="2"/>
+<text x="592" y="200" font-weight="700">C · Visão (reserva)</text>
+<text x="592" y="222">o próprio VLM olha o screenshot</text><text x="592" y="240">canvas, ícones sem nome</text><text x="592" y="262">imagem pequena (~768 px)</text>
+</svg>
+<p>Ordem de tentativa: <b>A → B → C</b>. Cada degrau só entra se o anterior não achou o alvo.</p>
+
+<h2>2. Modelos: solo, dupla ou trio?</h2>
+<table><tr><th>Opção</th><th>Prós</th><th>Contras</th><th>Veredito</th></tr>
+<tr><td><b>Solo</b>: VLM 4B (GUI-Owl-1.5-4B ou Qwen3.5-4B)</td><td>1 processo, 1 conjunto de pesos; vê a tela quando precisa; encoder cabe na GPU; contexto barato (Qwen3.5 é híbrido: KV ~4× menor)</td><td>planejador menos forte que um 4B só-texto afinado; precisa de adaptador do prompt de ação</td><td class="ok">Escolha</td></tr>
+<tr><td><b>Dupla</b>: planner texto + grounder visual (hoje, P1)</td><td>planner rápido (0,4 s); já funciona</td><td>pesos duplicados; encoder na CPU (9–10 s); sem evidência publicada para o desenho</td><td class="warn">Só como plano B</td></tr>
+<tr><td><b>Trio</b>: + OCR/parser de tela dedicado</td><td>coordenadas baratas e exatas para texto</td><td>mais peças</td><td class="ok">OCR sim (CPU, grátis em VRAM)</td></tr>
+<tr><td>Modelo grande (8B/MoE) residente</td><td>mais capaz</td><td>não cabe; MoE 35B pede ~31 GB de RAM</td><td class="bad">Só sob demanda, trocando</td></tr></table>
+<p><b>Por que solo:</b> os modelos GUI treinados ponta a ponta reportam 35–48% no OSWorld-Verified aos 4B (autores: GUI-Owl-1.5-4B 48,2; Qwen3.5-4B 35,6). O decisivo não é o nome, é ter <i>um</i> modelo que planeja e enxerga. Eu testaria os dois e ficaria com o que vencer na minha própria bateria.</p>
+
+<h2>3. Orçamento de VRAM <small>(estimativa)</small></h2>
+<div class="vram" role="img" aria-label="Orçamento de VRAM">
+<div style="width:18%;background:#6b7280">desktop 1,1</div>
+<div style="width:43%;background:var(--acc)">pesos Q4 ~2,6</div>
+<div style="width:9%;background:var(--acc2)">proj. 0,5</div>
+<div style="width:10%;background:#c2410c">KV+buf 0,6</div>
+<div style="width:20%;background:#157347">folga ~1,3</div></div>
+<small>Total 6,1 GB. Hoje (P1 medido): 4,4 GB de modelos <i>sem</i> encoder na GPU. Solo com encoder na GPU deve caber com folga para o desktop; precisa ser medido.</small>
+<p>Quantização: pesos Q4_K_M, projetor Q8_0, KV q8_0, llama.cpp <b>padrão</b> (sem fork). Bonsai só se um dia faltar VRAM: custa 6–11 pontos de qualidade.</p>
+
+<h2>4. O que eu faria diferente do projeto atual</h2>
+<div class="tier"><b>Eval primeiro.</b> Antes de qualquer feature: sessão de teste isolada (já existe no Linux; Sandbox no Windows) + 30 tarefas com verificação por screenshot independente. Todo ajuste passa por ela. Foi isso que achou os 8 defeitos reais de ontem que 486 testes offline não viam.</div>
+<div class="tier b"><b>Interface única por plataforma.</b> Um contrato <code>observe() / act(by_name) / read(field)</code> com dois adaptadores (UIA no Windows, AT-SPI+portal no Linux). Hoje essa lógica está espalhada por heurísticas de app.</div>
+<div class="tier c"><b>Receitas declarativas por app</b> (JSON/skills) em vez de regras no loop; verificador que lê o <i>campo</i>, nunca o título (o título ecoou texto e confirmou um falso sucesso).</div>
+<div class="tier"><b>Decisão de produto necessária:</b> permitir ação semântica (AT-SPI/UIA) além de mouse/teclado físicos. Sem isso, o desenho volta a depender de visão para tudo.</div>
+
+<h2>5. Roteiro (ordem que eu seguiria)</h2>
+<table><tr><th>Etapa</th><th>Entrega</th><th>Prova de que deu certo</th></tr>
+<tr><td>1 · Bancada</td><td>30 tarefas + sessão isolada + métricas (sucesso, s/passo, VRAM de pico)</td><td>baseline do P1 medido</td></tr>
+<tr><td>2 · Camada semântica</td><td>AT-SPI/UIA por nome + teclado + OCR</td><td>calculadora e editor sem visão, 3/3</td></tr>
+<tr><td>3 · Cérebro solo</td><td>GUI-Owl-4B vs Qwen3.5-4B, encoder na GPU</td><td>≥80% nas tarefas simples, p50 ≤60 s</td></tr>
+<tr><td>4 · Navegador</td><td>Chrome com árvore de acessibilidade e refs</td><td>busca e formulário simples</td></tr>
+<tr><td>5 · Roteador</td><td>travado → thinking → pergunta; modelo pesado sob demanda</td><td>converte metade das falhas da etapa 3</td></tr></table>
+
+<h2>6. Expectativa honesta</h2>
+<div class="card"><span class="ok">Deve funcionar:</span> tarefas curtas em apps que expõem acessibilidade (editor, calculadora, configurações, arquivos, formulários).<br>
+<span class="warn">Incerto:</span> web complexa, apps com canvas, tarefas de 15+ passos.<br>
+<span class="bad">Não prometer:</span> “faz qualquer coisa”. Com 4B os estudos mostram falha em planejamento longo; o que se ganha é um assistente rápido e confiável no que é curto e estruturado.</div>
+<p><small>Fontes: arXiv 2602.16855 (GUI-Owl-1.5), card Qwen3.5-4B, AgentFloor (2605.00334), medições de 06–07/10 neste repositório. Ver também <code>plano-viabilidade-2026-10-07.md</code>.</small></p>
+</main></body></html>

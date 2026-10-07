@@ -203,8 +203,7 @@ class TestSandboxCliESalvaguardas(unittest.TestCase):
             [sys.executable, "main.py", "--help"],
             capture_output=True, text=True, timeout=60, cwd=ROOT)
         self.assertEqual(out.returncode, 0, out.stderr[:500])
-        for flag in ("--config", "--max-steps", "--self-test",
-                     "--planner-url", "--vision-url", "--locate"):
+        for flag in ("--config", "--self-test", "--platform"):
             self.assertIn(flag, out.stdout)
 
     def test_salvaguardas_no_codigo(self):

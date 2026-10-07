@@ -20,9 +20,7 @@ from unittest.mock import patch
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-import loop  # noqa: E402
 import overlay  # noqa: E402
-import planner  # noqa: E402
 import tools  # noqa: E402
 import uia  # noqa: E402
 
@@ -119,32 +117,6 @@ class TestFocusPulaOverlay(unittest.TestCase):
     def test_timeout_padrao_curto(self):
         sig = inspect.signature(tools.focus_window)
         self.assertLessEqual(sig.parameters["timeout"].default, 3.0)
-
-
-class TestPromptAntiCopia(unittest.TestCase):
-    def test_sem_placeholder_copiavel(self):
-        blob = planner.TOOLS_SPEC + planner.PLANNER_SYSTEM
-        self.assertNotIn("trecho do título", blob)
-
-    def test_regra_anti_copia_e_open_vs_focus(self):
-        self.assertIn("NEVER copy the example", planner.PLANNER_SYSTEM)
-        self.assertIn("ONLY when a", planner.PLANNER_SYSTEM)
-        self.assertIn("already missed", planner.PLANNER_SYSTEM)
-
-
-class TestRepeatNote(unittest.TestCase):
-    def test_cita_alvo(self):
-        from schemas import Action
-
-        note = loop._repeat_note(Action(type="focus", target="trecho X"))
-        self.assertIn("focus(trecho X)", note)
-        self.assertIn("DIFERENTE", note)
-
-    def test_sem_arg_so_tipo(self):
-        from schemas import Action
-
-        note = loop._repeat_note(Action(type="wait", ms=300))
-        self.assertIn("wait", note)
 
 
 if __name__ == "__main__":

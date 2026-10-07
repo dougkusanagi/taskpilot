@@ -49,12 +49,6 @@ class TestCleanup(unittest.TestCase):
             p.read_text(encoding="utf-8"))]
         self.assertEqual(offenders, [], f"import de módulo morto: {offenders}")
 
-    def test_loop_sem_ramo_scorer(self):
-        src = (ROOT / "loop.py").read_text(encoding="utf-8")
-        self.assertNotIn('"SCORER"', src)
-        self.assertNotIn("scorer_top", src)
-        self.assertNotIn("scorer_ms", src)
-
     def test_source_type_so_fontes_reais(self):
         import schemas
 
