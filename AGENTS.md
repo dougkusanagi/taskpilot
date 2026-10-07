@@ -77,6 +77,8 @@ Detalhes do Sandbox em `docs/sandbox-test-env.md` (wrapper com `$LASTEXITCODE` e
   `wsb exec` não devolve stdout (usar arquivos em `C:\job\out`); só um Sandbox por vez, fechar pelo ID (`wsb stop --id`);
   `LogonCommand` do `.wsb` não dispara. `mss.monitors[0]` é o desktop virtual (left/top podem ser negativos).
 - Arquivos `.py` em UTF-8 sem BOM (`test_cleanup` trava mojibake); `.gitattributes` fixa LF (`.ps1` CRLF).
+- Sessão Linux: se o host exporta `GDK_BACKEND=x11`, iniciar apps GTK com
+  `env GDK_BACKEND=wayland` dentro da sessão isolada; a calculadora foi capturada assim em 07/10.
 - Linux/Wayland: ponte em processo separado com o Python do sistema (`gi`); captura+input pelo mesmo portal.
   O diálogo do GNOME vem com "Permitir interação remota" DESLIGADO (`portal_rules.devices_error`); o 1º evento de teclado
   após abrir a sessão é descartado (aquecimento com Shift); `fakesink` usa `signal-handoffs` (usamos `appsink`);

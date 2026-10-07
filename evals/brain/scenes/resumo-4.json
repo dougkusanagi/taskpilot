@@ -3,6 +3,7 @@
   "categoria": "resumo",
   "split": "blind",
   "source": "synthetic",
+  "source_capture": null,
   "goal": "Resuma somente a notícia lida, sem inventar. Responda exatamente: TÍTULO — URL; novo chip lançado hoje.",
   "history": [
     {

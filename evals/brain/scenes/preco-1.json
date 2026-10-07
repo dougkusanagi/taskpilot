@@ -3,6 +3,7 @@
   "categoria": "preco",
   "split": "dev",
   "source": "synthetic",
+  "source_capture": null,
   "goal": "Qual a placa RTX 5090 nova mais barata? Exclua acessórios, usados, PCs, notebooks e \"a partir de\". Responda exatamente: TÍTULO: PREÇO — URL.",
   "history": [
     {

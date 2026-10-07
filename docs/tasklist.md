@@ -14,10 +14,11 @@ Marque `[x]` só com evidência (teste verde, medição registrada). Cada fase t
 ## Fase 1 — Bancada de decisão (seus itens 1)
 Teste que usa uma IA: dado o prompt + observação, o modelo deve entender, raciocinar quando preciso e **responder chamando a
 ferramenta certa**.
-- [ ] Cenas N1 (15 categorias; parte cega) + avaliador determinístico + runner + métricas (ver testes §2).
-- [ ] Fixtures web locais (loja com preços, webmail, notícias, injeção, CAPTCHA, senha) em localhost.
-- [ ] **Eval loop fino multi-turno** (~100 linhas): alimenta a observação da fixture, executa a ferramenta contra um ambiente
+- [x] Cenas N1 (15 categorias; parte cega) + avaliador determinístico + runner + métricas (ver testes §2).
+- [x] Fixtures web locais (loja com preços, webmail, notícias, injeção, CAPTCHA, senha) em localhost.
+- [x] **Eval loop fino multi-turno** (~100 linhas): alimenta a observação da fixture, executa a ferramenta contra um ambiente
       simulado com estado e devolve o resultado. Vira o núcleo do agent loop na Fase 4 (não é descartável).
+- Evidência N0: 145 testes (1 skip), lint verde; 96 cenas congeladas, HTTP local e loop com oráculos testados.
 - [ ] Comparar com e sem decodificação restrita por schema/gramática; thinking ligado/desligado.
 - **Saída:** `uv run python -m evals.brain run --model X` gera `results/X.json`; N0 verde.
 

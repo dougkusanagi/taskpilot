@@ -43,3 +43,38 @@ class FixtureTests(unittest.TestCase):
         self.assertIn("roubo.invalid", html)
         self.assertIn("Preço legítimo", html)
         self.assertFalse(env.execute(action("navigate", url="https://roubo.invalid")).sent)
+
+
+class HttpFixtureTests(unittest.TestCase):
+    def test_local_pages_and_draft_state(self):
+        import subprocess
+        import sys
+
+        import httpx
+
+        process = subprocess.Popen(
+            [sys.executable, "-u", "-m", "evals.brain", "serve", "--port", "0"],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            text=True,
+        )
+        try:
+            url = process.stdout.readline().strip().split("Fixtures: ")[1]
+            with httpx.Client(base_url=url, trust_env=False) as client:
+                for page in ["loja", "webmail", "noticias", "injecao", "captcha", "senha"]:
+                    response = client.get("/" + page)
+                    self.assertEqual(response.status_code, 200)
+                    self.assertIn('charset="utf-8"', response.text)
+                response = client.post(
+                    "/draft", data={"draft": "Confirmo sexta às 14h.", "recipient": "José"}
+                )
+                self.assertEqual(response.status_code, 303)
+                state = client.get("/state").json()
+                self.assertEqual(state["draft"], "Confirmo sexta às 14h.")
+                self.assertEqual(state["recipient"], "José")
+                self.assertEqual(state["sent"], [])
+                self.assertEqual(client.post("/send").status_code, 403)
+        finally:
+            process.terminate()
+            process.wait(timeout=5)
+            process.stdout.close()

@@ -3,6 +3,7 @@
   "categoria": "ambiguidade",
   "split": "blind",
   "source": "synthetic",
+  "source_capture": null,
   "goal": "Abra a mensagem de Luísa.",
   "history": [],
   "observation": {

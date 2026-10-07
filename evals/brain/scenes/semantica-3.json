@@ -2,24 +2,438 @@
   "id": "semantica-3",
   "categoria": "semantica",
   "split": "blind",
-  "source": "synthetic",
-  "goal": "Ative o botão Próximo.",
+  "source": "captured-atspi",
+  "source_capture": "captures/calculadora-atspi.json + captures/calculadora.png",
+  "goal": "Ative o botão 4 da calculadora pela ferramenta semântica.",
   "history": [],
   "observation": {
     "version": "0",
     "id": "semantica-3",
-    "url": "http://localhost:8765/semantica",
+    "url": "app://gnome-calculator",
     "elements": [
+      {
+        "ref": "semantica-3:e0",
+        "role": "Edit",
+        "name": "campo de texto",
+        "value": "",
+        "sensitive": false
+      },
       {
         "ref": "semantica-3:e1",
         "role": "Button",
-        "name": "Próximo",
+        "name": "Backspace",
+        "value": "",
+        "sensitive": false
+      },
+      {
+        "ref": "semantica-3:e2",
+        "role": "Button",
+        "name": "C",
+        "value": "",
+        "sensitive": false
+      },
+      {
+        "ref": "semantica-3:e3",
+        "role": "Text",
+        "name": "C",
+        "value": "",
+        "sensitive": false
+      },
+      {
+        "ref": "semantica-3:e4",
+        "role": "Button",
+        "name": "↑n",
+        "value": "",
+        "sensitive": false
+      },
+      {
+        "ref": "semantica-3:e5",
+        "role": "Text",
+        "name": "↑n",
+        "value": "",
+        "sensitive": false
+      },
+      {
+        "ref": "semantica-3:e6",
+        "role": "Button",
+        "name": "↓n",
+        "value": "",
+        "sensitive": false
+      },
+      {
+        "ref": "semantica-3:e7",
+        "role": "Text",
+        "name": "↓n",
+        "value": "",
+        "sensitive": false
+      },
+      {
+        "ref": "semantica-3:e8",
+        "role": "Button",
+        "name": "7",
+        "value": "",
+        "sensitive": false
+      },
+      {
+        "ref": "semantica-3:e9",
+        "role": "Text",
+        "name": "7",
+        "value": "",
+        "sensitive": false
+      },
+      {
+        "ref": "semantica-3:e10",
+        "role": "Button",
+        "name": "8",
+        "value": "",
+        "sensitive": false
+      },
+      {
+        "ref": "semantica-3:e11",
+        "role": "Text",
+        "name": "8",
+        "value": "",
+        "sensitive": false
+      },
+      {
+        "ref": "semantica-3:e12",
+        "role": "Button",
+        "name": "9",
+        "value": "",
+        "sensitive": false
+      },
+      {
+        "ref": "semantica-3:e13",
+        "role": "Text",
+        "name": "9",
+        "value": "",
+        "sensitive": false
+      },
+      {
+        "ref": "semantica-3:e14",
+        "role": "Button",
+        "name": "4",
+        "value": "",
+        "sensitive": false
+      },
+      {
+        "ref": "semantica-3:e15",
+        "role": "Text",
+        "name": "4",
+        "value": "",
+        "sensitive": false
+      },
+      {
+        "ref": "semantica-3:e16",
+        "role": "Button",
+        "name": "5",
+        "value": "",
+        "sensitive": false
+      },
+      {
+        "ref": "semantica-3:e17",
+        "role": "Text",
+        "name": "5",
+        "value": "",
+        "sensitive": false
+      },
+      {
+        "ref": "semantica-3:e18",
+        "role": "Button",
+        "name": "6",
+        "value": "",
+        "sensitive": false
+      },
+      {
+        "ref": "semantica-3:e19",
+        "role": "Text",
+        "name": "6",
+        "value": "",
+        "sensitive": false
+      },
+      {
+        "ref": "semantica-3:e20",
+        "role": "Button",
+        "name": "1",
+        "value": "",
+        "sensitive": false
+      },
+      {
+        "ref": "semantica-3:e21",
+        "role": "Text",
+        "name": "1",
+        "value": "",
+        "sensitive": false
+      },
+      {
+        "ref": "semantica-3:e22",
+        "role": "Button",
+        "name": "2",
+        "value": "",
+        "sensitive": false
+      },
+      {
+        "ref": "semantica-3:e23",
+        "role": "Text",
+        "name": "2",
+        "value": "",
+        "sensitive": false
+      },
+      {
+        "ref": "semantica-3:e24",
+        "role": "Button",
+        "name": "3",
+        "value": "",
+        "sensitive": false
+      },
+      {
+        "ref": "semantica-3:e25",
+        "role": "Text",
+        "name": "3",
+        "value": "",
+        "sensitive": false
+      },
+      {
+        "ref": "semantica-3:e26",
+        "role": "Button",
+        "name": "0",
+        "value": "",
+        "sensitive": false
+      },
+      {
+        "ref": "semantica-3:e27",
+        "role": "Text",
+        "name": "0",
+        "value": "",
+        "sensitive": false
+      },
+      {
+        "ref": "semantica-3:e28",
+        "role": "Button",
+        "name": ".",
+        "value": "",
+        "sensitive": false
+      },
+      {
+        "ref": "semantica-3:e29",
+        "role": "Text",
+        "name": ".",
+        "value": "",
+        "sensitive": false
+      },
+      {
+        "ref": "semantica-3:e30",
+        "role": "Button",
+        "name": "x",
+        "value": "",
+        "sensitive": false
+      },
+      {
+        "ref": "semantica-3:e31",
+        "role": "Button",
+        "name": "x",
+        "value": "",
+        "sensitive": false
+      },
+      {
+        "ref": "semantica-3:e32",
+        "role": "Text",
+        "name": "x",
+        "value": "",
+        "sensitive": false
+      },
+      {
+        "ref": "semantica-3:e33",
+        "role": "Button",
+        "name": "f(x)",
+        "value": "",
+        "sensitive": false
+      },
+      {
+        "ref": "semantica-3:e34",
+        "role": "Button",
+        "name": "f(x)",
+        "value": "",
+        "sensitive": false
+      },
+      {
+        "ref": "semantica-3:e35",
+        "role": "Text",
+        "name": "f(x)",
+        "value": "",
+        "sensitive": false
+      },
+      {
+        "ref": "semantica-3:e36",
+        "role": "Button",
+        "name": "÷",
+        "value": "",
+        "sensitive": false
+      },
+      {
+        "ref": "semantica-3:e37",
+        "role": "Text",
+        "name": "÷",
+        "value": "",
+        "sensitive": false
+      },
+      {
+        "ref": "semantica-3:e38",
+        "role": "Button",
+        "name": "×",
+        "value": "",
+        "sensitive": false
+      },
+      {
+        "ref": "semantica-3:e39",
+        "role": "Text",
+        "name": "×",
+        "value": "",
+        "sensitive": false
+      },
+      {
+        "ref": "semantica-3:e40",
+        "role": "Button",
+        "name": "−",
+        "value": "",
+        "sensitive": false
+      },
+      {
+        "ref": "semantica-3:e41",
+        "role": "Text",
+        "name": "−",
+        "value": "",
+        "sensitive": false
+      },
+      {
+        "ref": "semantica-3:e42",
+        "role": "Button",
+        "name": "+",
+        "value": "",
+        "sensitive": false
+      },
+      {
+        "ref": "semantica-3:e43",
+        "role": "Text",
+        "name": "+",
+        "value": "",
+        "sensitive": false
+      },
+      {
+        "ref": "semantica-3:e44",
+        "role": "Button",
+        "name": "mod",
+        "value": "",
+        "sensitive": false
+      },
+      {
+        "ref": "semantica-3:e45",
+        "role": "Text",
+        "name": "mod",
+        "value": "",
+        "sensitive": false
+      },
+      {
+        "ref": "semantica-3:e46",
+        "role": "Button",
+        "name": "%",
+        "value": "",
+        "sensitive": false
+      },
+      {
+        "ref": "semantica-3:e47",
+        "role": "Text",
+        "name": "%",
+        "value": "",
+        "sensitive": false
+      },
+      {
+        "ref": "semantica-3:e48",
+        "role": "Button",
+        "name": "‎( )",
+        "value": "",
+        "sensitive": false
+      },
+      {
+        "ref": "semantica-3:e49",
+        "role": "Text",
+        "name": "‎( )",
+        "value": "",
+        "sensitive": false
+      },
+      {
+        "ref": "semantica-3:e50",
+        "role": "Button",
+        "name": "=",
+        "value": "",
+        "sensitive": false
+      },
+      {
+        "ref": "semantica-3:e51",
+        "role": "Text",
+        "name": "=",
+        "value": "",
+        "sensitive": false
+      },
+      {
+        "ref": "semantica-3:e52",
+        "role": "Button",
+        "name": "Undo",
+        "value": "",
+        "sensitive": false
+      },
+      {
+        "ref": "semantica-3:e53",
+        "role": "Button",
+        "name": "Redo",
+        "value": "",
+        "sensitive": false
+      },
+      {
+        "ref": "semantica-3:e54",
+        "role": "Button",
+        "name": "Basic",
+        "value": "",
+        "sensitive": false
+      },
+      {
+        "ref": "semantica-3:e55",
+        "role": "Button",
+        "name": "Basic",
+        "value": "",
+        "sensitive": false
+      },
+      {
+        "ref": "semantica-3:e56",
+        "role": "Text",
+        "name": "Basic",
+        "value": "",
+        "sensitive": false
+      },
+      {
+        "ref": "semantica-3:e57",
+        "role": "Button",
+        "name": "Main Menu",
+        "value": "",
+        "sensitive": false
+      },
+      {
+        "ref": "semantica-3:e58",
+        "role": "Button",
+        "name": "Main Menu",
+        "value": "",
+        "sensitive": false
+      },
+      {
+        "ref": "semantica-3:e59",
+        "role": "Button",
+        "name": "Close",
         "value": "",
         "sensitive": false
       }
     ],
     "text": "",
-    "coverage": "synthetic",
+    "coverage": "atspi: ok; nobounds; sessão isolada 1280x800",
     "next": ""
   },
   "image": null,
@@ -28,11 +442,7 @@
     "accept": [
       {
         "tool": "activate",
-        "ref": "semantica-3:e1"
-      },
-      {
-        "tool": "click",
-        "ref": "semantica-3:e1"
+        "ref": "semantica-3:e14"
       }
     ],
     "forbid": [

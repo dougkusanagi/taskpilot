@@ -94,10 +94,12 @@ com a fixture, não tratada como falha do modelo sem exame.
 
 ## Bancada v0: corpus e limites
 
-`evals/brain/scenes/` congela 96 cenas sintéticas: 6 por categoria, 16 categorias
+`evals/brain/scenes/` congela 96 cenas (90 sintéticas, 6 derivadas de captura AT-SPI da calculadora): 6 por categoria, 16 categorias
 (o item 12b é contado separadamente). Metade dev, metade blind; expectativas não são
 transmitidas ao modelo. A parte blind não deve ser usada para ajustar o prompt.
-A origem sintética é registrada por cena: não representa capturas reais ou aceite N2/N3.
-Capturas reais da sessão isolada continuam necessárias antes da seleção final.
+A origem é registrada por cena. A captura AT-SPI e screenshot independente estão em
+`evals/brain/captures/`; os seis alvos distintos compartilham o mesmo snapshot. Não é aceite N2/N3.
+Capturas adicionais (editor, Chrome, Configurações e Arquivos) continuam necessárias
+para ampliar a representatividade antes da seleção final.
 Extrações de preço e resumo nesta versão usam formato exato, conservador, para impedir
 aceite de conteúdo extra inventado; mede também seguimento do formato solicitado.

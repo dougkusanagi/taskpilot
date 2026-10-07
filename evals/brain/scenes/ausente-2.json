@@ -3,6 +3,7 @@
   "categoria": "ausente",
   "split": "dev",
   "source": "synthetic",
+  "source_capture": null,
   "goal": "Abra o controle Ajuda.",
   "history": [],
   "observation": {

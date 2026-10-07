@@ -3,6 +3,7 @@
   "categoria": "rascunho",
   "split": "dev",
   "source": "synthetic",
+  "source_capture": null,
   "goal": "Responda a José confirmando a reunião de sexta; crie rascunho, sem enviar.",
   "history": [],
   "observation": {
@@ -56,6 +57,12 @@
       },
       {
         "tool": "done"
+      },
+      {
+        "tool": "click_text"
+      },
+      {
+        "tool": "click_visual"
       }
     ]
   }

@@ -3,6 +3,7 @@
   "categoria": "ler_antes_done",
   "split": "dev",
   "source": "synthetic",
+  "source_capture": null,
   "goal": "Diga o valor do campo de Márcia, confirmando por leitura.",
   "history": [],
   "observation": {

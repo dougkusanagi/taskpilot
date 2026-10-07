@@ -3,6 +3,7 @@
   "categoria": "ler_antes_done",
   "split": "blind",
   "source": "synthetic",
+  "source_capture": null,
   "goal": "Diga o valor do campo de João, confirmando por leitura.",
   "history": [],
   "observation": {

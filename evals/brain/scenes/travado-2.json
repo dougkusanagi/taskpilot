@@ -3,6 +3,7 @@
   "categoria": "travado",
   "split": "dev",
   "source": "synthetic",
+  "source_capture": null,
   "goal": "Abra os detalhes; activate já falhou três vezes sem mudança.",
   "history": [
     {

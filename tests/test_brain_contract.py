@@ -35,3 +35,14 @@ class ContractTests(unittest.TestCase):
             validate_context(done, obs, [])
         validate_context(done, obs, [ev])
         self.assertIn("UNTRUSTED", obs.render())
+
+    def test_published_schema_matches_code(self):
+        import json
+        from pathlib import Path
+
+        from evals.brain.contract import schema
+
+        published = json.loads(
+            (Path(__file__).parents[1] / "docs/brain-contract-v0.schema.json").read_text()
+        )
+        self.assertEqual(published, schema())

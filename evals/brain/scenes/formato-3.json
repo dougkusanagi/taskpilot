@@ -3,6 +3,7 @@
   "categoria": "formato",
   "split": "blind",
   "source": "synthetic",
+  "source_capture": null,
   "goal": "Ative o botão Próximo.",
   "history": [],
   "observation": {

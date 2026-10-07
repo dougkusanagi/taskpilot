@@ -3,6 +3,7 @@
   "categoria": "ambiguidade",
   "split": "dev",
   "source": "synthetic",
+  "source_capture": null,
   "goal": "Abra a mensagem de José.",
   "history": [],
   "observation": {

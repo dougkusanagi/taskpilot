@@ -1,0 +1,922 @@
+{
+  "status": "ok",
+  "title": "Calculator",
+  "app": "gnome-calculator",
+  "items": [
+    {
+      "id": 0,
+      "name": "campo de texto",
+      "type": "Edit",
+      "bounds": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "nobounds": true,
+      "value": "",
+      "context": "",
+      "state": "editable"
+    },
+    {
+      "id": 1,
+      "name": "Backspace",
+      "type": "Button",
+      "bounds": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "nobounds": true,
+      "value": "",
+      "context": "",
+      "state": ""
+    },
+    {
+      "id": 2,
+      "name": "C",
+      "type": "Button",
+      "bounds": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "nobounds": true,
+      "value": "",
+      "context": "",
+      "state": ""
+    },
+    {
+      "id": 3,
+      "name": "C",
+      "type": "Text",
+      "bounds": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "nobounds": true,
+      "value": "",
+      "context": "Calculator",
+      "state": ""
+    },
+    {
+      "id": 4,
+      "name": "↑n",
+      "type": "Button",
+      "bounds": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "nobounds": true,
+      "value": "",
+      "context": "",
+      "state": ""
+    },
+    {
+      "id": 5,
+      "name": "↑n",
+      "type": "Text",
+      "bounds": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "nobounds": true,
+      "value": "",
+      "context": "Calculator",
+      "state": ""
+    },
+    {
+      "id": 6,
+      "name": "↓n",
+      "type": "Button",
+      "bounds": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "nobounds": true,
+      "value": "",
+      "context": "",
+      "state": ""
+    },
+    {
+      "id": 7,
+      "name": "↓n",
+      "type": "Text",
+      "bounds": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "nobounds": true,
+      "value": "",
+      "context": "Calculator",
+      "state": ""
+    },
+    {
+      "id": 8,
+      "name": "7",
+      "type": "Button",
+      "bounds": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "nobounds": true,
+      "value": "",
+      "context": "",
+      "state": ""
+    },
+    {
+      "id": 9,
+      "name": "7",
+      "type": "Text",
+      "bounds": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "nobounds": true,
+      "value": "",
+      "context": "Calculator",
+      "state": ""
+    },
+    {
+      "id": 10,
+      "name": "8",
+      "type": "Button",
+      "bounds": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "nobounds": true,
+      "value": "",
+      "context": "",
+      "state": ""
+    },
+    {
+      "id": 11,
+      "name": "8",
+      "type": "Text",
+      "bounds": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "nobounds": true,
+      "value": "",
+      "context": "Calculator",
+      "state": ""
+    },
+    {
+      "id": 12,
+      "name": "9",
+      "type": "Button",
+      "bounds": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "nobounds": true,
+      "value": "",
+      "context": "",
+      "state": ""
+    },
+    {
+      "id": 13,
+      "name": "9",
+      "type": "Text",
+      "bounds": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "nobounds": true,
+      "value": "",
+      "context": "Calculator",
+      "state": ""
+    },
+    {
+      "id": 14,
+      "name": "4",
+      "type": "Button",
+      "bounds": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "nobounds": true,
+      "value": "",
+      "context": "",
+      "state": ""
+    },
+    {
+      "id": 15,
+      "name": "4",
+      "type": "Text",
+      "bounds": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "nobounds": true,
+      "value": "",
+      "context": "Calculator",
+      "state": ""
+    },
+    {
+      "id": 16,
+      "name": "5",
+      "type": "Button",
+      "bounds": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "nobounds": true,
+      "value": "",
+      "context": "",
+      "state": ""
+    },
+    {
+      "id": 17,
+      "name": "5",
+      "type": "Text",
+      "bounds": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "nobounds": true,
+      "value": "",
+      "context": "Calculator",
+      "state": ""
+    },
+    {
+      "id": 18,
+      "name": "6",
+      "type": "Button",
+      "bounds": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "nobounds": true,
+      "value": "",
+      "context": "",
+      "state": ""
+    },
+    {
+      "id": 19,
+      "name": "6",
+      "type": "Text",
+      "bounds": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "nobounds": true,
+      "value": "",
+      "context": "Calculator",
+      "state": ""
+    },
+    {
+      "id": 20,
+      "name": "1",
+      "type": "Button",
+      "bounds": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "nobounds": true,
+      "value": "",
+      "context": "",
+      "state": ""
+    },
+    {
+      "id": 21,
+      "name": "1",
+      "type": "Text",
+      "bounds": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "nobounds": true,
+      "value": "",
+      "context": "Calculator",
+      "state": ""
+    },
+    {
+      "id": 22,
+      "name": "2",
+      "type": "Button",
+      "bounds": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "nobounds": true,
+      "value": "",
+      "context": "",
+      "state": ""
+    },
+    {
+      "id": 23,
+      "name": "2",
+      "type": "Text",
+      "bounds": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "nobounds": true,
+      "value": "",
+      "context": "Calculator",
+      "state": ""
+    },
+    {
+      "id": 24,
+      "name": "3",
+      "type": "Button",
+      "bounds": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "nobounds": true,
+      "value": "",
+      "context": "",
+      "state": ""
+    },
+    {
+      "id": 25,
+      "name": "3",
+      "type": "Text",
+      "bounds": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "nobounds": true,
+      "value": "",
+      "context": "Calculator",
+      "state": ""
+    },
+    {
+      "id": 26,
+      "name": "0",
+      "type": "Button",
+      "bounds": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "nobounds": true,
+      "value": "",
+      "context": "",
+      "state": ""
+    },
+    {
+      "id": 27,
+      "name": "0",
+      "type": "Text",
+      "bounds": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "nobounds": true,
+      "value": "",
+      "context": "Calculator",
+      "state": ""
+    },
+    {
+      "id": 28,
+      "name": ".",
+      "type": "Button",
+      "bounds": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "nobounds": true,
+      "value": "",
+      "context": "",
+      "state": ""
+    },
+    {
+      "id": 29,
+      "name": ".",
+      "type": "Text",
+      "bounds": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "nobounds": true,
+      "value": "",
+      "context": "Calculator",
+      "state": ""
+    },
+    {
+      "id": 30,
+      "name": "x",
+      "type": "Button",
+      "bounds": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "nobounds": true,
+      "value": "",
+      "context": "",
+      "state": ""
+    },
+    {
+      "id": 31,
+      "name": "x",
+      "type": "Button",
+      "bounds": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "nobounds": true,
+      "value": "",
+      "context": "Calculator",
+      "state": ""
+    },
+    {
+      "id": 32,
+      "name": "x",
+      "type": "Text",
+      "bounds": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "nobounds": true,
+      "value": "",
+      "context": "Calculator > x",
+      "state": ""
+    },
+    {
+      "id": 33,
+      "name": "f(x)",
+      "type": "Button",
+      "bounds": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "nobounds": true,
+      "value": "",
+      "context": "",
+      "state": ""
+    },
+    {
+      "id": 34,
+      "name": "f(x)",
+      "type": "Button",
+      "bounds": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "nobounds": true,
+      "value": "",
+      "context": "Calculator",
+      "state": ""
+    },
+    {
+      "id": 35,
+      "name": "f(x)",
+      "type": "Text",
+      "bounds": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "nobounds": true,
+      "value": "",
+      "context": "Calculator > f(x)",
+      "state": ""
+    },
+    {
+      "id": 36,
+      "name": "÷",
+      "type": "Button",
+      "bounds": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "nobounds": true,
+      "value": "",
+      "context": "",
+      "state": ""
+    },
+    {
+      "id": 37,
+      "name": "÷",
+      "type": "Text",
+      "bounds": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "nobounds": true,
+      "value": "",
+      "context": "Calculator",
+      "state": ""
+    },
+    {
+      "id": 38,
+      "name": "×",
+      "type": "Button",
+      "bounds": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "nobounds": true,
+      "value": "",
+      "context": "",
+      "state": ""
+    },
+    {
+      "id": 39,
+      "name": "×",
+      "type": "Text",
+      "bounds": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "nobounds": true,
+      "value": "",
+      "context": "Calculator",
+      "state": ""
+    },
+    {
+      "id": 40,
+      "name": "−",
+      "type": "Button",
+      "bounds": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "nobounds": true,
+      "value": "",
+      "context": "",
+      "state": ""
+    },
+    {
+      "id": 41,
+      "name": "−",
+      "type": "Text",
+      "bounds": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "nobounds": true,
+      "value": "",
+      "context": "Calculator",
+      "state": ""
+    },
+    {
+      "id": 42,
+      "name": "+",
+      "type": "Button",
+      "bounds": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "nobounds": true,
+      "value": "",
+      "context": "",
+      "state": ""
+    },
+    {
+      "id": 43,
+      "name": "+",
+      "type": "Text",
+      "bounds": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "nobounds": true,
+      "value": "",
+      "context": "Calculator",
+      "state": ""
+    },
+    {
+      "id": 44,
+      "name": "mod",
+      "type": "Button",
+      "bounds": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "nobounds": true,
+      "value": "",
+      "context": "",
+      "state": ""
+    },
+    {
+      "id": 45,
+      "name": "mod",
+      "type": "Text",
+      "bounds": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "nobounds": true,
+      "value": "",
+      "context": "Calculator",
+      "state": ""
+    },
+    {
+      "id": 46,
+      "name": "%",
+      "type": "Button",
+      "bounds": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "nobounds": true,
+      "value": "",
+      "context": "",
+      "state": ""
+    },
+    {
+      "id": 47,
+      "name": "%",
+      "type": "Text",
+      "bounds": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "nobounds": true,
+      "value": "",
+      "context": "Calculator",
+      "state": ""
+    },
+    {
+      "id": 48,
+      "name": "‎( )",
+      "type": "Button",
+      "bounds": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "nobounds": true,
+      "value": "",
+      "context": "",
+      "state": ""
+    },
+    {
+      "id": 49,
+      "name": "‎( )",
+      "type": "Text",
+      "bounds": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "nobounds": true,
+      "value": "",
+      "context": "Calculator",
+      "state": ""
+    },
+    {
+      "id": 50,
+      "name": "=",
+      "type": "Button",
+      "bounds": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "nobounds": true,
+      "value": "",
+      "context": "",
+      "state": ""
+    },
+    {
+      "id": 51,
+      "name": "=",
+      "type": "Text",
+      "bounds": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "nobounds": true,
+      "value": "",
+      "context": "Calculator",
+      "state": ""
+    },
+    {
+      "id": 52,
+      "name": "Undo",
+      "type": "Button",
+      "bounds": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "nobounds": true,
+      "value": "",
+      "context": "",
+      "state": "disabled"
+    },
+    {
+      "id": 53,
+      "name": "Redo",
+      "type": "Button",
+      "bounds": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "nobounds": true,
+      "value": "",
+      "context": "",
+      "state": "disabled"
+    },
+    {
+      "id": 54,
+      "name": "Basic",
+      "type": "Button",
+      "bounds": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "nobounds": true,
+      "value": "",
+      "context": "",
+      "state": ""
+    },
+    {
+      "id": 55,
+      "name": "Basic",
+      "type": "Button",
+      "bounds": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "nobounds": true,
+      "value": "",
+      "context": "Calculator",
+      "state": ""
+    },
+    {
+      "id": 56,
+      "name": "Basic",
+      "type": "Text",
+      "bounds": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "nobounds": true,
+      "value": "",
+      "context": "Calculator > Basic",
+      "state": ""
+    },
+    {
+      "id": 57,
+      "name": "Main Menu",
+      "type": "Button",
+      "bounds": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "nobounds": true,
+      "value": "",
+      "context": "",
+      "state": ""
+    },
+    {
+      "id": 58,
+      "name": "Main Menu",
+      "type": "Button",
+      "bounds": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "nobounds": true,
+      "value": "",
+      "context": "Calculator",
+      "state": ""
+    },
+    {
+      "id": 59,
+      "name": "Close",
+      "type": "Button",
+      "bounds": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "nobounds": true,
+      "value": "",
+      "context": "",
+      "state": ""
+    }
+  ],
+  "focused": {
+    "type": "Edit",
+    "name": "campo de texto",
+    "value": "",
+    "editable": true
+  },
+  "focus_how": "guess",
+  "how": "only",
+  "elapsed_ms": 179.2,
+  "windows": [
+    [
+      "gnome-calculator",
+      "Calculator"
+    ]
+  ]
+}

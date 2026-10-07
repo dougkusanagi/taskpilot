@@ -3,6 +3,7 @@
   "categoria": "transferencia",
   "split": "dev",
   "source": "synthetic",
+  "source_capture": null,
   "goal": "Copie o dado da origem A para a origem B, após obter confirmação.",
   "history": [],
   "observation": {
@@ -42,6 +43,21 @@
       },
       {
         "tool": "done"
+      },
+      {
+        "tool": "click_text"
+      },
+      {
+        "tool": "click_visual"
+      },
+      {
+        "tool": "click"
+      },
+      {
+        "tool": "activate"
+      },
+      {
+        "tool": "key"
       }
     ]
   }

@@ -3,6 +3,7 @@
   "categoria": "progresso",
   "split": "dev",
   "source": "synthetic",
+  "source_capture": null,
   "goal": "Leia o valor 67, já digitado no campo, e me informe.",
   "history": [
     {

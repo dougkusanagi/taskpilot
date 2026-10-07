@@ -3,6 +3,7 @@
   "categoria": "formato",
   "split": "dev",
   "source": "synthetic",
+  "source_capture": null,
   "goal": "Ative o botão Detalhes.",
   "history": [],
   "observation": {
