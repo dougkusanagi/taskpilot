@@ -11,6 +11,7 @@ Mudou a arquitetura → mude este arquivo no mesmo commit.
 | GPU | 6 GB de VRAM; ~5 GB utilizáveis (desktop ~1 GB). Pico de VRAM medido por processo, não pelo total do `nvidia-smi` |
 | Execução | 100% local, sem API obrigatória; Windows (UIA) e Linux/Wayland (AT-SPI + portal) |
 | Latência | decisão p95 ≤ 5 s; tarefa curta p50 ≤ 60 s. Tarefas difíceis podem ser mais lentas (modo thinking) |
+| Prioridade | **Browser use no Chrome do usuário (extensão + permissões) é o topo do roteiro**: é o que torna o produto um assistente útil |
 | Segurança | ações irreversíveis exigem confirmação humana; parada de emergência sempre disponível |
 
 ## 2. Princípios
@@ -54,7 +55,8 @@ são acionáveis por `activate`; `click_xy` nunca recebe (0,0) por falta de dado
 - **A · Semântica:** `activate(ref)`, `set_text(ref, text)`, `type(text)`, `key(combo)`, `read(ref)`, `wait_for(text)`.
 - **B · Texto na tela:** `click_text(label)` por OCR com caixas (recusa ambiguidade e ausência).
 - **C · Visão:** `click_visual(description)` — o próprio modelo localiza no screenshot (imagem reduzida, ~768 px).
-- Sempre: `ask(question)`, `done(evidence_refs)`, `fail(reason)`.
+- Sempre: `ask(question)`, `done(answer, evidence)`, `fail(reason)`. `answer` é a resposta ao usuário (ex.: o menor preço);
+  `evidence` lista as leituras que a sustentam (ref + url/trecho). Resposta sem evidência rastreável é vetada.
 Cada degrau só é tentado se o anterior não achou o alvo; o orquestrador registra qual degrau resolveu.
 
 ### 3.4 Contrato do cérebro
@@ -112,6 +114,12 @@ Padrão **negar**. Camadas independentes (defesa em profundidade):
    botão/atalho de parar que revoga a sessão. Tudo roda local: nada de página ou credencial sai da máquina.
 Pontos abertos (ver §4) incluem limite de taxa, revisão periódica dos grants e modelo de ameaças formal.
 
+### 3.11 Orçamento de contexto e paginação
+Páginas reais são grandes (lista de resultados, caixa de entrada, home de notícias). Regras: cada leitura devolve ≤ ~1,5 mil
+tokens; `read_page`/`get_page_text` aceitam `scope` (ref) e **paginam** (`next`); o orquestrador mantém o resultado dos itens já
+lidos em uma memória estruturada (ex.: lista de {título, preço, url}) em vez de reenviar texto cru; o contexto do modelo é
+~8 mil tokens. Extração (menor preço, resumo do dia) é feita lendo página a página e acumulando itens com evidência.
+
 ## 4. Decisões em aberto
 - **Ação semântica (AT-SPI/UIA) permitida além de mouse/teclado físicos:** assumida como SIM neste desenho; o antigo
   `AGENTS.md` proibia. Confirmar com o dono do produto.
@@ -130,3 +138,12 @@ Pontos abertos (ver §4) incluem limite de taxa, revisão periódica dos grants 
 | Extensão Chrome + native host + permissões | **a criar** (§3.9–3.10) |
 | Orquestrador, Observation/Result novos, verificador, cérebro (cliente), monitor | **a criar** |
 | `schemas.py`, `config.py` | herdados; enxugar quando os contratos novos existirem |
+
+## 6. Ordem de implementação (prioridade)
+1. **Bancada:** `evals/brain/` (cenas N1) + fixtures web locais + sessão isolada. Sem isso nada é aceito.
+2. **Extensão Chrome + native host + permissões** (§3.9–3.10), testada em perfil descartável com as fixtures. **Topo do MVP.**
+3. **Orquestrador + cliente do cérebro + verificador + monitor** com o vocabulário de browser.
+4. **Seleção do modelo** (um a um) sobre as cenas e as tarefas de aceite web (ver testes §6).
+5. Adaptadores de desktop semânticos (AT-SPI/UIA) e escada OCR/visão para apps que não são web.
+6. Aceite ao vivo no Chrome real, com o usuário presente (Amazon, e-mail, notícias).
+

@@ -9,7 +9,7 @@
   para GPU de **6 GB de VRAM**. Cérebro = 1 VLM de 4B (GUI-Owl-1.5-4B ou Qwen3.5-4B, a decidir por bateria própria);
   ferramentas na ordem **semântica (AT-SPI/UIA, teclado) → OCR com caixas → visão (reserva)**; Python orquestra, verifica,
   veta e executa; verificador lê o **campo**, nunca o título da janela.
-- **Pendente de decisão do usuário:** permitir ação semântica (AT-SPI/UIA) além de mouse/teclado físicos.
+- **Decidido:** ação semântica permitida; **browser use no Chrome do usuário via extensão + native messaging e permissões por origem é a prioridade nº 2 do MVP** (após a bancada). Aceite: Amazon (menor preço RTX 5090), e-mail (leitura e rascunho), notícias do dia — ver docs/testes-e-selecao-de-modelo.md §6.
 - O orquestrador ainda não existe. O desenho antigo (planner texto + grounder, `loop.py`, `planner.py`) foi removido desta
   branch e vive no `master`. Não ressuscitar sem decisão explícita; reaproveitar ideias, não código acoplado.
 - Eval primeiro: nenhuma feature entra sem bateria com verificação por screenshot independente.
