@@ -1,12 +1,12 @@
 # TaskPilot — MVP em reconstrução
 
 Computer use **local** para GPU de **6 GB de VRAM**. Esta branch (`mvp/do-zero`) recomeça a partir do plano em
-[docs/arquitetura-do-zero-2026-10-07.html](docs/arquitetura-do-zero-2026-10-07.html): um VLM de 4B como cérebro único,
+[docs/arquitetura.md](docs/arquitetura.md) (racional em [HTML](docs/arquitetura-do-zero-2026-10-07.html); modelo e testes em [docs/testes-e-selecao-de-modelo.md](docs/testes-e-selecao-de-modelo.md)): um VLM de 4B como cérebro único,
 ferramentas semânticas (AT-SPI/UIA, teclado) primeiro, OCR depois e visão só como reserva.
 
 **Estado:** o orquestrador ainda não existe. O desenho antigo (planner de texto + grounder, `loop.py`) está no `master`.
 Aproveitado aqui: runtime llama.cpp (Windows e Linux), adaptadores de plataforma (UIA, AT-SPI + portal Wayland, OCR),
-segurança, contratos/verificação, skills, UI/ditado e a sessão de teste isolada no Linux.
+segurança e a sessão de teste isolada no Linux.
 
 ```bash
 uv sync

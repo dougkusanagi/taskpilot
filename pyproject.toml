@@ -15,16 +15,6 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-# Tray + janela Spotlight + ditado ao vivo (host). Sandbox/CLI nao precisam.
-# Instalar: uv sync --extra ui
-ui = [
-  "pywebview>=5.0",
-  "pystray>=0.19",
-  "faster-whisper>=1.0",
-  "sounddevice>=0.4.6",
-  "numpy>=1.26",
-]
-
 # OCR local com caixas (click_text) sem Tesseract: modelos ONNX embutidos, só CPU.
 # Instalar: uv sync --extra ocr
 ocr = [

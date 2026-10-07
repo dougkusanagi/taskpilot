@@ -29,7 +29,6 @@ def main() -> None:
     ap.add_argument("--config", default="config.json")
     ap.add_argument("--self-test", action="store_true", help="screenshot + métricas, sem clicar")
     ap.add_argument("--platform", default="", choices=["", "wayland"])
-    ap.add_argument("--ui", action="store_true", help="tray + janela (extra ui; a religar)")
     args = ap.parse_args()
     cfg = cfgmod.load(args.config)
 
@@ -51,9 +50,6 @@ def main() -> None:
         finally:
             platform_backend.disable()
         return
-    if args.ui:
-        print("A UI depende do orquestrador do MVP (ainda não implementado).")
-        raise SystemExit(2)
     print("O orquestrador do MVP ainda não foi implementado. Veja "
           "docs/arquitetura-do-zero-2026-10-07.html e AGENTS.md.")
     raise SystemExit(2)

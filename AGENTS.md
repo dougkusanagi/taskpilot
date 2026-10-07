@@ -4,7 +4,8 @@
 
 ## Direção
 
-- Plano único: [docs/arquitetura-do-zero-2026-10-07.html](docs/arquitetura-do-zero-2026-10-07.html). Produto: computer use **local**
+- Arquitetura normativa: [docs/arquitetura.md](docs/arquitetura.md); seleção de modelo e testes:
+  [docs/testes-e-selecao-de-modelo.md](docs/testes-e-selecao-de-modelo.md); racional: [docs/arquitetura-do-zero-2026-10-07.html](docs/arquitetura-do-zero-2026-10-07.html). Produto: computer use **local**
   para GPU de **6 GB de VRAM**. Cérebro = 1 VLM de 4B (GUI-Owl-1.5-4B ou Qwen3.5-4B, a decidir por bateria própria);
   ferramentas na ordem **semântica (AT-SPI/UIA, teclado) → OCR com caixas → visão (reserva)**; Python orquestra, verifica,
   veta e executa; verificador lê o **campo**, nunca o título da janela.
@@ -15,12 +16,13 @@
 - Testes com cliques: Windows = Sandbox (`scripts/*.ps1`); Linux = sessão isolada `scripts/linux-test-session.sh`
   (ver docs/teste-sessao-linux.md). **Nunca no desktop de trabalho.**
 
-## Módulos mantidos
+## Módulos (papel na arquitetura)
 
-`server.py` (runtime llama.cpp Win/Linux), `config.py` (perfis P1/P2/U3...), `http_pool.py`, `safety.py`, `schemas.py`,
-`state.py`, `verification.py`, `telemetry.py`, `obs.py`, `actions.py`, `uia.py`, `ocr.py`, `overlay.py`, `tools.py`,
-`vocaela.py` (parsers/protocolos de grounding), `guards.py`, `prefs.py`, `skills.py` + `skills/`, `stt.py`, `app.py` + `ui/`
-(`app.py` ainda importa o loop removido: religar), `platform_backend/` (Wayland: portal + AT-SPI), `evals/ground*` e `ocr_bench`.
+Runtime: `server.py`, `http_pool.py`, `config.py` (perfis antigos a reescrever). Platform: `platform_backend/` (Wayland),
+`uia.py`, `actions.py`, `obs.py`, `tools.py`. OCR: `ocr.py`. Segurança: `safety.py`, `overlay.py`. Medição: `telemetry.py`.
+Contratos herdados: `schemas.py` (enxugar). Dados: `evals/ground*`, `evals/ocr_bench.py`. **A criar:** orquestrador, cliente do
+cérebro, Observation/Result novos, verificador, monitor de travado, `evals/brain/`.
+Removidos (no histórico): vocaela, guards, prefs, skills, state, verification, UI/ditado (`app.py`, `stt.py`, `ui/`).
 
 ## Comandos
 

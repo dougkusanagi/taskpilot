@@ -48,17 +48,6 @@ class TestCropVirtualDesktop(unittest.TestCase):
             self.assertEqual(crop.size, (3840, 1080))
             self.assertEqual(origin, (-1920, 0))
 
-    def test_roundtrip_com_visual_to_action(self):
-        # Vocaela devolve 0.5,0.5 no crop -> pixel físico no monitor negativo
-        from vocaela import VisualAction, visual_to_action
-
-        crop, origin, _ = obs.crop_to_rect(self.FULL, self.VORIGIN,
-                                           (-1800, 100, -800, 600))
-        act = visual_to_action(VisualAction(type="click", x=0.5, y=0.5),
-                               crop.size, origin)
-        self.assertEqual((act.x, act.y), (-1300, 350))
-
-
 class _FakeAuto:
     """pyautogui falso: grava chamadas."""
     FAILSAFE = True
@@ -230,41 +219,6 @@ class TestToolsWhitelist(unittest.TestCase):
         finally:
             self.tools.focus_window = orig
         self.assertIn("ainda não em primeiro plano", d)
-
-
-class TestVocaelaSemantica(unittest.TestCase):
-    def test_presses_middle_hscroll_answer(self):
-        import vocaela
-
-        va = vocaela.parse_vocaela_output(
-            '<Action>[{"action": "PRESS_KEY", "key": "down", "presses": 3}]</Action>')
-        self.assertEqual((va.type, va.key, va.presses), ("key", "down", 3))
-        act = vocaela.visual_to_action(va, (100, 100))
-        self.assertEqual((act.type, act.presses), ("hotkey", 3))
-
-        va = vocaela.parse_vocaela_output(
-            '<Action>[{"action": "MIDDLE_CLICK", "coordinate": [0.5, 0.5]}]</Action>')
-        self.assertEqual(vocaela.visual_to_action(va, (100, 100)).type, "middle_click")
-
-        va = vocaela.parse_vocaela_output(
-            '<Action>[{"action": "SCROLL", "scroll_direction": "left"}]</Action>')
-        act = vocaela.visual_to_action(va, (100, 100))
-        self.assertEqual((act.type, act.key), ("scroll", "left"))
-
-        va = vocaela.parse_vocaela_output(
-            '<Action>[{"action": "ANSWER", "text": "15"}]</Action>')
-        act = vocaela.visual_to_action(va, (100, 100))
-        self.assertEqual((act.type, act.text), ("answer", "15"))
-
-    def test_multiplas_conta_descartadas(self):
-        import vocaela
-
-        va = vocaela.parse_vocaela_output(
-            '<Action>[{"action": "click", "coordinate": [0.2, 0.3]}, '
-            '{"action": "type", "text": "oi"}]</Action>')
-        self.assertEqual((va.type, va.dropped), ("click", 1))
-        with self.assertRaises(ValueError):
-            vocaela.parse_vocaela_output("<Action>[]</Action>")
 
 
 class TestSafetyHotkey(unittest.TestCase):
