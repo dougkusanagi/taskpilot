@@ -4,10 +4,11 @@ Ordem e dependências. Detalhes: [arquitetura.md](arquitetura.md), [testes-e-sel
 Marque `[x]` só com evidência (teste verde, medição registrada). Cada fase tem **saída** objetiva.
 
 ## Fase 0 — Contrato das ferramentas (curta; destrava tudo)
-- [ ] Schema JSON do cérebro: uma variante por ferramenta (`activate`, `set_text`, `type`, `key`, `read`, `wait_for`, `click_text`,
+- [x] Schema JSON do cérebro: uma variante por ferramenta (`activate`, `set_text`, `type`, `key`, `read`, `wait_for`, `click_text`,
       `click_visual`, `read_page`, `find`, `click`, `form_input`, `get_page_text`, `navigate`, `tabs_*`, `screenshot`, `handoff`,
       `ask`, `done(answer, evidence)`, `fail`).
-- [ ] Formato textual da Observation e do Result (delta, evidência, ids com validade por leitura).
+- [x] Formato textual da Observation e do Result (delta, evidência, ids com validade por leitura).
+- Evidência N0: 127 testes (1 skip), lint verde; `docs/brain-contract-v0.md` e schema publicado.
 - **Saída:** contrato v0 congelado em `docs/` + schemas validando em testes N0. Mudança depois = versão nova.
 
 ## Fase 1 — Bancada de decisão (seus itens 1)

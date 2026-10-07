@@ -50,8 +50,8 @@ nem adaptadores antes de a Fase 1 estar verde, exceto a extensão, que pode corr
 
 Runtime: `server.py`, `http_pool.py`, `config.py` (perfis antigos a reescrever). Platform: `platform_backend/` (Wayland),
 `uia.py`, `actions.py`, `obs.py`, `tools.py`. OCR: `ocr.py`. Segurança: `safety.py`, `overlay.py`. Medição: `telemetry.py`.
-Contratos herdados: `schemas.py` (enxugar). Dados: `evals/ground*`, `evals/ocr_bench.py`. **A criar:** orquestrador, cliente do
-cérebro, Observation/Result novos, verificador, monitor de travado, `evals/brain/`.
+Contratos herdados: `schemas.py` (enxugar). Dados: `evals/ground*`, `evals/ocr_bench.py`. **Contrato v0:** `evals/brain/contract.py` e `docs/brain-contract-v0.md` (isolado do runtime herdado).
+**A criar:** orquestrador, cliente do cérebro de produção, verificador, monitor de travado; bancada em `evals/brain/`.
 Removidos (no histórico): vocaela, guards, prefs, skills, state, verification, UI/ditado (`app.py`, `stt.py`, `ui/`).
 
 ## Comandos

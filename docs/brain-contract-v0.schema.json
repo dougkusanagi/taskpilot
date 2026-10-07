@@ -1,0 +1,649 @@
+{
+  "$defs": {
+    "Activate": {
+      "additionalProperties": false,
+      "properties": {
+        "tool": {
+          "const": "activate",
+          "title": "Tool",
+          "type": "string"
+        },
+        "ref": {
+          "title": "Ref",
+          "type": "string"
+        }
+      },
+      "required": [
+        "tool",
+        "ref"
+      ],
+      "title": "Activate",
+      "type": "object"
+    },
+    "Ask": {
+      "additionalProperties": false,
+      "properties": {
+        "tool": {
+          "const": "ask",
+          "title": "Tool",
+          "type": "string"
+        },
+        "question": {
+          "title": "Question",
+          "type": "string"
+        }
+      },
+      "required": [
+        "tool",
+        "question"
+      ],
+      "title": "Ask",
+      "type": "object"
+    },
+    "Click": {
+      "additionalProperties": false,
+      "properties": {
+        "tool": {
+          "const": "click",
+          "title": "Tool",
+          "type": "string"
+        },
+        "ref": {
+          "title": "Ref",
+          "type": "string"
+        }
+      },
+      "required": [
+        "tool",
+        "ref"
+      ],
+      "title": "Click",
+      "type": "object"
+    },
+    "ClickText": {
+      "additionalProperties": false,
+      "properties": {
+        "tool": {
+          "const": "click_text",
+          "title": "Tool",
+          "type": "string"
+        },
+        "label": {
+          "title": "Label",
+          "type": "string"
+        }
+      },
+      "required": [
+        "tool",
+        "label"
+      ],
+      "title": "ClickText",
+      "type": "object"
+    },
+    "ClickVisual": {
+      "additionalProperties": false,
+      "properties": {
+        "tool": {
+          "const": "click_visual",
+          "title": "Tool",
+          "type": "string"
+        },
+        "description": {
+          "title": "Description",
+          "type": "string"
+        }
+      },
+      "required": [
+        "tool",
+        "description"
+      ],
+      "title": "ClickVisual",
+      "type": "object"
+    },
+    "Done": {
+      "additionalProperties": false,
+      "properties": {
+        "tool": {
+          "const": "done",
+          "title": "Tool",
+          "type": "string"
+        },
+        "answer": {
+          "title": "Answer",
+          "type": "string"
+        },
+        "evidence": {
+          "items": {
+            "$ref": "#/$defs/Evidence"
+          },
+          "minItems": 1,
+          "title": "Evidence",
+          "type": "array"
+        }
+      },
+      "required": [
+        "tool",
+        "answer",
+        "evidence"
+      ],
+      "title": "Done",
+      "type": "object"
+    },
+    "Evidence": {
+      "additionalProperties": false,
+      "properties": {
+        "ref": {
+          "minLength": 1,
+          "title": "Ref",
+          "type": "string"
+        },
+        "url": {
+          "minLength": 1,
+          "title": "Url",
+          "type": "string"
+        },
+        "excerpt": {
+          "minLength": 1,
+          "title": "Excerpt",
+          "type": "string"
+        }
+      },
+      "required": [
+        "ref",
+        "url",
+        "excerpt"
+      ],
+      "title": "Evidence",
+      "type": "object"
+    },
+    "Fail": {
+      "additionalProperties": false,
+      "properties": {
+        "tool": {
+          "const": "fail",
+          "title": "Tool",
+          "type": "string"
+        },
+        "reason": {
+          "title": "Reason",
+          "type": "string"
+        }
+      },
+      "required": [
+        "tool",
+        "reason"
+      ],
+      "title": "Fail",
+      "type": "object"
+    },
+    "Find": {
+      "additionalProperties": false,
+      "properties": {
+        "tool": {
+          "const": "find",
+          "title": "Tool",
+          "type": "string"
+        },
+        "description": {
+          "title": "Description",
+          "type": "string"
+        }
+      },
+      "required": [
+        "tool",
+        "description"
+      ],
+      "title": "Find",
+      "type": "object"
+    },
+    "FormInput": {
+      "additionalProperties": false,
+      "properties": {
+        "tool": {
+          "const": "form_input",
+          "title": "Tool",
+          "type": "string"
+        },
+        "ref": {
+          "title": "Ref",
+          "type": "string"
+        },
+        "text": {
+          "title": "Text",
+          "type": "string"
+        }
+      },
+      "required": [
+        "tool",
+        "ref",
+        "text"
+      ],
+      "title": "FormInput",
+      "type": "object"
+    },
+    "GetPageText": {
+      "additionalProperties": false,
+      "properties": {
+        "tool": {
+          "const": "get_page_text",
+          "title": "Tool",
+          "type": "string"
+        },
+        "scope": {
+          "default": "",
+          "title": "Scope",
+          "type": "string"
+        },
+        "next": {
+          "default": "",
+          "title": "Next",
+          "type": "string"
+        }
+      },
+      "required": [
+        "tool"
+      ],
+      "title": "GetPageText",
+      "type": "object"
+    },
+    "Handoff": {
+      "additionalProperties": false,
+      "properties": {
+        "tool": {
+          "const": "handoff",
+          "title": "Tool",
+          "type": "string"
+        },
+        "reason": {
+          "title": "Reason",
+          "type": "string"
+        }
+      },
+      "required": [
+        "tool",
+        "reason"
+      ],
+      "title": "Handoff",
+      "type": "object"
+    },
+    "Key": {
+      "additionalProperties": false,
+      "properties": {
+        "tool": {
+          "const": "key",
+          "title": "Tool",
+          "type": "string"
+        },
+        "combo": {
+          "title": "Combo",
+          "type": "string"
+        }
+      },
+      "required": [
+        "tool",
+        "combo"
+      ],
+      "title": "Key",
+      "type": "object"
+    },
+    "Navigate": {
+      "additionalProperties": false,
+      "properties": {
+        "tool": {
+          "const": "navigate",
+          "title": "Tool",
+          "type": "string"
+        },
+        "url": {
+          "title": "Url",
+          "type": "string"
+        }
+      },
+      "required": [
+        "tool",
+        "url"
+      ],
+      "title": "Navigate",
+      "type": "object"
+    },
+    "Read": {
+      "additionalProperties": false,
+      "properties": {
+        "tool": {
+          "const": "read",
+          "title": "Tool",
+          "type": "string"
+        },
+        "ref": {
+          "title": "Ref",
+          "type": "string"
+        }
+      },
+      "required": [
+        "tool",
+        "ref"
+      ],
+      "title": "Read",
+      "type": "object"
+    },
+    "ReadPage": {
+      "additionalProperties": false,
+      "properties": {
+        "tool": {
+          "const": "read_page",
+          "title": "Tool",
+          "type": "string"
+        },
+        "filter": {
+          "default": "interactive",
+          "enum": [
+            "interactive",
+            "all"
+          ],
+          "title": "Filter",
+          "type": "string"
+        },
+        "scope": {
+          "default": "",
+          "title": "Scope",
+          "type": "string"
+        },
+        "next": {
+          "default": "",
+          "title": "Next",
+          "type": "string"
+        }
+      },
+      "required": [
+        "tool"
+      ],
+      "title": "ReadPage",
+      "type": "object"
+    },
+    "Screenshot": {
+      "additionalProperties": false,
+      "properties": {
+        "tool": {
+          "const": "screenshot",
+          "title": "Tool",
+          "type": "string"
+        },
+        "scale": {
+          "default": 0.6,
+          "exclusiveMinimum": 0,
+          "maximum": 1,
+          "title": "Scale",
+          "type": "number"
+        }
+      },
+      "required": [
+        "tool"
+      ],
+      "title": "Screenshot",
+      "type": "object"
+    },
+    "ScrollTo": {
+      "additionalProperties": false,
+      "properties": {
+        "tool": {
+          "const": "scroll_to",
+          "title": "Tool",
+          "type": "string"
+        },
+        "ref": {
+          "title": "Ref",
+          "type": "string"
+        }
+      },
+      "required": [
+        "tool",
+        "ref"
+      ],
+      "title": "ScrollTo",
+      "type": "object"
+    },
+    "SetText": {
+      "additionalProperties": false,
+      "properties": {
+        "tool": {
+          "const": "set_text",
+          "title": "Tool",
+          "type": "string"
+        },
+        "ref": {
+          "title": "Ref",
+          "type": "string"
+        },
+        "text": {
+          "title": "Text",
+          "type": "string"
+        }
+      },
+      "required": [
+        "tool",
+        "ref",
+        "text"
+      ],
+      "title": "SetText",
+      "type": "object"
+    },
+    "TabsClose": {
+      "additionalProperties": false,
+      "properties": {
+        "tool": {
+          "const": "tabs_close",
+          "title": "Tool",
+          "type": "string"
+        },
+        "tab": {
+          "title": "Tab",
+          "type": "string"
+        }
+      },
+      "required": [
+        "tool",
+        "tab"
+      ],
+      "title": "TabsClose",
+      "type": "object"
+    },
+    "TabsCreate": {
+      "additionalProperties": false,
+      "properties": {
+        "tool": {
+          "const": "tabs_create",
+          "title": "Tool",
+          "type": "string"
+        },
+        "url": {
+          "title": "Url",
+          "type": "string"
+        }
+      },
+      "required": [
+        "tool",
+        "url"
+      ],
+      "title": "TabsCreate",
+      "type": "object"
+    },
+    "TabsList": {
+      "additionalProperties": false,
+      "properties": {
+        "tool": {
+          "const": "tabs_list",
+          "title": "Tool",
+          "type": "string"
+        }
+      },
+      "required": [
+        "tool"
+      ],
+      "title": "TabsList",
+      "type": "object"
+    },
+    "TabsSelect": {
+      "additionalProperties": false,
+      "properties": {
+        "tool": {
+          "const": "tabs_select",
+          "title": "Tool",
+          "type": "string"
+        },
+        "tab": {
+          "title": "Tab",
+          "type": "string"
+        }
+      },
+      "required": [
+        "tool",
+        "tab"
+      ],
+      "title": "TabsSelect",
+      "type": "object"
+    },
+    "Type": {
+      "additionalProperties": false,
+      "properties": {
+        "tool": {
+          "const": "type",
+          "title": "Tool",
+          "type": "string"
+        },
+        "text": {
+          "title": "Text",
+          "type": "string"
+        }
+      },
+      "required": [
+        "tool",
+        "text"
+      ],
+      "title": "Type",
+      "type": "object"
+    },
+    "WaitFor": {
+      "additionalProperties": false,
+      "properties": {
+        "tool": {
+          "const": "wait_for",
+          "title": "Tool",
+          "type": "string"
+        },
+        "text": {
+          "title": "Text",
+          "type": "string"
+        }
+      },
+      "required": [
+        "tool",
+        "text"
+      ],
+      "title": "WaitFor",
+      "type": "object"
+    }
+  },
+  "discriminator": {
+    "mapping": {
+      "activate": "#/$defs/Activate",
+      "ask": "#/$defs/Ask",
+      "click": "#/$defs/Click",
+      "click_text": "#/$defs/ClickText",
+      "click_visual": "#/$defs/ClickVisual",
+      "done": "#/$defs/Done",
+      "fail": "#/$defs/Fail",
+      "find": "#/$defs/Find",
+      "form_input": "#/$defs/FormInput",
+      "get_page_text": "#/$defs/GetPageText",
+      "handoff": "#/$defs/Handoff",
+      "key": "#/$defs/Key",
+      "navigate": "#/$defs/Navigate",
+      "read": "#/$defs/Read",
+      "read_page": "#/$defs/ReadPage",
+      "screenshot": "#/$defs/Screenshot",
+      "scroll_to": "#/$defs/ScrollTo",
+      "set_text": "#/$defs/SetText",
+      "tabs_close": "#/$defs/TabsClose",
+      "tabs_create": "#/$defs/TabsCreate",
+      "tabs_list": "#/$defs/TabsList",
+      "tabs_select": "#/$defs/TabsSelect",
+      "type": "#/$defs/Type",
+      "wait_for": "#/$defs/WaitFor"
+    },
+    "propertyName": "tool"
+  },
+  "oneOf": [
+    {
+      "$ref": "#/$defs/Activate"
+    },
+    {
+      "$ref": "#/$defs/SetText"
+    },
+    {
+      "$ref": "#/$defs/Type"
+    },
+    {
+      "$ref": "#/$defs/Key"
+    },
+    {
+      "$ref": "#/$defs/Read"
+    },
+    {
+      "$ref": "#/$defs/WaitFor"
+    },
+    {
+      "$ref": "#/$defs/ClickText"
+    },
+    {
+      "$ref": "#/$defs/ClickVisual"
+    },
+    {
+      "$ref": "#/$defs/ReadPage"
+    },
+    {
+      "$ref": "#/$defs/Find"
+    },
+    {
+      "$ref": "#/$defs/Click"
+    },
+    {
+      "$ref": "#/$defs/FormInput"
+    },
+    {
+      "$ref": "#/$defs/GetPageText"
+    },
+    {
+      "$ref": "#/$defs/Navigate"
+    },
+    {
+      "$ref": "#/$defs/TabsList"
+    },
+    {
+      "$ref": "#/$defs/TabsCreate"
+    },
+    {
+      "$ref": "#/$defs/TabsSelect"
+    },
+    {
+      "$ref": "#/$defs/TabsClose"
+    },
+    {
+      "$ref": "#/$defs/Screenshot"
+    },
+    {
+      "$ref": "#/$defs/ScrollTo"
+    },
+    {
+      "$ref": "#/$defs/Handoff"
+    },
+    {
+      "$ref": "#/$defs/Ask"
+    },
+    {
+      "$ref": "#/$defs/Done"
+    },
+    {
+      "$ref": "#/$defs/Fail"
+    }
+  ]
+}
