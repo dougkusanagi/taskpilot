@@ -2,6 +2,36 @@
 
 > Atualize ao mudar arquitetura, plano de testes ou ao descobrir quirk de plataforma. Idioma do repo: PT-BR.
 
+## Para o agente que vai implementar (leia primeiro)
+
+**Ordem de leitura:** este arquivo → [docs/tasklist.md](docs/tasklist.md) (O QUE e EM QUE ORDEM) →
+[docs/arquitetura.md](docs/arquitetura.md) (contratos e regras) → [docs/testes-e-selecao-de-modelo.md](docs/testes-e-selecao-de-modelo.md)
+(testes, gates, aceite) → [docs/teste-sessao-linux.md](docs/teste-sessao-linux.md) (ambiente de teste no Linux).
+
+**Foco atual:** Fases 0 e 1 da tasklist (contrato das ferramentas + bancada de decisão). **Não** implemente orquestrador, extensão
+nem adaptadores antes de a Fase 1 estar verde, exceto a extensão, que pode correr em paralelo depois da Fase 0 congelada.
+
+**Combinados de trabalho**
+- Comece devolvendo um plano de 5–8 passos; depois implemente em passos pequenos, cada um com teste e commit (suíte e lint verdes:
+  `uv run python -m unittest discover -s tests`, `uv run ruff check`).
+- Marque `[x]` na tasklist só com evidência (teste verde ou medição registrada). Divergiu do doc? Atualize o doc no mesmo commit.
+- Relate com honestidade: medido × estimado × falhou. Nenhum modelo é "aprovado" sem passar o gate N1; nenhum aceite sem verificação
+  independente (leitura do estado fora do agente), nunca pelo título da janela nem pela ação enviada.
+- Não baixe modelos nem dados sem perguntar (tamanho e origem na pergunta). Não apague nada fora do repo. Antes de apagar, olhe o alvo.
+- Testes com cliques/GUI só na sessão isolada (`scripts/linux-test-session.sh`) ou no Sandbox; browser só em perfil descartável do
+  Chrome, **nunca o perfil real**. Sem push sem pedido do usuário.
+- Mensagens de commit em PT-BR terminando com `Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>`.
+
+**Armadilhas já pagas**
+- O repo está num NTFS (`/mnt/e`): use `git -c core.filemode=false ...` se aparecerem falsos "modificados"; `safe.directory` já
+  configurado pelo usuário. `.venv` roda normal, mas I/O de muitos arquivos pequenos é lento.
+- `pkill -f <padrão que aparece no próprio comando>` derruba o seu shell: mate por PID.
+- Hardware de referência: RTX 2060 6 GB, Ryzen 5 4500, 14 GB de RAM, Ubuntu 26.04 GNOME/Wayland. VRAM é medida **por processo**.
+  Modelos instalados: Qwen3.5-4B (`~/.lmstudio/models/lmstudio-community/Qwen3.5-4B-GGUF`, com projetor), Qwen3-4B-Instruct-2507 e
+  MAI-UI-2B em `models/`. O resto foi apagado de propósito.
+- Número de modelo de terceiros (OSWorld etc.) é autorreportado: serve para ordenar candidatos, não para aprovar.
+- O desenho antigo (planner texto + grounder, `loop.py`) está no `master`; não ressuscitar.
+
 ## Direção
 
 - Arquitetura normativa: [docs/arquitetura.md](docs/arquitetura.md); seleção de modelo e testes:
@@ -58,5 +88,5 @@ Detalhes do Sandbox em `docs/sandbox-test-env.md` (wrapper com `$LASTEXITCODE` e
 
 ## Git
 
-- Commit a cada passo testável, suíte verde antes. Ignorados: `config.sandbox.json`, `sandbox/crr*.wsb`, `.sandbox-job/`,
+- Commit a cada passo testável, suíte verde antes. Identidade do usuário já configurada no repo. Ignorados: `config.sandbox.json`, `sandbox/crr*.wsb`, `.sandbox-job/`,
   `last.png`, `run.jsonl`, `runs/`, `models/`.
