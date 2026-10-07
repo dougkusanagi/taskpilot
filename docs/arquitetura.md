@@ -79,9 +79,44 @@ Testes com cliques somente em ambiente isolado (Sandbox no Windows; `scripts/lin
 llama.cpp padrão (sem fork), **um** `llama-server`, modelo Q4_K_M + projetor Q8_0 na GPU, KV q8_0, contexto ~8192.
 Binário/descoberta: `server.py`. Segundo processo só para tier pesado sob demanda (troca, nunca coexistente).
 
+### 3.9 Browser use: o Chrome do próprio usuário
+Requisito: agir **no Chrome do usuário** (continuar abas, usar contas logadas), nunca num navegador embutido nem num perfil à parte.
+- **Por que não CDP:** desde o Chrome 136, `--remote-debugging-port` é ignorado no perfil padrão (proteção contra roubo de
+  sessão). Perfil separado perderia os logins, que é o ponto do requisito.
+- **Como:** extensão MV3 "TaskPilot Bridge" (Chrome/Chromium/Edge/Brave) + **native messaging host** (executável do projeto,
+  `allowed_origins` restrito ao ID da extensão) falando JSON por stdio com o orquestrador (socket local autenticado).
+  A extensão usa `tabs`, `scripting` (conteúdo: árvore compacta com refs, leitura de texto, eventos reais) e `debugger` só
+  quando precisa de screenshot/input confiável (o Chrome mostra o aviso de depuração).
+- **Vocabulário** (mesmo dos adaptadores de desktop): `read_page(filter=interactive)`, `find(descrição)`, `click(ref)`,
+  `form_input(ref, valor)`, `get_page_text`, `navigate(url)`, `tabs_*`, `screenshot(scale)`, `scroll_to(ref)`, `wait_for(texto)`.
+  Refs valem só para a leitura em que nasceram. Screenshot é sob demanda; coordenadas só no degrau C.
+- **Escopo de abas:** o agente atua só em abas que criou ou que o usuário **compartilhou** explicitamente; grupo de abas
+  "TaskPilot" visível. Continuar uma tarefa do usuário = ele compartilha a aba.
+
+### 3.10 Permissões e segurança do browser use
+Padrão **negar**. Camadas independentes (defesa em profundidade):
+1. **Allowlist por origem** (`esquema+eTLD+1`) em arquivo local do usuário (`taskpilot permissions list|allow|revoke`), com
+   nível `read` (só observar) ou `interact` (clicar, preencher, navegar dentro da origem) e validade (esta tarefa / sessão
+   do Chrome / sempre). A extensão **também** pede `optional_host_permissions` por origem: o próprio Chrome impede tocar em
+   site não liberado, mesmo que o orquestrador erre.
+2. **Categorias sensíveis** (bancos, pagamentos, e-mail, gerenciador de senhas, painéis de administração, governo): negadas
+   por padrão; liberar exige modo explícito "confirmar cada ação".
+3. **Confirmação humana por ação**, independente de grant: enviar mensagem/e-mail, publicar, apagar, comprar/pagar, alterar
+   conta ou segurança, aceitar termos/OAuth, baixar arquivo, instalar.
+4. **Segredos fora do alcance:** o agente nunca lê nem digita senha, código 2FA ou campo de cartão (pede ao usuário e espera);
+   cookies/localStorage não são expostos ao modelo; o modelo não executa JavaScript próprio (só scripts fixos do projeto).
+5. **Injeção de prompt:** texto de página é **dado não confiável**, marcado como tal no prompt; instruções vindas da página
+   nunca são seguidas; dado lido numa origem **não** é digitado em outra sem confirmação; navegação para origem não liberada
+   (inclusive por redirecionamento) para e pergunta.
+6. **Transparência e corte:** indicador permanente (grupo de abas + selo da extensão), log local de ações com screenshots,
+   botão/atalho de parar que revoga a sessão. Tudo roda local: nada de página ou credencial sai da máquina.
+Pontos abertos (ver §4) incluem limite de taxa, revisão periódica dos grants e modelo de ameaças formal.
+
 ## 4. Decisões em aberto
 - **Ação semântica (AT-SPI/UIA) permitida além de mouse/teclado físicos:** assumida como SIM neste desenho; o antigo
   `AGENTS.md` proibia. Confirmar com o dono do produto.
+- **Browser:** distribuição da extensão (modo desenvolvedor vs. Chrome Web Store); Firefox fora do MVP; modelo de ameaças
+  formal e política de revisão dos grants. Navegador = Chrome/Chromium; **sem** navegador embutido.
 - Qual modelo é o cérebro: decidido pela bateria (ver testes), não por benchmark de terceiros.
 
 ## 5. Estado do código (o que cobre cada parte)
@@ -92,5 +127,6 @@ Binário/descoberta: `server.py`. Segundo processo só para tier pesado sob dema
 | Platform Windows | `uia.py`, `actions.py`, `obs.py` — falta contrato único |
 | OCR | `ocr.py` |
 | Segurança | `safety.py`, `overlay.py` |
+| Extensão Chrome + native host + permissões | **a criar** (§3.9–3.10) |
 | Orquestrador, Observation/Result novos, verificador, cérebro (cliente), monitor | **a criar** |
 | `schemas.py`, `config.py` | herdados; enxugar quando os contratos novos existirem |
