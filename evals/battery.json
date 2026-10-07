@@ -1,3 +1,0 @@
-{"battery": "R3-fatia-1", "reps_default": 3,
- "note": "30 cenas offline (decisão válida por estado, sem inputs). Congelada p/ comparar perfis; não editar após o primeiro run com modelos.",
- "scenes": ["nova-guia-stuck", "uia-vazia", "modal-dialog", "alvo-duplicado", "objetivo-cumprido", "campo-focado", "intersticial", "busca-resultados", "pagina-erro", "aba-ja-aberta", "endereco-focado", "loja-busca", "notepad-vazio", "hello-en", "calc-aberta", "calc-parcial", "salvar-como", "explorer", "arquivo-ausente", "settings", "wifi-en", "duas-janelas", "foco-desviado", "picker-perfil", "captcha", "alvo-ausente-en", "digitacao-confirmada", "url-pendente", "pergunta-ambigua", "canvas-paint"]}

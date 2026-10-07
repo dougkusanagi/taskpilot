@@ -12,6 +12,7 @@ compartilhar" do GNOME (barra superior) encerra a sessão e corta o input: é o 
 
 Comandos (uma linha JSON cada) → resposta `{"ok": bool, ...}`:
   start | frame{path} | move{x,y} | button{code,state} | axis{axis,steps} | keysym{sym,state} | stop
+  a11y{max_elements,timeout}   árvore AT-SPI da janela ativa (não precisa de `start`/consentimento)
 Coordenadas de `move` são em pixels do FRAME (a ponte reescala p/ o tamanho lógico do stream).
 """
 from __future__ import annotations
@@ -21,9 +22,14 @@ import os
 import sys
 import threading
 import time
+import warnings
 from pathlib import Path
 
 import gi
+
+warnings.filterwarnings("ignore", category=DeprecationWarning)
+sys.path.insert(0, str(Path(__file__).resolve().parent))  # módulos irmãos, mesmo como script
+import portal_rules  # noqa: E402
 
 gi.require_version("Gst", "1.0")
 from gi.repository import Gio, GLib, Gst  # noqa: E402
@@ -51,6 +57,7 @@ class Bridge:
         self.pipeline = None
         self.frame: tuple[bytes, int, int, float] | None = None
         self._frame_lock = threading.Lock()
+        self.closed = False  # sessão do portal encerrada (botão "parar compartilhamento")
 
     # --- portal ---------------------------------------------------------------------
     def _token(self) -> str:
@@ -91,6 +98,9 @@ class Bridge:
             raise RuntimeError(f"CreateSession recusado (code={code})")
         self.session = res["session_handle"]
         sess = ("o", self.session)
+        # Botão "parar compartilhamento" do GNOME = corte de emergência: o portal emite Closed.
+        self.bus.signal_subscribe(PORTAL, "org.freedesktop.portal.Session", "Closed",
+                                  self.session, None, Gio.DBusSignalFlags.NONE, self._on_closed)
 
         opts = {"types": GLib.Variant("u", 3), "persist_mode": GLib.Variant("u", 2)}
         if TOKEN_FILE.exists():
@@ -104,21 +114,38 @@ class Bridge:
             "cursor_mode": GLib.Variant("u", 1)})   # cursor fora do frame (como o mss no Windows)
         if code != 0:
             raise RuntimeError(f"SelectSources recusado (code={code})")
-        _log("aguardando aprovação no diálogo do GNOME (compartilhar tela + controle)...")
+        if TOKEN_FILE.exists():
+            _log("restaurando a sessão já aprovada (diálogo só se o token expirou)...")
+        else:
+            _log("aguardando aprovação no diálogo do GNOME (compartilhar tela + controle)...")
         code, res = self._request(RD, "Start", [sess, ("s", "")], {}, timeout=CONSENT_TIMEOUT_S)
         if code != 0:
             raise RuntimeError("usuário negou/cancelou o compartilhamento (code=%d)" % code)
+        why = portal_rules.devices_error(int(res.get("devices", 0)), TOKEN_FILE)
+        if why:
+            self.stop()
+            raise RuntimeError(why)
         if "restore_token" in res:
             TOKEN_FILE.parent.mkdir(parents=True, exist_ok=True)
             TOKEN_FILE.write_text(res["restore_token"])
             TOKEN_FILE.chmod(0o600)
         streams = res.get("streams") or []
         if not streams:
+            self.stop()
             raise RuntimeError("portal não devolveu nenhum stream de tela")
         self.node_id, props = streams[0]
         self.stream_size = tuple(props.get("size", (0, 0)))
         self._open_pipeline()
+        self._warm_up()
         return {"stream_size": list(self.stream_size), "node": int(self.node_id)}
+
+    def _warm_up(self) -> None:
+        """O 1º evento de teclado após abrir a sessão do RemoteDesktop é descartado pelo compositor
+        (medido: `XYZ789` virava `YZ789`; com um Shift antes, saiu inteiro). Shift sozinho não
+        digita nada nem aciona atalho: gasta esse evento sem efeito colateral."""
+        self.keysym(0xFFE1, 1)
+        self.keysym(0xFFE1, 0)
+        time.sleep(0.15)
 
     def _open_pipeline(self) -> None:
         Gst.init(None)
@@ -127,30 +154,48 @@ class Bridge:
             GLib.Variant("(oa{sv})", (self.session, {})), GLib.VariantType("(h)"),
             Gio.DBusCallFlags.NONE, 10000, None, None)
         fd = fds.get(reply.unpack()[0])
+        # appsink guarda só o último frame (drop=true, 1 buffer): captura sempre pega o mais novo.
+        # (o protótipo usava fakesink + "signal-handoff", propriedade que não existe: o correto
+        # era "signal-handoffs"; o pipeline nunca subia com o portal real.)
         desc = (f"pipewiresrc fd={fd} path={self.node_id} do-timestamp=true ! videoconvert ! "
-                "video/x-raw,format=RGB ! fakesink name=sink sync=false signal-handoff=true")
+                "video/x-raw,format=RGB ! appsink name=sink emit-signals=true max-buffers=1 "
+                "drop=true sync=false")
         self.pipeline = Gst.parse_launch(desc)
         sink = self.pipeline.get_by_name("sink")
 
-        def on_handoff(_el, buf, pad):
-            st = pad.get_current_caps().get_structure(0)
+        def on_sample(appsink):
+            sample = appsink.emit("pull-sample")
+            if sample is None:
+                return Gst.FlowReturn.OK
+            st = sample.get_caps().get_structure(0)
+            buf = sample.get_buffer()
             ok, info = buf.map(Gst.MapFlags.READ)
             if not ok:
-                return
+                return Gst.FlowReturn.OK
             try:
                 with self._frame_lock:
                     self.frame = (bytes(info.data), st.get_value("width"),
                                   st.get_value("height"), time.time())
             finally:
                 buf.unmap(info)
+            return Gst.FlowReturn.OK
 
-        sink.connect("handoff", on_handoff)
+        sink.connect("new-sample", on_sample)
         self.pipeline.set_state(Gst.State.PLAYING)
+
+    def _on_closed(self, *_a) -> None:
+        self.closed = True
+        _log("sessão encerrada (usuário parou o compartilhamento ou o compositor a fechou)")
+
+    def _check_open(self) -> None:
+        if self.closed:
+            raise RuntimeError("SESSION_CLOSED: o compartilhamento foi encerrado; o controle parou")
 
     # --- comandos -------------------------------------------------------------------
     def save_frame(self, path: str, wait_s: float = 5.0) -> dict:
         from PIL import Image
 
+        self._check_open()
         t0 = time.time()
         while time.time() - t0 < wait_s:
             with self._frame_lock:
@@ -167,6 +212,7 @@ class Bridge:
         return {"size": [w, h], "frame_age_ms": int((time.time() - ts) * 1000)}
 
     def _notify(self, method: str, sig: str, *args) -> None:
+        self._check_open()
         self.bus.call_sync(PORTAL, PORTAL_PATH, "org.freedesktop.portal.RemoteDesktop", method,
                            GLib.Variant(f"(oa{{sv}}{sig})", (self.session, {}, *args)),
                            None, Gio.DBusCallFlags.NONE, 5000, None)
@@ -230,6 +276,12 @@ def main() -> None:
             elif cmd == "keysym":
                 b.keysym(req["sym"], req["state"])
                 reply({"ok": True})
+            elif cmd == "a11y":
+                import a11y_atspi
+
+                reply({"ok": True, **a11y_atspi.snapshot(
+                    max_elements=int(req.get("max_elements", 120)),
+                    timeout=float(req.get("timeout", 3.0)))})
             elif cmd == "stop":
                 b.stop()
                 reply({"ok": True})

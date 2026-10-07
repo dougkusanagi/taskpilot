@@ -127,6 +127,7 @@ LLAMA_ZIP_URL = (
     f"{LLAMA_TAG}/llama-{LLAMA_TAG}-bin-win-cpu-x64.zip"
 )
 LLAMA_EXE = BIN_DIR / "llama-server.exe"
+LLAMA_BIN = BIN_DIR / "llama-server"  # mesmo binário, nome Linux
 BACKEND_MARK = BIN_DIR / ".backend"  # backend do llama-server extraído (cpu|vulkan|cuda)
 
 # Backends do llama.cpp (assets da release LLAMA_TAG, conferidos na API do GitHub):
@@ -135,16 +136,177 @@ BACKEND_MARK = BIN_DIR / ".backend"  # backend do llama-server extraído (cpu|vu
 #  cuda   ~150 MB + cudart ~390 MB; a mais rápida em NVIDIA (precisa driver recente)
 BACKENDS = ("cpu", "vulkan", "cuda")
 
+# Binário que `ensure_assets` resolveu nesta execução (exe + backend efetivo); `gpu_status` e o
+# registro de manifesto leem daqui em vez de adivinhar pelo nome do arquivo.
+_RESOLVED: dict = {}
+
+
+def _is_windows() -> bool:
+    return sys.platform == "win32"
+
 
 def llama_urls(backend: str = "cpu") -> list[str]:
-    """URLs do(s) zip(s) do llama.cpp para o backend (puro, testável)."""
+    """URLs do(s) pacote(s) do llama.cpp para o backend e o SO (puro, testável).
+
+    Windows = .zip; Linux = .tar.gz (ubuntu-x64). No Linux o CUDA também vem com o `cudart`
+    empacotado à parte (o driver da NVIDIA não traz libcudart)."""
     if backend not in BACKENDS:
         raise ValueError(f"runtime.backend inválido: {backend!r}; use {BACKENDS}")
     base = f"https://github.com/ggml-org/llama.cpp/releases/download/{LLAMA_TAG}/"
+    if not _is_windows():
+        if backend == "cuda":
+            return [base + f"llama-{LLAMA_TAG}-bin-ubuntu-cuda-12.8-x64.tar.gz",
+                    base + f"cudart-llama-{LLAMA_TAG}-bin-ubuntu-cuda-12.8-x64.tar.gz"]
+        name = "ubuntu-x64" if backend == "cpu" else f"ubuntu-{backend}-x64"
+        return [base + f"llama-{LLAMA_TAG}-bin-{name}.tar.gz"]
     if backend == "cuda":
         return [base + f"llama-{LLAMA_TAG}-bin-win-cuda-12.4-x64.zip",
                 base + "cudart-llama-bin-win-cuda-12.4-x64.zip"]
     return [base + f"llama-{LLAMA_TAG}-bin-win-{backend}-x64.zip"]
+
+
+# --- llama-server já instalado (Linux) -------------------------------------------------
+# O LM Studio guarda builds do llama.cpp (cpu/vulkan/cuda) + as libs CUDA em `vendor/`; reusá-los
+# evita baixar centenas de MB e usa exatamente o que o usuário já tem funcionando.
+_LMSTUDIO_BACKENDS = Path.home() / ".lmstudio" / "extensions" / "backends"
+_LMSTUDIO_VENDOR = {"cuda12": "linux-llama-cuda12-vendor-v1", "cuda": "linux-llama-cuda-vendor-v1"}
+
+
+def _classify_lmstudio(dirname: str) -> tuple[str, tuple[int, ...]] | None:
+    """('cpu'|'vulkan'|'cuda12'|'cuda', versão) de uma pasta `llama.cpp-linux-x86_64-*-X.Y.Z`."""
+    m = re.fullmatch(r"llama\.cpp-linux-x86_64-(.+)-(\d+(?:\.\d+)*)", dirname)
+    if not m:
+        return None
+    kind, ver = m.group(1), tuple(int(p) for p in m.group(2).split("."))
+    if "cuda12" in kind:
+        return "cuda12", ver
+    if "cuda" in kind:
+        return "cuda", ver  # build CUDA 11 (libs antigas): só como último recurso
+    if "vulkan" in kind:
+        return "vulkan", ver
+    return "cpu", ver
+
+
+def _lmstudio_candidates(backend: str, root: Path | None = None) -> list[Path]:
+    """`llama-server` do LM Studio compatíveis com `backend`, melhor primeiro (só lê pastas)."""
+    root = root if root is not None else _LMSTUDIO_BACKENDS
+    prefer = {"cuda": ("cuda12", "cuda"), "vulkan": ("vulkan",), "cpu": ("cpu",)}[backend]
+    found: list[tuple[int, tuple[int, ...], Path]] = []
+    try:
+        entries = sorted(root.iterdir())
+    except OSError:
+        return []
+    for d in entries:
+        info = _classify_lmstudio(d.name)
+        exe = d / "llama-server"
+        if info is None or info[0] not in prefer or not exe.is_file():
+            continue
+        found.append((prefer.index(info[0]), info[1], exe))
+    found.sort(key=lambda t: (t[0], tuple(-v for v in t[1])))  # melhor tipo, versão mais nova
+    return [p for _, _, p in found]
+
+
+def _runtime_env(exe: Path) -> dict | None:
+    """Ambiente do `llama-server`: libs ao lado do binário (+ `vendor/` CUDA do LM Studio).
+
+    Windows = None (as DLLs ficam junto do exe e o loader as acha)."""
+    if _is_windows():
+        return None
+    dirs = [str(exe.parent)]
+    info = _classify_lmstudio(exe.parent.name)
+    vendor = _LMSTUDIO_VENDOR.get(info[0]) if info else None
+    if vendor and (exe.parent.parent / "vendor" / vendor).is_dir():
+        dirs.append(str(exe.parent.parent / "vendor" / vendor))
+    env = dict(os.environ)
+    env["LD_LIBRARY_PATH"] = ":".join(dirs + [p for p in [env.get("LD_LIBRARY_PATH")] if p])
+    return env
+
+
+def _probe_binary(exe: Path, timeout_s: float = 20.0) -> str:
+    """'' se `exe --version` roda (libs resolvidas); senão a causa (puro de rede, barato)."""
+    try:
+        r = subprocess.run([str(exe), "--version"], capture_output=True, text=True,
+                           timeout=timeout_s, env=_runtime_env(exe))
+    except (OSError, subprocess.SubprocessError) as e:
+        return f"{type(e).__name__}: {e}"
+    if r.returncode != 0:
+        return (r.stderr or r.stdout or f"exit {r.returncode}").strip().splitlines()[-1][:200]
+    return ""
+
+
+def _extract_tar(tar_path: Path, dest: Path) -> None:
+    """Extrai o .tar.gz do llama.cpp e põe o `llama-server` + .so direto em `dest`."""
+    import tarfile
+
+    dest.mkdir(parents=True, exist_ok=True)
+    with tarfile.open(tar_path) as tf:
+        tf.extractall(dest, filter="data")  # filter=data: sem caminhos absolutos/..
+    tar_path.unlink(missing_ok=True)
+    if not LLAMA_BIN.exists():
+        for cand in dest.rglob("llama-server"):
+            if cand.is_file() and cand.resolve() != LLAMA_BIN.resolve():
+                for item in cand.parent.iterdir():
+                    target = LLAMA_BIN.parent / item.name
+                    if not target.exists() and not target.is_symlink():
+                        item.replace(target)
+                break
+    if LLAMA_BIN.exists():
+        LLAMA_BIN.chmod(LLAMA_BIN.stat().st_mode | 0o111)
+
+
+def _ensure_llama_linux(cfg: dict, progress=print) -> tuple[Path, str]:
+    """Binário do llama-server no Linux: config/env > nosso `models/bin` > instalado > download.
+
+    Retorna (exe, backend efetivo). Erro honesto (RuntimeError) se nada serve."""
+    rt = cfg.get("runtime", {})
+    backend = str(rt.get("backend", "cpu"))
+    if backend not in BACKENDS:
+        raise ValueError(f"runtime.backend inválido: {backend!r}; use {BACKENDS}")
+    explicit = rt.get("llama_server") or os.environ.get("TASKPILOT_LLAMA_SERVER")
+    if explicit:
+        exe = Path(str(explicit)).expanduser()
+        if not exe.is_file():
+            raise RuntimeError(f"runtime.llama_server aponta para um arquivo inexistente: {exe}")
+        why = _probe_binary(exe)
+        if why:
+            raise RuntimeError(f"{exe} não executa: {why}")
+        return exe, backend
+
+    have = BACKEND_MARK.read_text(encoding="utf-8").strip() if BACKEND_MARK.exists() else ""
+    tried: list[str] = []
+    candidates: list[tuple[Path, str]] = []
+    if LLAMA_BIN.exists() and have == backend:
+        candidates.append((LLAMA_BIN, backend))
+    candidates += [(p, backend) for p in _lmstudio_candidates(backend)]
+    on_path = shutil.which("llama-server")
+    if on_path:
+        candidates.append((Path(on_path), backend))
+    for exe, be in candidates:
+        why = _probe_binary(exe)
+        if not why:
+            progress(f"llama-server ({be}): {exe}")
+            return exe, be
+        tried.append(f"{exe}: {why}")
+        progress(f"llama-server ignorado ({exe}): {why}")
+
+    # nada local serve: baixa o release fixado (mesmo fluxo do Windows)
+    progress(f"baixando llama.cpp {LLAMA_TAG} ({backend}, 1ª vez)...")
+    shutil.rmtree(BIN_DIR, ignore_errors=True)
+    for n, url in enumerate(llama_urls(backend)):
+        tp = MODELS_DIR / f"llama{n}.tar.gz"
+        _download(url, tp, min_bytes=10_000_000, progress=progress)
+        _extract_tar(tp, BIN_DIR)
+    if not LLAMA_BIN.exists():
+        raise RuntimeError(
+            f"llama-server não apareceu em {BIN_DIR} após extrair {llama_urls(backend)}")
+    why = _probe_binary(LLAMA_BIN)
+    if why:
+        hint = ("; o build CUDA precisa do driver NVIDIA recente (use runtime.backend: vulkan "
+                "ou cpu se não houver)" if backend == "cuda" else "")
+        raise RuntimeError(f"llama-server baixado não executa: {why}{hint}. "
+                           f"Já tentados: {tried or 'nenhum'}")
+    BACKEND_MARK.write_text(backend, encoding="utf-8")
+    return LLAMA_BIN, backend
 
 # Parâmetros conservadores p/ máquina comum (CPU). Overridable via config.json
 # → seção "runtime" (auto_start, host, ngl p/ GPU, threads, ctx).
@@ -272,36 +434,33 @@ def ensure_assets(progress=print, cfg: dict | None = None) -> dict:
     Retorna Paths {exe, planner_gguf, vision_gguf, mmproj}.
     Erro honesto (RuntimeError) se download/extração falhar.
     """
-    if sys.platform != "win32":
-        # Os binários baixados são do Windows e o agente (UIA/pyautogui) só roda lá: falhar ANTES
-        # de baixar gigabytes que nunca vão executar.
-        raise RuntimeError(
-            "o runtime próprio e o agente só funcionam no Windows (baixa llama-server.exe). "
-            "Neste sistema, suba um llama-server/LM Studio e use --no-runtime "
-            "(só serve para as baterias de avaliação, não para controlar o desktop)."
-        )
     MODELS_DIR.mkdir(parents=True, exist_ok=True)
 
-    backend = str((cfg or {}).get("runtime", {}).get("backend", "cpu"))
-    urls = llama_urls(backend)
-    have = BACKEND_MARK.read_text(encoding="utf-8").strip() if BACKEND_MARK.exists() else "cpu"
-    if LLAMA_EXE.exists() and have != backend:
-        progress(f"runtime.backend mudou ({have} -> {backend}): baixando outro llama.cpp...")
-        shutil.rmtree(BIN_DIR, ignore_errors=True)
-    if not LLAMA_EXE.exists():
-        progress(f"baixando llama.cpp {LLAMA_TAG} ({backend}, 1ª vez)...")
-        for n, url in enumerate(urls):
-            zp = MODELS_DIR / f"llama{n}.zip"
-            _download(url, zp, min_bytes=10_000_000, progress=progress)
-            _extract_zip(zp, BIN_DIR)
-        if not LLAMA_EXE.exists():
-            raise RuntimeError(
-                f"llama-server.exe não apareceu em {BIN_DIR} após extrair {urls}"
-            )
-        BACKEND_MARK.parent.mkdir(parents=True, exist_ok=True)
-        BACKEND_MARK.write_text(backend, encoding="utf-8")
-
     cfg = cfg or {}
+    if _is_windows():
+        backend = str(cfg.get("runtime", {}).get("backend", "cpu"))
+        urls = llama_urls(backend)
+        have = BACKEND_MARK.read_text(encoding="utf-8").strip() if BACKEND_MARK.exists() else "cpu"
+        if LLAMA_EXE.exists() and have != backend:
+            progress(f"runtime.backend mudou ({have} -> {backend}): baixando outro llama.cpp...")
+            shutil.rmtree(BIN_DIR, ignore_errors=True)
+        if not LLAMA_EXE.exists():
+            progress(f"baixando llama.cpp {LLAMA_TAG} ({backend}, 1ª vez)...")
+            for n, url in enumerate(urls):
+                zp = MODELS_DIR / f"llama{n}.zip"
+                _download(url, zp, min_bytes=10_000_000, progress=progress)
+                _extract_zip(zp, BIN_DIR)
+            if not LLAMA_EXE.exists():
+                raise RuntimeError(
+                    f"llama-server.exe não apareceu em {BIN_DIR} após extrair {urls}"
+                )
+            BACKEND_MARK.parent.mkdir(parents=True, exist_ok=True)
+            BACKEND_MARK.write_text(backend, encoding="utf-8")
+        exe, effective_backend = LLAMA_EXE, backend
+    else:
+        exe, effective_backend = _ensure_llama_linux(cfg, progress=progress)
+    _RESOLVED.update(exe=exe, backend=effective_backend)
+
     reg_planner = registry_entry(cfg.get("planner", {}).get("model", ""))
     reg_vision = registry_entry(cfg.get("vision", {}).get("model", ""))
     selected = reg_planner["gguf"] if reg_planner else planner_gguf_for(cfg)
@@ -320,7 +479,7 @@ def ensure_assets(progress=print, cfg: dict | None = None) -> dict:
     else:
         inv["vision_gguf"] = (MODELS_DIR / VISION_GGUF["file"], VISION_GGUF, 100_000_000)
         inv["mmproj"] = (MODELS_DIR / VISION_MMPROJ["file"], VISION_MMPROJ, 10_000_000)
-    assets: dict[str, Path] = {"exe": LLAMA_EXE}
+    assets: dict[str, Path] = {"exe": exe}
     for key, (dest, src, min_bytes) in inv.items():
         if not dest.exists():
             progress(f"baixando {src['file']} (1ª vez)...")
@@ -330,7 +489,8 @@ def ensure_assets(progress=print, cfg: dict | None = None) -> dict:
 
 
 # --- spawn -----------------------------------------------------------------------
-def _server_args(role: str, gguf: Path, mmproj: Path | None, port: int, cfg: dict) -> list[str]:
+def _server_args(role: str, gguf: Path, mmproj: Path | None, port: int, cfg: dict,
+                 exe: Path | None = None) -> list[str]:
     rt = cfg.get("runtime", {})
     host = str(rt.get("host", "127.0.0.1"))
     ngl = int(rt.get("ngl", DEFAULT_NGL))
@@ -342,7 +502,7 @@ def _server_args(role: str, gguf: Path, mmproj: Path | None, port: int, cfg: dic
     if backend != "cpu" and ngl == 0:
         ngl = 99  # GPU: com ngl=0 o backend GPU rodaria tudo na CPU
     args = [
-        str(LLAMA_EXE),
+        str(exe or (LLAMA_EXE if _is_windows() else LLAMA_BIN)),
         "-m",
         str(gguf),
         "--host",
@@ -439,7 +599,8 @@ def _spawn_one(
 ) -> subprocess.Popen:
     gguf = assets["planner_gguf" if role == "planner" else "vision_gguf"]
     mmproj = assets.get("planner_mmproj") if role == "planner" else assets.get("mmproj")
-    args = _server_args(role, gguf, mmproj, port, cfg)
+    exe = Path(assets["exe"])
+    args = _server_args(role, gguf, mmproj, port, cfg, exe=exe)
     log = MODELS_DIR / f"llama-server-{role}.log"
     host = str(cfg.get("runtime", {}).get("host", "127.0.0.1"))
     progress(f"subindo {role} ({Path(gguf).name}) em {host}:{port}...")
@@ -447,7 +608,8 @@ def _spawn_one(
         f.write(f"\n===== {time.strftime('%Y-%m-%d %H:%M:%S')} {' '.join(args)}\n".encode())
         f.flush()
         proc = subprocess.Popen(
-            args, stdout=f, stderr=f, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0)
+            args, stdout=f, stderr=f, env=_runtime_env(exe),
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
         )
     timeout_s = float(cfg.get("runtime", {}).get("startup_timeout_s", DEFAULT_STARTUP_TIMEOUT_S))
     try:
@@ -552,9 +714,11 @@ def gpu_status(cfg: dict) -> dict:
         gpu = _tel.collect_env().get("gpu", {})
     except Exception:
         gpu = {}
-    ngl = int(cfg.get("runtime", {}).get("ngl", DEFAULT_NGL))
-    exe = str(LLAMA_EXE)
-    cpu_only = "cpu" in exe.lower() or "bin" in exe.lower()
+    rt = cfg.get("runtime", {})
+    ngl = int(rt.get("ngl", DEFAULT_NGL))
+    backend = str(_RESOLVED.get("backend") or rt.get("backend", "cpu"))
+    # Servidor reusado (nós não resolvemos o binário): só o backend configurado diz algo.
+    cpu_only = backend == "cpu"
     warn = ""
     if ngl > 0 and cpu_only:
         warn = (

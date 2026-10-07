@@ -1,4 +1,4 @@
-"""Runtime próprio dos modelos (server.py + loop._ensure_local_servers).
+"""Runtime próprio dos modelos (server.py).
 
 Tudo offline: _endpoint_alive/_port_in_use/ensure_assets/_spawn_one são
 mockados; nenhum download ou llama-server é tocado.
@@ -178,43 +178,6 @@ class TestWaitAlive(unittest.TestCase):
         self.assertTrue(proc.killed)
 
 
-class TestLoopEnsureLocal(unittest.TestCase):
-    URLS = ("http://127.0.0.1:8091/v1", "http://127.0.0.1:8082/v1")
-
-    def test_auto_start_false_nao_faz_nada(self):
-        from loop import _ensure_local_servers
-
-        cfg = {"runtime": {"auto_start": False},
-               "planner": {"base_url": self.URLS[0]},
-               "vision": {"base_url": self.URLS[1]}}
-        with patch.object(server, "ensure_servers") as es:
-            out = _ensure_local_servers(cfg)
-        self.assertEqual(out, {})
-        es.assert_not_called()
-
-    def test_url_remota_nao_baixa(self):
-        from loop import _ensure_local_servers
-
-        cfg = {"runtime": {"auto_start": True},
-               "planner": {"base_url": "http://192.168.1.10:8091/v1"},
-               "vision": {"base_url": "http://192.168.1.10:8082/v1"}}
-        with patch.object(server, "ensure_servers") as es:
-            out = _ensure_local_servers(cfg)
-        self.assertEqual(out, {})
-        es.assert_not_called()
-
-    def test_erro_do_runtime_vira_runtimeerror(self):
-        from loop import _ensure_local_servers
-
-        cfg = {"runtime": {"auto_start": True},
-               "planner": {"base_url": "http://127.0.0.1:8091/v1"},
-               "vision": {"base_url": "http://127.0.0.1:8082/v1"}}
-        with patch.object(server, "ensure_servers",
-                          side_effect=RuntimeError("porta ocupada")):
-            with self.assertRaises(RuntimeError):
-                _ensure_local_servers(cfg)
-
-
 class TestRuntimeDefaults(unittest.TestCase):
     def test_config_traz_runtime(self):
         cfg = cfgmod.load("nao-existe.json")
@@ -233,6 +196,10 @@ class TestBackendsAndMemoryFlags(unittest.TestCase):
         return {"runtime": runtime}
 
     def test_urls_per_backend(self):
+        with patch.object(server.sys, "platform", "win32"):
+            self._urls_per_backend()
+
+    def _urls_per_backend(self):
         cpu = server.llama_urls("cpu")
         self.assertEqual(len(cpu), 1)
         self.assertTrue(cpu[0].endswith("bin-win-cpu-x64.zip"))
@@ -332,13 +299,3 @@ class TestRegistryAndProfiles(unittest.TestCase):
         cfg = cfgmod.apply_profile({}, "B1")
         self.assertNotIn("features", cfg["planner"])
         self.assertNotIn("backend", cfg.get("runtime", {}))
-
-
-class TestPlatformGuard(unittest.TestCase):
-    def test_non_windows_fails_before_downloading_anything(self):
-        calls = []
-        with patch.object(server.sys, "platform", "linux"), \
-                patch.object(server, "_download", lambda *a, **k: calls.append(a)):
-            with self.assertRaisesRegex(RuntimeError, "só funcionam no Windows"):
-                server.ensure_assets(progress=lambda *_: None, cfg={})
-        self.assertEqual(calls, [])

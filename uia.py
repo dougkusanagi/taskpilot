@@ -53,6 +53,13 @@ def focused_value(max_len: int = 80) -> str:
     Serve p/ o planner saber se `type_text` chegou onde devia. "" se não der.
     """
     try:
+        import platform_backend
+
+        if platform_backend.active() is not None:
+            return platform_backend.active().focused_text(max_len)[1]
+    except Exception:
+        return ""
+    try:
         from pywinauto.controls.uiawrapper import UIAWrapper
         from pywinauto.uia_defines import IUIA
         from pywinauto.uia_element_info import UIAElementInfo
@@ -80,6 +87,13 @@ def focused_value(max_len: int = 80) -> str:
 
 def focused_control_type() -> str:
     """Tipo UIA do elemento com foco de teclado (`Edit`, `Document`...), "" se não der."""
+    try:
+        import platform_backend
+
+        if platform_backend.active() is not None:
+            return platform_backend.active().focused_text()[0]
+    except Exception:
+        return ""
     try:
         from pywinauto.controls.uiawrapper import UIAWrapper
         from pywinauto.uia_defines import IUIA
@@ -187,6 +201,26 @@ def _element_text(elem, ctype: str, name: str) -> str:
         return ""
 
 
+def _backend_snapshot(backend, max_elements: int, timeout: float, elapsed_ms) -> tuple:
+    """Snapshot via backend alternativo (Wayland: AT-SPI). Itens sem coordenadas (`nobounds`):
+    informam o planner, mas só a visão localiza para clicar. Falha vira diagnóstico, nunca vazio
+    silencioso."""
+    try:
+        snap = backend.a11y_snapshot(max_elements=max_elements, timeout=min(timeout, 4.0))
+    except Exception as e:
+        _set_diag(status="error", error=f"AT-SPI indisponível: {e}"[:200], count=0,
+                  max_elements=max_elements, elapsed_ms=elapsed_ms())
+        return [], "", None
+    items = list(snap.get("items") or [])
+    title = str(snap.get("title") or "")
+    status = str(snap.get("status") or "error")
+    _set_diag(status=status, error=str(snap.get("error", "") or ""), count=len(items),
+              max_elements=max_elements, elapsed_ms=float(snap.get("elapsed_ms", elapsed_ms())),
+              window=title[:80], source="atspi", how=str(snap.get("how", "")),
+              timed_out=status == "timeout_partial")
+    return items, title, None
+
+
 def active_window_snapshot(timeout: float = 5.0,
                            max_elements: int = 120) -> tuple[list[dict], str, tuple | None]:
     """Elementos úteis da janela ATIVA, formato compacto p/ decisão rápida.
@@ -205,10 +239,7 @@ def active_window_snapshot(timeout: float = 5.0,
     import platform_backend
 
     if platform_backend.active() is not None:
-        # backend visual (Wayland): sem árvore de acessibilidade; honesto, não "vazio por acaso"
-        _set_diag(status="error", error="sem UIA neste backend (modo visual: visual_action/OCR)",
-                  count=0, max_elements=max_elements, elapsed_ms=_elapsed_ms())
-        return [], "", None
+        return _backend_snapshot(platform_backend.active(), max_elements, timeout, _elapsed_ms)
 
     try:
         active = _active_window()

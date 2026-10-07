@@ -71,6 +71,7 @@ def keysym_for_key(name: str) -> int:
 class WaylandBackend:
     def __init__(self) -> None:
         self._proc: subprocess.Popen | None = None
+        self._started = False  # sessão do portal aberta nesta ponte
         self._lock = threading.Lock()
         self.size = (0, 0)
         self._tmp = Path(tempfile.mkdtemp(prefix="taskpilot-wl-"))
@@ -84,16 +85,25 @@ class WaylandBackend:
         raise RuntimeError("python do sistema (com python3-gi) não encontrado; "
                            "defina TASKPILOT_SYSTEM_PYTHON")
 
-    def _ensure(self) -> None:
+    def _spawn(self) -> None:
+        """Sobe a ponte, sem abrir a sessão do portal (AT-SPI não pede consentimento)."""
         if self._proc is not None and self._proc.poll() is None:
             return
+        self._started = False
         self._proc = subprocess.Popen(
             [self._python(), "-u", str(BRIDGE)], stdin=subprocess.PIPE, stdout=subprocess.PIPE,
             stderr=sys.stderr, text=True, bufsize=1)
+
+    def _ensure(self) -> None:
+        """Ponte no ar + sessão do portal aprovada (pede o diálogo do GNOME na 1ª vez)."""
+        self._spawn()
+        if self._started:
+            return
         r = self._call({"cmd": "start"}, timeout=150)
         self.size = tuple(r.get("frame_size") or (0, 0))
         got = self._call({"cmd": "frame", "path": str(self._tmp / "probe.png")}, timeout=20)
         self.size = tuple(got["size"])
+        self._started = True
 
     def _call(self, req: dict, timeout: float = 15.0) -> dict:
         assert self._proc and self._proc.stdin and self._proc.stdout
@@ -113,8 +123,21 @@ class WaylandBackend:
                                    f"em {timeout:.0f}s (sessão encerrada?)")
             res = json.loads(box["line"])
         if not res.get("ok"):
-            raise RuntimeError(f"ponte Wayland: {res.get('error')}")
+            err = str(res.get("error"))
+            if "SESSION_CLOSED" in err:
+                self._stop_agent()
+            raise RuntimeError(f"ponte Wayland: {err}")
         return res
+
+    @staticmethod
+    def _stop_agent() -> None:
+        """Compartilhamento encerrado pelo usuário = parada de emergência: o loop aborta."""
+        try:
+            import safety
+
+            safety.stop()
+        except Exception:
+            pass
 
     def close(self) -> None:
         if self._proc is not None and self._proc.poll() is None:
@@ -123,6 +146,7 @@ class WaylandBackend:
             except Exception:
                 self._proc.kill()
         self._proc = None
+        self._started = False
         shutil.rmtree(self._tmp, ignore_errors=True)
 
     # --- captura ---------------------------------------------------------------------
@@ -154,6 +178,20 @@ class WaylandBackend:
         time.sleep(2.5)
         return (f"opened {exe} (Wayland não permite focar por código: confirme na tela; "
                 "se a janela não estiver em primeiro plano, clique nela)")
+
+    # --- observação (AT-SPI) -------------------------------------------------------------
+    def a11y_snapshot(self, max_elements: int = 120, timeout: float = 3.0) -> dict:
+        """Janela ativa + elementos nomeados via AT-SPI (sem coordenadas; ver a11y_atspi.py)."""
+        self._spawn()
+        return self._call({"cmd": "a11y", "max_elements": max_elements, "timeout": timeout},
+                          timeout=timeout + 10)
+
+    def focused_text(self, max_len: int = 80) -> tuple[str, str]:
+        """(tipo, valor) do elemento com foco de teclado, ou ('', '') se não der."""
+        snap = self.a11y_snapshot(max_elements=200, timeout=2.0)
+        foc = snap.get("focused") or {}
+        val = " ".join(str(foc.get("value", "")).split())
+        return str(foc.get("type", "")), val[:max_len] + ("…" if len(val) > max_len else "")
 
     def focus_window(self, title_substr: str) -> bool:
         """Wayland não tem foco programático de janelas de outro cliente: honesto = False."""
