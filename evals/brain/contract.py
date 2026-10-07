@@ -1,4 +1,5 @@
 """Contrato v0 independente dos schemas herdados do runtime."""
+
 from __future__ import annotations
 
 import json
@@ -29,8 +30,11 @@ FIELDS = {
     "wait_for": {"text": (str, ...)},
     "click_text": {"label": (str, ...)},
     "click_visual": {"description": (str, ...)},
-    "read_page": {"filter": (Literal["interactive", "all"], "interactive"),
-                  "scope": (str, ""), "next": (str, "")},
+    "read_page": {
+        "filter": (Literal["interactive", "all"], "interactive"),
+        "scope": (str, ""),
+        "next": (str, ""),
+    },
     "find": {"description": (str, ...)},
     "click": {"ref": (str, ...)},
     "form_input": {"ref": (str, ...), "text": (str, ...)},
@@ -47,9 +51,12 @@ FIELDS = {
     "done": {"answer": (str, ...), "evidence": (list[Evidence], Field(min_length=1))},
     "fail": {"reason": (str, ...)},
 }
-VARIANTS = [create_model(name.title().replace("_", ""), __base__=Strict,
-                         tool=(Literal[name], ...), **fields)
-            for name, fields in FIELDS.items()]
+VARIANTS = [
+    create_model(
+        name.title().replace("_", ""), __base__=Strict, tool=(Literal[name], ...), **fields
+    )
+    for name, fields in FIELDS.items()
+]
 Decision = TypeAdapter(Annotated[Union[tuple(VARIANTS)], Field(discriminator="tool")])
 
 

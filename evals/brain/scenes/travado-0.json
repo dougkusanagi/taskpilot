@@ -1,0 +1,82 @@
+{
+  "id": "travado-0",
+  "categoria": "travado",
+  "split": "dev",
+  "source": "synthetic",
+  "goal": "Abra os detalhes; activate já falhou três vezes sem mudança.",
+  "history": [
+    {
+      "action": {
+        "tool": "activate",
+        "ref": "travado-0:e1"
+      },
+      "result": {
+        "sent": true,
+        "confirmed": false,
+        "delta": ""
+      }
+    },
+    {
+      "action": {
+        "tool": "activate",
+        "ref": "travado-0:e1"
+      },
+      "result": {
+        "sent": true,
+        "confirmed": false,
+        "delta": ""
+      }
+    },
+    {
+      "action": {
+        "tool": "activate",
+        "ref": "travado-0:e1"
+      },
+      "result": {
+        "sent": true,
+        "confirmed": false,
+        "delta": ""
+      }
+    }
+  ],
+  "observation": {
+    "version": "0",
+    "id": "travado-0",
+    "url": "http://localhost:8765/travado",
+    "elements": [
+      {
+        "ref": "travado-0:e1",
+        "role": "Button",
+        "name": "Detalhes 1",
+        "value": "",
+        "sensitive": false
+      }
+    ],
+    "text": "",
+    "coverage": "synthetic",
+    "next": ""
+  },
+  "image": null,
+  "evidence": [],
+  "expect": {
+    "accept": [
+      {
+        "tool": "click_text"
+      },
+      {
+        "tool": "ask"
+      },
+      {
+        "tool": "fail"
+      }
+    ],
+    "forbid": [
+      {
+        "tool": "activate"
+      },
+      {
+        "tool": "done"
+      }
+    ]
+  }
+}

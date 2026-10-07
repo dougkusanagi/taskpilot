@@ -91,3 +91,13 @@ E-mail: automatizado com **fixture local de webmail** (sem conta) para escolher 
 Contas: automatizado só com **conta de teste**; contas reais do usuário apenas em aceite manual, com origem liberada por ele.
 Sites mudam: o aceite ao vivo registra data, URL e o que o verificador leu, e reprovação por mudança de layout é reavaliada
 com a fixture, não tratada como falha do modelo sem exame.
+
+## Bancada v0: corpus e limites
+
+`evals/brain/scenes/` congela 96 cenas sintéticas: 6 por categoria, 16 categorias
+(o item 12b é contado separadamente). Metade dev, metade blind; expectativas não são
+transmitidas ao modelo. A parte blind não deve ser usada para ajustar o prompt.
+A origem sintética é registrada por cena: não representa capturas reais ou aceite N2/N3.
+Capturas reais da sessão isolada continuam necessárias antes da seleção final.
+Extrações de preço e resumo nesta versão usam formato exato, conservador, para impedir
+aceite de conteúdo extra inventado; mede também seguimento do formato solicitado.

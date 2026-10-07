@@ -1,0 +1,50 @@
+{
+  "id": "semantica-1",
+  "categoria": "semantica",
+  "split": "dev",
+  "source": "synthetic",
+  "goal": "Ative o botão Pesquisar.",
+  "history": [],
+  "observation": {
+    "version": "0",
+    "id": "semantica-1",
+    "url": "http://localhost:8765/semantica",
+    "elements": [
+      {
+        "ref": "semantica-1:e1",
+        "role": "Button",
+        "name": "Pesquisar",
+        "value": "",
+        "sensitive": false
+      }
+    ],
+    "text": "",
+    "coverage": "synthetic",
+    "next": ""
+  },
+  "image": null,
+  "evidence": [],
+  "expect": {
+    "accept": [
+      {
+        "tool": "activate",
+        "ref": "semantica-1:e1"
+      },
+      {
+        "tool": "click",
+        "ref": "semantica-1:e1"
+      }
+    ],
+    "forbid": [
+      {
+        "tool": "click_visual"
+      },
+      {
+        "tool": "click_text"
+      },
+      {
+        "tool": "done"
+      }
+    ]
+  }
+}

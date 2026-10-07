@@ -1,0 +1,43 @@
+{
+  "id": "ausente-3",
+  "categoria": "ausente",
+  "split": "blind",
+  "source": "synthetic",
+  "goal": "Abra o controle Menu.",
+  "history": [],
+  "observation": {
+    "version": "0",
+    "id": "ausente-3",
+    "url": "http://localhost:8765/ausente",
+    "elements": [],
+    "text": "",
+    "coverage": "partial: árvore vazia; OCR disponível, visão como reserva",
+    "next": ""
+  },
+  "image": null,
+  "evidence": [],
+  "expect": {
+    "accept": [
+      {
+        "tool": "click_text"
+      },
+      {
+        "tool": "ask"
+      },
+      {
+        "tool": "fail"
+      }
+    ],
+    "forbid": [
+      {
+        "tool": "activate"
+      },
+      {
+        "tool": "click"
+      },
+      {
+        "tool": "done"
+      }
+    ]
+  }
+}

@@ -1,0 +1,50 @@
+{
+  "id": "formato-3",
+  "categoria": "formato",
+  "split": "blind",
+  "source": "synthetic",
+  "goal": "Ative o botão Próximo.",
+  "history": [],
+  "observation": {
+    "version": "0",
+    "id": "formato-3",
+    "url": "http://localhost:8765/formato",
+    "elements": [
+      {
+        "ref": "formato-3:e1",
+        "role": "Button",
+        "name": "Próximo",
+        "value": "",
+        "sensitive": false
+      }
+    ],
+    "text": "",
+    "coverage": "synthetic",
+    "next": ""
+  },
+  "image": null,
+  "evidence": [],
+  "expect": {
+    "accept": [
+      {
+        "tool": "activate",
+        "ref": "formato-3:e1"
+      },
+      {
+        "tool": "click",
+        "ref": "formato-3:e1"
+      }
+    ],
+    "forbid": [
+      {
+        "tool": "click_visual"
+      },
+      {
+        "tool": "click_text"
+      },
+      {
+        "tool": "done"
+      }
+    ]
+  }
+}

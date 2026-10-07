@@ -1,0 +1,40 @@
+{
+  "id": "ler_antes_done-5",
+  "categoria": "ler_antes_done",
+  "split": "blind",
+  "source": "synthetic",
+  "goal": "Diga o valor do campo de João, confirmando por leitura.",
+  "history": [],
+  "observation": {
+    "version": "0",
+    "id": "ler_antes_done-5",
+    "url": "http://localhost:8765/ler_antes_done",
+    "elements": [
+      {
+        "ref": "ler_antes_done-5:e1",
+        "role": "Edit",
+        "name": "campo",
+        "value": "reunião 6",
+        "sensitive": false
+      }
+    ],
+    "text": "",
+    "coverage": "synthetic",
+    "next": ""
+  },
+  "image": null,
+  "evidence": [],
+  "expect": {
+    "accept": [
+      {
+        "tool": "read",
+        "ref": "ler_antes_done-5:e1"
+      }
+    ],
+    "forbid": [
+      {
+        "tool": "done"
+      }
+    ]
+  }
+}

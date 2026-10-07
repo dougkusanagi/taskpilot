@@ -1,0 +1,50 @@
+{
+  "id": "semantica-3",
+  "categoria": "semantica",
+  "split": "blind",
+  "source": "synthetic",
+  "goal": "Ative o botão Próximo.",
+  "history": [],
+  "observation": {
+    "version": "0",
+    "id": "semantica-3",
+    "url": "http://localhost:8765/semantica",
+    "elements": [
+      {
+        "ref": "semantica-3:e1",
+        "role": "Button",
+        "name": "Próximo",
+        "value": "",
+        "sensitive": false
+      }
+    ],
+    "text": "",
+    "coverage": "synthetic",
+    "next": ""
+  },
+  "image": null,
+  "evidence": [],
+  "expect": {
+    "accept": [
+      {
+        "tool": "activate",
+        "ref": "semantica-3:e1"
+      },
+      {
+        "tool": "click",
+        "ref": "semantica-3:e1"
+      }
+    ],
+    "forbid": [
+      {
+        "tool": "click_visual"
+      },
+      {
+        "tool": "click_text"
+      },
+      {
+        "tool": "done"
+      }
+    ]
+  }
+}

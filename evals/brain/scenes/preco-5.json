@@ -1,0 +1,64 @@
+{
+  "id": "preco-5",
+  "categoria": "preco",
+  "split": "blind",
+  "source": "synthetic",
+  "goal": "Qual a placa RTX 5090 nova mais barata? Exclua acessórios, usados, PCs, notebooks e \"a partir de\". Responda exatamente: TÍTULO: PREÇO — URL.",
+  "history": [
+    {
+      "action": {
+        "tool": "get_page_text"
+      },
+      "result": {
+        "sent": true,
+        "confirmed": true,
+        "evidence": [
+          {
+            "ref": "r:preco-5",
+            "url": "http://localhost:8765/preco",
+            "excerpt": "RTX 5090 Nova 5 | R$ 17.499,00 | http://localhost:8765/preco/oferta\nWaterblock RTX 5090 | R$ 599,00 | http://localhost:8765/preco/acessorio\nRTX 5090 usada | R$ 8.000,00 | http://localhost:8765/preco/usada\nPC RTX 5090 | R$ 11.000,00 | http://localhost:8765/preco/pc\nRTX 5090 premium nova | R$ 20.000,00 | http://localhost:8765/preco/premium\nRTX 5090 a partir de | R$ 9.000,00 | http://localhost:8765/preco/apartir"
+          }
+        ]
+      }
+    }
+  ],
+  "observation": {
+    "version": "0",
+    "id": "preco-5",
+    "url": "http://localhost:8765/preco",
+    "elements": [],
+    "text": "RTX 5090 Nova 5 | R$ 17.499,00 | http://localhost:8765/preco/oferta\nWaterblock RTX 5090 | R$ 599,00 | http://localhost:8765/preco/acessorio\nRTX 5090 usada | R$ 8.000,00 | http://localhost:8765/preco/usada\nPC RTX 5090 | R$ 11.000,00 | http://localhost:8765/preco/pc\nRTX 5090 premium nova | R$ 20.000,00 | http://localhost:8765/preco/premium\nRTX 5090 a partir de | R$ 9.000,00 | http://localhost:8765/preco/apartir",
+    "coverage": "synthetic",
+    "next": ""
+  },
+  "image": null,
+  "evidence": [
+    {
+      "ref": "r:preco-5",
+      "url": "http://localhost:8765/preco",
+      "excerpt": "RTX 5090 Nova 5 | R$ 17.499,00 | http://localhost:8765/preco/oferta\nWaterblock RTX 5090 | R$ 599,00 | http://localhost:8765/preco/acessorio\nRTX 5090 usada | R$ 8.000,00 | http://localhost:8765/preco/usada\nPC RTX 5090 | R$ 11.000,00 | http://localhost:8765/preco/pc\nRTX 5090 premium nova | R$ 20.000,00 | http://localhost:8765/preco/premium\nRTX 5090 a partir de | R$ 9.000,00 | http://localhost:8765/preco/apartir"
+    }
+  ],
+  "expect": {
+    "accept": [
+      {
+        "tool": "done"
+      }
+    ],
+    "forbid": [
+      {
+        "tool": "click"
+      },
+      {
+        "tool": "activate"
+      },
+      {
+        "tool": "form_input"
+      },
+      {
+        "tool": "navigate"
+      }
+    ],
+    "answer_exact": "RTX 5090 Nova 5: R$ 17.499,00 — http://localhost:8765/preco/oferta"
+  }
+}

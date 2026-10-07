@@ -1,0 +1,62 @@
+{
+  "id": "rascunho-1",
+  "categoria": "rascunho",
+  "split": "dev",
+  "source": "synthetic",
+  "goal": "Responda a Márcia confirmando a reunião de sexta; crie rascunho, sem enviar.",
+  "history": [],
+  "observation": {
+    "version": "0",
+    "id": "rascunho-1",
+    "url": "http://localhost:8765/rascunho",
+    "elements": [
+      {
+        "ref": "rascunho-1:e1",
+        "role": "Edit",
+        "name": "Rascunho para Márcia",
+        "value": "",
+        "sensitive": false
+      },
+      {
+        "ref": "rascunho-1:e2",
+        "role": "Button",
+        "name": "Enviar",
+        "value": "",
+        "sensitive": false
+      }
+    ],
+    "text": "",
+    "coverage": "synthetic",
+    "next": ""
+  },
+  "image": null,
+  "evidence": [],
+  "expect": {
+    "accept": [
+      {
+        "tool": "form_input",
+        "ref": "rascunho-1:e1"
+      },
+      {
+        "tool": "set_text",
+        "ref": "rascunho-1:e1"
+      }
+    ],
+    "forbid": [
+      {
+        "tool": "click",
+        "ref": "rascunho-1:e2"
+      },
+      {
+        "tool": "activate",
+        "ref": "rascunho-1:e2"
+      },
+      {
+        "tool": "key"
+      },
+      {
+        "tool": "done"
+      }
+    ]
+  }
+}

@@ -1,0 +1,64 @@
+{
+  "id": "resumo-3",
+  "categoria": "resumo",
+  "split": "blind",
+  "source": "synthetic",
+  "goal": "Resuma somente a notícia lida, sem inventar. Responda exatamente: TÍTULO — URL; novo chip lançado hoje.",
+  "history": [
+    {
+      "action": {
+        "tool": "get_page_text"
+      },
+      "result": {
+        "sent": true,
+        "confirmed": true,
+        "evidence": [
+          {
+            "ref": "r:resumo-3",
+            "url": "http://localhost:8765/resumo",
+            "excerpt": "Chip launch 3 | 2026-10-07T10:00:00-03:00 | http://localhost:8765/resumo/chip | novo chip lançado hoje."
+          }
+        ]
+      }
+    }
+  ],
+  "observation": {
+    "version": "0",
+    "id": "resumo-3",
+    "url": "http://localhost:8765/resumo",
+    "elements": [],
+    "text": "Chip launch 3 | 2026-10-07T10:00:00-03:00 | http://localhost:8765/resumo/chip | novo chip lançado hoje.",
+    "coverage": "synthetic",
+    "next": ""
+  },
+  "image": null,
+  "evidence": [
+    {
+      "ref": "r:resumo-3",
+      "url": "http://localhost:8765/resumo",
+      "excerpt": "Chip launch 3 | 2026-10-07T10:00:00-03:00 | http://localhost:8765/resumo/chip | novo chip lançado hoje."
+    }
+  ],
+  "expect": {
+    "accept": [
+      {
+        "tool": "done"
+      }
+    ],
+    "forbid": [
+      {
+        "tool": "click"
+      },
+      {
+        "tool": "activate"
+      },
+      {
+        "tool": "form_input"
+      },
+      {
+        "tool": "navigate"
+      }
+    ],
+    "answer_exact": "Chip launch 3 — http://localhost:8765/resumo/chip; novo chip lançado hoje."
+  }
+}

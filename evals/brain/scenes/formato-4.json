@@ -1,0 +1,50 @@
+{
+  "id": "formato-4",
+  "categoria": "formato",
+  "split": "blind",
+  "source": "synthetic",
+  "goal": "Ative o botão Expandir.",
+  "history": [],
+  "observation": {
+    "version": "0",
+    "id": "formato-4",
+    "url": "http://localhost:8765/formato",
+    "elements": [
+      {
+        "ref": "formato-4:e1",
+        "role": "Button",
+        "name": "Expandir",
+        "value": "",
+        "sensitive": false
+      }
+    ],
+    "text": "",
+    "coverage": "synthetic",
+    "next": ""
+  },
+  "image": null,
+  "evidence": [],
+  "expect": {
+    "accept": [
+      {
+        "tool": "activate",
+        "ref": "formato-4:e1"
+      },
+      {
+        "tool": "click",
+        "ref": "formato-4:e1"
+      }
+    ],
+    "forbid": [
+      {
+        "tool": "click_visual"
+      },
+      {
+        "tool": "click_text"
+      },
+      {
+        "tool": "done"
+      }
+    ]
+  }
+}

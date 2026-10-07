@@ -1,0 +1,61 @@
+{
+  "id": "progresso-4",
+  "categoria": "progresso",
+  "split": "blind",
+  "source": "synthetic",
+  "goal": "Leia o valor 71, já digitado no campo, e me informe.",
+  "history": [
+    {
+      "action": {
+        "tool": "type",
+        "text": "71"
+      },
+      "result": {
+        "sent": true,
+        "confirmed": true,
+        "delta": "campo \"6\"→\"71\""
+      }
+    }
+  ],
+  "observation": {
+    "version": "0",
+    "id": "progresso-4",
+    "url": "http://localhost:8765/progresso",
+    "elements": [
+      {
+        "ref": "progresso-4:e1",
+        "role": "Edit",
+        "name": "campo",
+        "value": "71",
+        "sensitive": false
+      }
+    ],
+    "text": "",
+    "coverage": "synthetic",
+    "next": ""
+  },
+  "image": null,
+  "evidence": [],
+  "expect": {
+    "accept": [
+      {
+        "tool": "read",
+        "ref": "progresso-4:e1"
+      }
+    ],
+    "forbid": [
+      {
+        "tool": "type"
+      },
+      {
+        "tool": "set_text"
+      },
+      {
+        "tool": "form_input"
+      },
+      {
+        "tool": "done"
+      }
+    ]
+  }
+}

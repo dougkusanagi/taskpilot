@@ -1,0 +1,50 @@
+{
+  "id": "formato-1",
+  "categoria": "formato",
+  "split": "dev",
+  "source": "synthetic",
+  "goal": "Ative o botão Pesquisar.",
+  "history": [],
+  "observation": {
+    "version": "0",
+    "id": "formato-1",
+    "url": "http://localhost:8765/formato",
+    "elements": [
+      {
+        "ref": "formato-1:e1",
+        "role": "Button",
+        "name": "Pesquisar",
+        "value": "",
+        "sensitive": false
+      }
+    ],
+    "text": "",
+    "coverage": "synthetic",
+    "next": ""
+  },
+  "image": null,
+  "evidence": [],
+  "expect": {
+    "accept": [
+      {
+        "tool": "activate",
+        "ref": "formato-1:e1"
+      },
+      {
+        "tool": "click",
+        "ref": "formato-1:e1"
+      }
+    ],
+    "forbid": [
+      {
+        "tool": "click_visual"
+      },
+      {
+        "tool": "click_text"
+      },
+      {
+        "tool": "done"
+      }
+    ]
+  }
+}

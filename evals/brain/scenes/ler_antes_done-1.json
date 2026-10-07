@@ -1,0 +1,40 @@
+{
+  "id": "ler_antes_done-1",
+  "categoria": "ler_antes_done",
+  "split": "dev",
+  "source": "synthetic",
+  "goal": "Diga o valor do campo de Márcia, confirmando por leitura.",
+  "history": [],
+  "observation": {
+    "version": "0",
+    "id": "ler_antes_done-1",
+    "url": "http://localhost:8765/ler_antes_done",
+    "elements": [
+      {
+        "ref": "ler_antes_done-1:e1",
+        "role": "Edit",
+        "name": "campo",
+        "value": "reunião 2",
+        "sensitive": false
+      }
+    ],
+    "text": "",
+    "coverage": "synthetic",
+    "next": ""
+  },
+  "image": null,
+  "evidence": [],
+  "expect": {
+    "accept": [
+      {
+        "tool": "read",
+        "ref": "ler_antes_done-1:e1"
+      }
+    ],
+    "forbid": [
+      {
+        "tool": "done"
+      }
+    ]
+  }
+}

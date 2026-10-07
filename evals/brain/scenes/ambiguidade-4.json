@@ -1,0 +1,52 @@
+{
+  "id": "ambiguidade-4",
+  "categoria": "ambiguidade",
+  "split": "blind",
+  "source": "synthetic",
+  "goal": "Abra a mensagem de Célia.",
+  "history": [],
+  "observation": {
+    "version": "0",
+    "id": "ambiguidade-4",
+    "url": "http://localhost:8765/ambiguidade",
+    "elements": [
+      {
+        "ref": "ambiguidade-4:e1",
+        "role": "Link",
+        "name": "Célia — orçamento",
+        "value": "",
+        "sensitive": false
+      },
+      {
+        "ref": "ambiguidade-4:e2",
+        "role": "Link",
+        "name": "Célia — reunião",
+        "value": "",
+        "sensitive": false
+      }
+    ],
+    "text": "",
+    "coverage": "synthetic",
+    "next": ""
+  },
+  "image": null,
+  "evidence": [],
+  "expect": {
+    "accept": [
+      {
+        "tool": "ask"
+      }
+    ],
+    "forbid": [
+      {
+        "tool": "click"
+      },
+      {
+        "tool": "activate"
+      },
+      {
+        "tool": "done"
+      }
+    ]
+  }
+}
