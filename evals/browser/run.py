@@ -267,6 +267,10 @@ def run(output):
             """(() => {
           const b = document.createElement('button'); b.id='covered-target';
           b.textContent='ALVO_TESTE'; b.style='position:fixed;top:40px;left:40px;z-index:100';
+          for (const attribute of ['hidden', 'aria-hidden', 'style']) {
+            const h = document.createElement('span'); h.textContent='SEGREDO_ANINHADO';
+            h.setAttribute(attribute, attribute === 'style' ? 'display:none' : 'true'); b.append(h);
+          }
           document.body.append(b);
           const o = document.createElement('div'); o.id='cover';
           o.style='position:fixed;inset:0;z-index:200;background:white';
@@ -279,6 +283,10 @@ def run(output):
         chrome.evaluate(page, 'document.getElementById("cover").remove()')
         found = request({"tool": "find", "description": "ALVO_TESTE"})
         check("elemento descoberto é exposto", len(found["observation"]["elements"]) == 1)
+        check(
+            "descendente hidden/aria-hidden/CSS não vaza em name",
+            "SEGREDO_ANINHADO" not in json.dumps(found),
+        )
         scope = found["observation"]["elements"][0]["ref"]
         scoped = request({"tool": "read_page", "scope": scope})
         check(

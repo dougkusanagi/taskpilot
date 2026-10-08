@@ -8,8 +8,9 @@
 [docs/arquitetura.md](docs/arquitetura.md) (contratos e regras) → [docs/testes-e-selecao-de-modelo.md](docs/testes-e-selecao-de-modelo.md)
 (testes, gates, aceite) → [docs/teste-sessao-linux.md](docs/teste-sessao-linux.md) (ambiente de teste no Linux).
 
-**Foco atual:** Fases 0 e 1 da tasklist (contrato das ferramentas + bancada de decisão). **Não** implemente orquestrador, extensão
-nem adaptadores antes de a Fase 1 estar verde, exceto a extensão, que pode correr em paralelo depois da Fase 0 congelada.
+**Foco atual (revisão browser-first, 07/10):** fechar a Fase 1 (bancada: medir tamanho do snapshot e matriz modelo × contexto × VRAM) e
+abrir a **Fase 3, a extensão Chrome + native host + permissões, como trilha principal**. Orquestrador só depois de a Fase 1 estar
+verde e a extensão operar as fixtures. **Não** implemente adaptadores de desktop (AT-SPI/UIA, OCR, `click_visual`): Fase 5, adiada.
 
 **Combinados de trabalho**
 - Comece devolvendo um plano de 5–8 passos; depois implemente em passos pequenos, cada um com teste e commit (suíte e lint verdes:
@@ -35,11 +36,12 @@ nem adaptadores antes de a Fase 1 estar verde, exceto a extensão, que pode corr
 ## Direção
 
 - Arquitetura normativa: [docs/arquitetura.md](docs/arquitetura.md); seleção de modelo e testes:
-  [docs/testes-e-selecao-de-modelo.md](docs/testes-e-selecao-de-modelo.md); racional: [docs/arquitetura-do-zero-2026-10-07.html](docs/arquitetura-do-zero-2026-10-07.html). Produto: computer use **local**
-  para GPU de **6 GB de VRAM**. Cérebro = 1 VLM de 4B (GUI-Owl-1.5-4B ou Qwen3.5-4B, a decidir por bateria própria);
-  ferramentas na ordem **semântica (AT-SPI/UIA, teclado) → OCR com caixas → visão (reserva)**; Python orquestra, verifica,
+  [docs/testes-e-selecao-de-modelo.md](docs/testes-e-selecao-de-modelo.md); racional: [docs/arquitetura-do-zero-2026-10-07.html](docs/arquitetura-do-zero-2026-10-07.html). Produto: assistente **local** (browser use primeiro, computer use depois)
+  para GPU de **6 GB de VRAM**. Cérebro = 1 modelo **só-texto** lendo DOM/a11y (4B ou 7–9B Q4, decidido por medição; Qwen3.5-4B e Qwen3-4B-2507 são a linha de base),
+  com visão apenas sob demanda; ferramentas do MVP: **DOM/a11y por ref → screenshot (reserva e checagem)**. Desktop (AT-SPI/UIA → OCR →
+  visão) é fase posterior; Python orquestra, verifica,
   veta e executa; verificador lê o **campo**, nunca o título da janela.
-- **Decidido:** ação semântica permitida; **browser use no Chrome do usuário via extensão + native messaging e permissões por origem é a prioridade nº 2 do MVP** (após a bancada). Aceite: Amazon (menor preço RTX 5090), e-mail (leitura e rascunho), notícias do dia — ver docs/testes-e-selecao-de-modelo.md §6.
+- **Decidido:** ação semântica permitida; **browser use no Chrome do usuário via extensão + native messaging e permissões por origem é a trilha principal do MVP** (a bancada continua em curso e a extensão começa em paralelo). Aceite: Amazon (menor preço RTX 5090), e-mail (leitura e rascunho), notícias do dia — ver docs/testes-e-selecao-de-modelo.md §6.
 - O orquestrador ainda não existe. O desenho antigo (planner texto + grounder, `loop.py`, `planner.py`) foi removido desta
   branch e vive no `master`. Não ressuscitar sem decisão explícita; reaproveitar ideias, não código acoplado.
 - Eval primeiro: nenhuma feature entra sem bateria com verificação por screenshot independente.

@@ -33,11 +33,19 @@ if (!globalThis.__taskpilot) globalThis.__taskpilot = (() => {
     }
     return entry.node;
   }
+  function textOf(node) {
+    const walker = document.createTreeWalker(node, NodeFilter.SHOW_TEXT, {
+      acceptNode: text => visible(text.parentElement) ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_REJECT,
+    });
+    const parts = [];
+    while (walker.nextNode()) parts.push(walker.currentNode.textContent);
+    return clean(parts.join(' '));
+  }
   function humanBlock() {
     if ([...document.querySelectorAll('input[type=password],input[autocomplete="one-time-code"],input[autocomplete^="cc-"]')].some(node => visible(node))) return 'login_or_secret';
     const blockers = document.querySelectorAll('iframe, [role=dialog], h1');
     for (const node of blockers) {
-      if (visible(node) && /recaptcha|hcaptcha|turnstile|robot check/i.test(`${node.getAttribute('src')} ${node.getAttribute('aria-label')} ${node.textContent}`)) return 'captcha';
+      if (visible(node) && /recaptcha|hcaptcha|turnstile|robot check/i.test(`${node.getAttribute('src')} ${node.getAttribute('aria-label')} ${textOf(node)}`)) return 'captcha';
     }
     return '';
   }
@@ -48,9 +56,9 @@ if (!globalThis.__taskpilot) globalThis.__taskpilot = (() => {
     if (root !== document.body && root.matches(selector)) nodes.unshift(root);
     return nodes.filter(n => visible(n, true) && !n.closest('nav,footer,[data-noise="true"]')).map(node => {
       const role = node.getAttribute('role') || ({A:'link',BUTTON:'button',INPUT:'textbox',TEXTAREA:'textbox',SELECT:'combobox'}[node.tagName] || 'text');
-      const name = clean(node.getAttribute('aria-label') || node.labels?.[0]?.textContent || node.textContent || node.placeholder || node.name);
+      const name = clean(node.getAttribute('aria-label') || (node.labels?.[0] && textOf(node.labels[0])) || textOf(node) || node.placeholder || node.name);
       const value = secret(node) ? '' : String(node.value || '');
-      return {node, role, name, value, sensitive: Boolean(secret(node)), text: value || clean(node.innerText)};
+      return {node, role, name, value, sensitive: Boolean(secret(node)), text: value || textOf(node)};
     });
   }
   function reading(action) {
@@ -113,7 +121,7 @@ if (!globalThis.__taskpilot) globalThis.__taskpilot = (() => {
         evidence:[{ref:`r:${crypto.randomUUID()}`,url:location.href,excerpt:after}],
         delta:JSON.stringify({field:[before,after]}),error:''}};
     }
-    const label = clean(`${node.textContent} ${node.getAttribute('aria-label')} ${node.name} ${node.form?.action}`);
+    const label = clean(`${textOf(node)} ${node.getAttribute('aria-label')} ${node.name} ${node.form?.action}`);
     if (/\b(send|enviar|delete|apagar|excluir|buy|comprar|pay|pagar|publish|publicar|install|instalar|oauth|download|baixar)\b/i.test(label)) return {error:'confirmation_required'};
     if (node.type === 'submit' && !/rascunho|draft|pesquis|search|filtr/i.test(label)) return {error:'confirmation_required'};
     if (node.tagName === 'A') {

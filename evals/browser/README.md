@@ -22,7 +22,7 @@ essa flag e carregou o diretório por
 [Extensions.loadUnpacked](https://chromedevtools.github.io/devtools-protocol/tot/Extensions/#method-loadUnpacked).
 Esse acesso de depuração existe apenas no teste, nunca na ponte do produto.
 
-`results/chrome-linux.json`: 104 verificações passaram em 07/10/2026. Inclui transações,
+`results/chrome-linux.json`: 105 verificações passaram em 08/10/2026 (a 105ª cobre texto de descendente oculto vazando em `name`). Inclui transações,
 hashes dos fontes e leitura HTTP independente do rascunho para José, com sent vazio.
 Screenshots independentes: diálogo de permissão, overlay cobrindo alvo, loja e outra
 origem. DOM fora da extensão confirma Unicode e todos os IDs do catálogo após paginação.

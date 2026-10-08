@@ -53,7 +53,7 @@ ferramenta certa**.
 - [x] Snapshot compacto: árvore interativa com refs, poda de ruído, `scope` e paginação (`next`), dentro do orçamento da Fase 1.
       Marcar texto de página como dado não confiável; detectar elementos ocultos/cobertos (anti-injeção por DOM enganoso).
 - [x] Testes N2 em perfil descartável (`--user-data-dir` temporário, `--load-extension`) contra as fixtures.
-- Evidência parcial da Fase 3: 104 verificações reais das seis ferramentas em `evals/browser/results/chrome-linux.json`; snapshots reais até 538 tokens Qwen3.5 em `results/snapshot-Chrome-Qwen3.5-4B.json`. Chrome 154 ignorou `--load-extension`; fallback de teste `Extensions.loadUnpacked` registrado em `evals/browser/README.md`. Abas/grupo, screenshot-ferramenta e política completa continuam pendentes.
+- Evidência parcial da Fase 3: 105 verificações reais das seis ferramentas em `evals/browser/results/chrome-linux.json`; snapshots reais até 538 tokens Qwen3.5 em `results/snapshot-Chrome-Qwen3.5-4B.json`. Chrome 154 ignorou `--load-extension`; fallback de teste `Extensions.loadUnpacked` registrado em `evals/browser/README.md`. Abas/grupo, screenshot-ferramenta e política completa continuam pendentes.
 - **Saída:** todas as fixtures operáveis só por ferramentas; origem não liberada é barrada pelo Chrome.
 
 ## Fase 4 — Agent loop (seu item 3) — só com a Fase 1 verde, a Fase 3 operando as fixtures e o modelo da Fase 2
