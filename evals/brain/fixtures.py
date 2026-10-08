@@ -165,6 +165,11 @@ def serve(port: int = 8765) -> None:
     class Handler(BaseHTTPRequestHandler):
         def do_GET(self):
             page = urlparse(self.path).path.strip("/").split("/")[0]
+            if page == "redirect-other-origin":
+                self.send_response(302)
+                self.send_header("Location", f"http://127.0.0.1:{self.server.server_port}/loja")
+                self.end_headers()
+                return
             if page == "state":
                 payload, mime = json.dumps(state, ensure_ascii=False), "application/json"
             elif page in catalog:

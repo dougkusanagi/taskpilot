@@ -28,3 +28,10 @@ Reprodução: subir um modelo local com `evals.brain.runtime` e executar:
 uv run python -m evals.brain.snapshot_bench --model ALIAS \
   --output evals/brain/results/snapshot-ALIAS.json
 ```
+# Confirmação no DOM real
+
+N2 da extensão confirmou as leituras paginadas, todos os IDs do catálogo por DOM
+independente, hidden/covered e scope. `evals/brain/results/snapshot-Chrome-Qwen3.5-4B.json`
+mede corpo completo (Observation + Result + marcador de dado não confiável): máximo
+538 tokens com tokenizer GGUF. Relatório e screenshots em `evals/browser/results/`.
+O teto conservador de 1.200 bytes da extensão não substitui medição em tokens.

@@ -74,6 +74,11 @@ class HttpFixtureTests(unittest.TestCase):
                 self.assertEqual(state["recipient"], "José")
                 self.assertEqual(state["sent"], [])
                 self.assertEqual(client.post("/send").status_code, 403)
+                response = client.get("/redirect-other-origin")
+                self.assertEqual(response.status_code, 302)
+                self.assertEqual(
+                    response.headers["location"], url.replace("localhost", "127.0.0.1") + "/loja"
+                )
         finally:
             process.terminate()
             process.wait(timeout=5)

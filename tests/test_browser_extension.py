@@ -22,6 +22,8 @@ class ExtensionTests(unittest.TestCase):
             ["node", str(ROOT / "tests/browser_policy.mjs")], capture_output=True, text=True
         )
         self.assertEqual(process.returncode, 0, process.stderr)
-        for file in (ROOT / "extension").glob("*.js"):
+        files = list((ROOT / "extension").glob("*.js"))
+        files.append(ROOT / "evals/browser/driver.mjs")
+        for file in files:
             process = subprocess.run(["node", "--check", str(file)], capture_output=True, text=True)
             self.assertEqual(process.returncode, 0, process.stderr)
