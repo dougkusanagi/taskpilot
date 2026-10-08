@@ -12,8 +12,18 @@ from evals.brain.runner import save
 from server import _lmstudio_candidates, _runtime_env
 
 
-def launch(model: str, gguf: Path, mmproj: Path, output: Path, port: int = 8091):
-    for path in [gguf, mmproj]:
+def launch(
+    model: str,
+    gguf: Path,
+    mmproj: Path | None,
+    output: Path,
+    port: int = 8091,
+    context: int = 8192,
+    kv: str = "q8_0",
+):
+    if context not in {4096, 8192, 16384} or kv not in {"q8_0", "q4_0"}:
+        raise ValueError("contexto ou KV fora da matriz")
+    for path in [gguf] + ([mmproj] if mmproj else []):
         if not path.is_file():
             raise ValueError(f"arquivo instalado ausente: {path}")
     candidates = _lmstudio_candidates("cuda")
@@ -24,8 +34,6 @@ def launch(model: str, gguf: Path, mmproj: Path, output: Path, port: int = 8091)
         str(exe),
         "-m",
         str(gguf),
-        "--mmproj",
-        str(mmproj),
         "--alias",
         model,
         "--host",
@@ -35,13 +43,13 @@ def launch(model: str, gguf: Path, mmproj: Path, output: Path, port: int = 8091)
         "-ngl",
         "99",
         "-c",
-        "8192",
+        str(context),
         "-np",
         "1",
         "-ctk",
-        "q8_0",
+        kv,
         "-ctv",
-        "q8_0",
+        kv,
         "-fa",
         "on",
         "-t",
@@ -50,6 +58,10 @@ def launch(model: str, gguf: Path, mmproj: Path, output: Path, port: int = 8091)
         "--reasoning-format",
         "deepseek",
     ]
+    if mmproj:
+        command += ["--mmproj", str(mmproj)]
+    else:
+        command += ["--no-mmproj"]
     output.mkdir(parents=True, exist_ok=True)
     with (output / "server.log").open("w") as log:
         process = subprocess.Popen(command, env=_runtime_env(exe), stdout=log, stderr=log)
@@ -58,7 +70,9 @@ def launch(model: str, gguf: Path, mmproj: Path, output: Path, port: int = 8091)
             "pid": process.pid,
             "command": command,
             "gguf": str(gguf),
-            "mmproj": str(mmproj),
+            "mmproj": str(mmproj) if mmproj else None,
+            "context": context,
+            "kv": kv,
             "binary_sha256": hashlib.sha256(exe.read_bytes()).hexdigest(),
             "peak_vram_mib": None,
         }
@@ -91,8 +105,10 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Runtime opt-in da bancada (somente instalado)")
     parser.add_argument("--model", required=True)
     parser.add_argument("--gguf", type=Path, required=True)
-    parser.add_argument("--mmproj", type=Path, required=True)
+    parser.add_argument("--mmproj", type=Path)
     parser.add_argument("--output", type=Path, default=Path("runs/brain-runtime"))
     parser.add_argument("--port", type=int, default=8091)
+    parser.add_argument("--context", type=int, choices=[4096, 8192, 16384], default=8192)
+    parser.add_argument("--kv", choices=["q8_0", "q4_0"], default="q8_0")
     args = parser.parse_args()
-    launch(args.model, args.gguf, args.mmproj, args.output, args.port)
+    launch(args.model, args.gguf, args.mmproj, args.output, args.port, args.context, args.kv)
