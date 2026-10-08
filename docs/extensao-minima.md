@@ -27,6 +27,10 @@ O bloqueio por rótulo é conservador, não uma classificação completa de pág
 arbitrárias: esta versão é uma bancada para fixtures, ainda não aceite ao vivo.
 Click informa sent, mas não confirmed; preenchimento confirma por leitura do campo.
 Navegação confirma pela URL final, sem usar título de janela.
+Redirect inesperado pode carregar outra origem no Chrome; a ponte sinaliza
+`redirect_not_granted` e bloqueia leituras/interações nessa origem. Host permissions
+protegem acesso ao DOM, não impedem o pedido HTTP de redirecionamento. N2 mediu
+essa diferença; não se declara bloqueio de rede.
 
 N0: política de origens, níveis e abas compartilhadas testada em Node sem dependências;
 manifesto sem host_permissions obrigatório, content_scripts ou externally_connectable.

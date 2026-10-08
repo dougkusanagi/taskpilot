@@ -23,7 +23,8 @@ ferramenta certa**.
 - [x] **Eval loop fino multi-turno** (~100 linhas): alimenta a observação da fixture, executa a ferramenta contra um ambiente
       simulado com estado e devolve o resultado. Vira o núcleo do agent loop na Fase 4 (não é descartável).
 - Evidência N0: 145 testes (1 skip), lint verde; 96 cenas congeladas, HTTP local e loop com oráculos testados.
-- [ ] Comparar com e sem decodificação restrita por schema/gramática; thinking ligado/desligado.
+- [x] Comparar com e sem decodificação restrita por schema/gramática; thinking ligado/desligado.
+- Evidência: quatro condições completas do Qwen3.5 sem projetor em `results/Qwen3.5-4B-text-8192.json`, 288 decisões por condição; todas reprovaram o gate, registradas no quadro de testes.
 - [x] Medir o **tamanho do snapshot** (tokens) de `read_page`/`get_page_text` nas fixtures de loja, webmail e notícias, com e sem poda/
       paginação (meta: ≤ ~1,5 mil tokens por leitura, arquitetura §3.11). Registrar em `evals/brain/results/`.
 - Evidência A1: `results/snapshot-*.json` e `docs/snapshot-browser-a1.md`; máximo podado/paginado 493 tokens (Qwen3) e 481 (Qwen3.5), medidos com os tokenizadores GGUF.
