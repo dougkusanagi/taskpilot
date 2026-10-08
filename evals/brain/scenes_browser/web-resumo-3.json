@@ -1,0 +1,79 @@
+{
+  "id": "web-resumo-3",
+  "categoria": "resumo",
+  "split": "blind",
+  "source": "synthetic browser DOM/a11y",
+  "goal": "Resuma somente a notícia lida. Formato exato: TÍTULO — URL; atualização de tecnologia publicada hoje.",
+  "history": [
+    {
+      "action": {
+        "tool": "get_page_text"
+      },
+      "result": {
+        "sent": true,
+        "confirmed": true,
+        "evidence": [
+          {
+            "ref": "r:web-resumo-3",
+            "url": "http://localhost:8765/resumo",
+            "excerpt": "New security patch | 2026-10-07T12:00:00-03:00 | http://localhost:8765/resumo/noticia | atualização de tecnologia publicada hoje."
+          }
+        ]
+      }
+    }
+  ],
+  "observation": {
+    "version": "0",
+    "id": "web-resumo-3",
+    "url": "http://localhost:8765/resumo",
+    "elements": [],
+    "text": "New security patch | 2026-10-07T12:00:00-03:00 | http://localhost:8765/resumo/noticia | atualização de tecnologia publicada hoje.",
+    "coverage": "synthetic browser DOM/a11y",
+    "next": ""
+  },
+  "image": null,
+  "evidence": [
+    {
+      "ref": "r:web-resumo-3",
+      "url": "http://localhost:8765/resumo",
+      "excerpt": "New security patch | 2026-10-07T12:00:00-03:00 | http://localhost:8765/resumo/noticia | atualização de tecnologia publicada hoje."
+    }
+  ],
+  "expect": {
+    "accept": [
+      {
+        "tool": "done"
+      }
+    ],
+    "forbid": [
+      {
+        "tool": "activate"
+      },
+      {
+        "tool": "set_text"
+      },
+      {
+        "tool": "type"
+      },
+      {
+        "tool": "key"
+      },
+      {
+        "tool": "read"
+      },
+      {
+        "tool": "click_text"
+      },
+      {
+        "tool": "click_visual"
+      },
+      {
+        "tool": "click"
+      },
+      {
+        "tool": "form_input"
+      }
+    ],
+    "answer_exact": "New security patch — http://localhost:8765/resumo/noticia; atualização de tecnologia publicada hoje."
+  }
+}

@@ -1,0 +1,64 @@
+{
+  "id": "web-formato-5",
+  "categoria": "formato",
+  "split": "blind",
+  "source": "synthetic browser DOM/a11y",
+  "goal": "Clique em Filtrar, cujo ref já aparece na leitura atual.",
+  "history": [],
+  "observation": {
+    "version": "0",
+    "id": "web-formato-5",
+    "url": "http://localhost:8765/formato",
+    "elements": [
+      {
+        "ref": "web-formato-5:e1",
+        "role": "button",
+        "name": "Filtrar",
+        "value": "",
+        "sensitive": false
+      }
+    ],
+    "text": "",
+    "coverage": "synthetic browser DOM/a11y",
+    "next": ""
+  },
+  "image": null,
+  "evidence": [],
+  "expect": {
+    "accept": [
+      {
+        "tool": "click",
+        "ref": "web-formato-5:e1"
+      }
+    ],
+    "forbid": [
+      {
+        "tool": "activate"
+      },
+      {
+        "tool": "set_text"
+      },
+      {
+        "tool": "type"
+      },
+      {
+        "tool": "key"
+      },
+      {
+        "tool": "read"
+      },
+      {
+        "tool": "click_text"
+      },
+      {
+        "tool": "click_visual"
+      },
+      {
+        "tool": "screenshot"
+      },
+      {
+        "tool": "done"
+      }
+    ]
+  }
+}

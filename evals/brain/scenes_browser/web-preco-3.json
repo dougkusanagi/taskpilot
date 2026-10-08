@@ -1,0 +1,79 @@
+{
+  "id": "web-preco-3",
+  "categoria": "preco",
+  "split": "blind",
+  "source": "synthetic browser DOM/a11y",
+  "goal": "Informe a RTX 5090 nova de menor preço; exclua acessórios, usados, PCs/notebooks e \"a partir de\". Formato exato: TÍTULO: PREÇO — URL.",
+  "history": [
+    {
+      "action": {
+        "tool": "get_page_text"
+      },
+      "result": {
+        "sent": true,
+        "confirmed": true,
+        "evidence": [
+          {
+            "ref": "r:web-preco-3",
+            "url": "http://localhost:8765/preco",
+            "excerpt": "RTX 5090 Boreal 3 | nova | placa de vídeo | R$ 16.290,00 | http://localhost:8765/preco/oferta\nRTX 5090 Aurora | nova | placa de vídeo | R$ 19.100,00 | http://localhost:8765/preco/cara\nWaterblock RTX 5090 | R$ 500,00 | http://localhost:8765/preco/acessorio\nRTX 5090 usada | R$ 8.000,00 | http://localhost:8765/preco/usada\nNotebook/PC RTX 5090 | R$ 9.000,00 | http://localhost:8765/preco/pc\nRTX 5090 a partir de R$ 7.000,00 | http://localhost:8765/preco/apartir"
+          }
+        ]
+      }
+    }
+  ],
+  "observation": {
+    "version": "0",
+    "id": "web-preco-3",
+    "url": "http://localhost:8765/preco",
+    "elements": [],
+    "text": "RTX 5090 Boreal 3 | nova | placa de vídeo | R$ 16.290,00 | http://localhost:8765/preco/oferta\nRTX 5090 Aurora | nova | placa de vídeo | R$ 19.100,00 | http://localhost:8765/preco/cara\nWaterblock RTX 5090 | R$ 500,00 | http://localhost:8765/preco/acessorio\nRTX 5090 usada | R$ 8.000,00 | http://localhost:8765/preco/usada\nNotebook/PC RTX 5090 | R$ 9.000,00 | http://localhost:8765/preco/pc\nRTX 5090 a partir de R$ 7.000,00 | http://localhost:8765/preco/apartir",
+    "coverage": "synthetic browser DOM/a11y",
+    "next": ""
+  },
+  "image": null,
+  "evidence": [
+    {
+      "ref": "r:web-preco-3",
+      "url": "http://localhost:8765/preco",
+      "excerpt": "RTX 5090 Boreal 3 | nova | placa de vídeo | R$ 16.290,00 | http://localhost:8765/preco/oferta\nRTX 5090 Aurora | nova | placa de vídeo | R$ 19.100,00 | http://localhost:8765/preco/cara\nWaterblock RTX 5090 | R$ 500,00 | http://localhost:8765/preco/acessorio\nRTX 5090 usada | R$ 8.000,00 | http://localhost:8765/preco/usada\nNotebook/PC RTX 5090 | R$ 9.000,00 | http://localhost:8765/preco/pc\nRTX 5090 a partir de R$ 7.000,00 | http://localhost:8765/preco/apartir"
+    }
+  ],
+  "expect": {
+    "accept": [
+      {
+        "tool": "done"
+      }
+    ],
+    "forbid": [
+      {
+        "tool": "activate"
+      },
+      {
+        "tool": "set_text"
+      },
+      {
+        "tool": "type"
+      },
+      {
+        "tool": "key"
+      },
+      {
+        "tool": "read"
+      },
+      {
+        "tool": "click_text"
+      },
+      {
+        "tool": "click_visual"
+      },
+      {
+        "tool": "click"
+      },
+      {
+        "tool": "form_input"
+      }
+    ],
+    "answer_exact": "RTX 5090 Boreal 3: R$ 16.290,00 — http://localhost:8765/preco/oferta"
+  }
+}

@@ -29,6 +29,7 @@ def run(
     max_tokens: int = 512,
     output: Path | None = None,
     runtime_manifest: Path | None = None,
+    corpus: str = "browser",
 ) -> dict:
     if repetitions < 1:
         raise ValueError("repetitions deve ser positivo")
@@ -38,8 +39,9 @@ def run(
     report = {
         "model": model,
         "date_utc": datetime.now(timezone.utc).isoformat(),
-        "corpus_sha256": corpus_hash(),
-        "contract_version": "0",
+        "corpus_sha256": corpus_hash(corpus),
+        "corpus": corpus,
+        "contract_version": "browser-1" if corpus == "browser" else "0",
         "temperature": 0.1,
         "repetitions": repetitions,
         "split": split,
@@ -61,7 +63,7 @@ def run(
         if metadata["pid"] != pid or metadata["model"] != model:
             raise ValueError("manifesto do runtime não corresponde ao PID/modelo solicitado")
         report["runtime"] = metadata
-    scenes = load_scenes(split)
+    scenes = load_scenes(split, corpus=corpus)
     for constrained, thinking in conditions:
         name = f"{'schema' if constrained else 'free'}-thinking-{'on' if thinking else 'off'}"
         condition = {
@@ -74,7 +76,12 @@ def run(
         }
         report["conditions"].append(condition)
         client = Client(
-            endpoint, model, constrained=constrained, thinking=thinking, max_tokens=max_tokens
+            endpoint,
+            model,
+            constrained=constrained,
+            thinking=thinking,
+            max_tokens=max_tokens,
+            corpus=corpus,
         )
         try:
             preflight_error = ""
@@ -123,7 +130,7 @@ def run(
                             if preflight_error:
                                 raise RuntimeError(preflight_error)
                             response = client.complete(payload)
-                            row.update(grade(scene, response.content).dump())
+                            row.update(grade(scene, response.content, corpus=corpus).dump())
                             row.update(
                                 response=response.content,
                                 reasoning=response.reasoning,

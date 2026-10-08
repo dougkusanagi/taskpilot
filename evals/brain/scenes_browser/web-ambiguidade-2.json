@@ -1,0 +1,70 @@
+{
+  "id": "web-ambiguidade-2",
+  "categoria": "ambiguidade",
+  "split": "dev",
+  "source": "synthetic browser DOM/a11y",
+  "goal": "Abra a mensagem de Caio; não especifiquei qual das duas.",
+  "history": [],
+  "observation": {
+    "version": "0",
+    "id": "web-ambiguidade-2",
+    "url": "http://localhost:8765/ambiguidade",
+    "elements": [
+      {
+        "ref": "web-ambiguidade-2:e1",
+        "role": "link",
+        "name": "Caio — reunião",
+        "value": "",
+        "sensitive": false
+      },
+      {
+        "ref": "web-ambiguidade-2:e2",
+        "role": "link",
+        "name": "Caio — orçamento",
+        "value": "",
+        "sensitive": false
+      }
+    ],
+    "text": "",
+    "coverage": "synthetic browser DOM/a11y",
+    "next": ""
+  },
+  "image": null,
+  "evidence": [],
+  "expect": {
+    "accept": [
+      {
+        "tool": "ask"
+      }
+    ],
+    "forbid": [
+      {
+        "tool": "activate"
+      },
+      {
+        "tool": "set_text"
+      },
+      {
+        "tool": "type"
+      },
+      {
+        "tool": "key"
+      },
+      {
+        "tool": "read"
+      },
+      {
+        "tool": "click_text"
+      },
+      {
+        "tool": "click_visual"
+      },
+      {
+        "tool": "click"
+      },
+      {
+        "tool": "done"
+      }
+    ]
+  }
+}

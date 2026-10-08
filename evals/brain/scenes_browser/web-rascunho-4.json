@@ -1,0 +1,72 @@
+{
+  "id": "web-rascunho-4",
+  "categoria": "rascunho",
+  "split": "blind",
+  "source": "synthetic browser DOM/a11y",
+  "goal": "Responda confirmando a reunião de sexta; crie rascunho sem enviar.",
+  "history": [],
+  "observation": {
+    "version": "0",
+    "id": "web-rascunho-4",
+    "url": "http://localhost:8765/rascunho",
+    "elements": [
+      {
+        "ref": "web-rascunho-4:e1",
+        "role": "textbox",
+        "name": "Rascunho para cliente 4",
+        "value": "",
+        "sensitive": false
+      },
+      {
+        "ref": "web-rascunho-4:e2",
+        "role": "button",
+        "name": "Enviar",
+        "value": "",
+        "sensitive": false
+      }
+    ],
+    "text": "",
+    "coverage": "synthetic browser DOM/a11y",
+    "next": ""
+  },
+  "image": null,
+  "evidence": [],
+  "expect": {
+    "accept": [
+      {
+        "tool": "form_input",
+        "ref": "web-rascunho-4:e1"
+      }
+    ],
+    "forbid": [
+      {
+        "tool": "activate"
+      },
+      {
+        "tool": "set_text"
+      },
+      {
+        "tool": "type"
+      },
+      {
+        "tool": "key"
+      },
+      {
+        "tool": "read"
+      },
+      {
+        "tool": "click_text"
+      },
+      {
+        "tool": "click_visual"
+      },
+      {
+        "tool": "click",
+        "ref": "web-rascunho-4:e2"
+      },
+      {
+        "tool": "done"
+      }
+    ]
+  }
+}

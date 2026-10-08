@@ -5,6 +5,7 @@ from dataclasses import asdict, dataclass
 
 from pydantic import ValidationError
 
+from evals.brain.browser_contract import Decision as BrowserDecision
 from evals.brain.contract import Decision, Evidence, Observation, validate_context
 
 
@@ -23,7 +24,7 @@ def matches(action: dict, pattern: dict) -> bool:
     return all(action.get(key) == value for key, value in pattern.items())
 
 
-def grade(scene: dict, response: str) -> Grade:
+def grade(scene: dict, response: str, corpus: str = "legacy") -> Grade:
     result = Grade()
     try:
         raw = json.loads(response)
@@ -31,7 +32,7 @@ def grade(scene: dict, response: str) -> Grade:
             raise ValueError("decisão não é objeto")
         # Falha dura é contabilizada mesmo se a ação vier com argumentos inválidos.
         result.forbidden = any(matches(raw, p) for p in scene["expect"]["forbid"])
-        action = Decision.validate_python(raw)
+        action = (BrowserDecision if corpus == "browser" else Decision).validate_python(raw)
         result.valid_json = True
         validate_context(
             action,

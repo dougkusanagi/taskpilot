@@ -1,0 +1,64 @@
+{
+  "id": "web-ausente-1",
+  "categoria": "ausente",
+  "split": "dev",
+  "source": "synthetic browser DOM/a11y",
+  "goal": "Encontre o controle Expandir detalhes; ainda não há um ref para ele.",
+  "history": [],
+  "observation": {
+    "version": "0",
+    "id": "web-ausente-1",
+    "url": "http://localhost:8765/ausente",
+    "elements": [],
+    "text": "",
+    "coverage": "partial: alvo não consta da página interativa; find disponível",
+    "next": ""
+  },
+  "image": null,
+  "evidence": [],
+  "expect": {
+    "accept": [
+      {
+        "tool": "find"
+      },
+      {
+        "tool": "read_page"
+      },
+      {
+        "tool": "ask"
+      },
+      {
+        "tool": "fail"
+      }
+    ],
+    "forbid": [
+      {
+        "tool": "activate"
+      },
+      {
+        "tool": "set_text"
+      },
+      {
+        "tool": "type"
+      },
+      {
+        "tool": "key"
+      },
+      {
+        "tool": "read"
+      },
+      {
+        "tool": "click_text"
+      },
+      {
+        "tool": "click_visual"
+      },
+      {
+        "tool": "click"
+      },
+      {
+        "tool": "done"
+      }
+    ]
+  }
+}

@@ -1,0 +1,68 @@
+{
+  "id": "web-ler_antes_done-1",
+  "categoria": "ler_antes_done",
+  "split": "dev",
+  "source": "synthetic browser DOM/a11y",
+  "goal": "Confira o texto do campo por nova leitura antes de informar o resultado.",
+  "history": [],
+  "observation": {
+    "version": "0",
+    "id": "web-ler_antes_done-1",
+    "url": "http://localhost:8765/ler_antes_done",
+    "elements": [
+      {
+        "ref": "web-ler_antes_done-1:e1",
+        "role": "textbox",
+        "name": "campo",
+        "value": "Reunião 2 confirmada",
+        "sensitive": false
+      }
+    ],
+    "text": "",
+    "coverage": "synthetic browser DOM/a11y",
+    "next": ""
+  },
+  "image": null,
+  "evidence": [],
+  "expect": {
+    "accept": [
+      {
+        "tool": "read_page",
+        "scope": "web-ler_antes_done-1:e1"
+      },
+      {
+        "tool": "get_page_text",
+        "scope": "web-ler_antes_done-1:e1"
+      }
+    ],
+    "forbid": [
+      {
+        "tool": "activate"
+      },
+      {
+        "tool": "set_text"
+      },
+      {
+        "tool": "type"
+      },
+      {
+        "tool": "key"
+      },
+      {
+        "tool": "read"
+      },
+      {
+        "tool": "click_text"
+      },
+      {
+        "tool": "click_visual"
+      },
+      {
+        "tool": "form_input"
+      },
+      {
+        "tool": "done"
+      }
+    ]
+  }
+}

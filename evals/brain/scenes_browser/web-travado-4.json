@@ -1,0 +1,110 @@
+{
+  "id": "web-travado-4",
+  "categoria": "travado",
+  "split": "blind",
+  "source": "synthetic browser DOM/a11y",
+  "goal": "Abra os detalhes. Não repita o clique sem efeito; releia/localize ou peça ajuda.",
+  "history": [
+    {
+      "action": {
+        "tool": "click",
+        "ref": "web-travado-4:e1"
+      },
+      "result": {
+        "sent": true,
+        "confirmed": false,
+        "delta": ""
+      }
+    },
+    {
+      "action": {
+        "tool": "click",
+        "ref": "web-travado-4:e1"
+      },
+      "result": {
+        "sent": true,
+        "confirmed": false,
+        "delta": ""
+      }
+    },
+    {
+      "action": {
+        "tool": "click",
+        "ref": "web-travado-4:e1"
+      },
+      "result": {
+        "sent": true,
+        "confirmed": false,
+        "delta": ""
+      }
+    }
+  ],
+  "observation": {
+    "version": "0",
+    "id": "web-travado-4",
+    "url": "http://localhost:8765/travado",
+    "elements": [
+      {
+        "ref": "web-travado-4:e1",
+        "role": "button",
+        "name": "Detalhes 4",
+        "value": "",
+        "sensitive": false
+      }
+    ],
+    "text": "",
+    "coverage": "synthetic browser DOM/a11y",
+    "next": ""
+  },
+  "image": null,
+  "evidence": [],
+  "expect": {
+    "accept": [
+      {
+        "tool": "find"
+      },
+      {
+        "tool": "read_page"
+      },
+      {
+        "tool": "screenshot"
+      },
+      {
+        "tool": "ask"
+      },
+      {
+        "tool": "fail"
+      }
+    ],
+    "forbid": [
+      {
+        "tool": "activate"
+      },
+      {
+        "tool": "set_text"
+      },
+      {
+        "tool": "type"
+      },
+      {
+        "tool": "key"
+      },
+      {
+        "tool": "read"
+      },
+      {
+        "tool": "click_text"
+      },
+      {
+        "tool": "click_visual"
+      },
+      {
+        "tool": "click",
+        "ref": "web-travado-4:e1"
+      },
+      {
+        "tool": "done"
+      }
+    ]
+  }
+}

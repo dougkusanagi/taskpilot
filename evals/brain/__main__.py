@@ -29,6 +29,7 @@ def main():
     runner.add_argument("--max-tokens", type=int, default=512)
     runner.add_argument("--output", type=Path)
     runner.add_argument("--runtime-manifest", type=Path)
+    runner.add_argument("--corpus", choices=["browser", "legacy"], default="browser")
     fixtures = sub.add_parser("serve")
     fixtures.add_argument("--port", type=int, default=8765)
     episode = sub.add_parser("episode")
@@ -55,6 +56,7 @@ def main():
             max_tokens=args.max_tokens,
             output=args.output,
             runtime_manifest=args.runtime_manifest,
+            corpus=args.corpus,
         )
         print(json.dumps([c["summary"] for c in report["conditions"]], indent=2))
     else:
