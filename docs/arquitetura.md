@@ -4,6 +4,10 @@ Fonte única do desenho. Racional e números: [arquitetura-do-zero-2026-10-07.ht
 Seleção do modelo e testes: [testes-e-selecao-de-modelo.md](testes-e-selecao-de-modelo.md).
 Mudou a arquitetura → mude este arquivo no mesmo commit.
 
+Implementação parcial de browser: [extensao-minima.md](extensao-minima.md) e
+[native-host.md](native-host.md). Seis ferramentas já existem; o orquestrador e o
+restante das permissões da Fase 3 seguem pendentes.
+
 ## 1. Requisitos
 
 | Item | Valor |
@@ -11,14 +15,16 @@ Mudou a arquitetura → mude este arquivo no mesmo commit.
 | GPU | 6 GB de VRAM; ~5 GB utilizáveis (desktop ~1 GB). Pico de VRAM medido por processo, não pelo total do `nvidia-smi` |
 | Execução | 100% local, sem API obrigatória; Windows (UIA) e Linux/Wayland (AT-SPI + portal) |
 | Latência | decisão p95 ≤ 5 s; tarefa curta p50 ≤ 60 s. Tarefas difíceis podem ser mais lentas (modo thinking) |
-| Prioridade | **Browser use no Chrome do usuário (extensão + permissões) é o topo do roteiro**: é o que torna o produto um assistente útil |
+| Prioridade | **Browser use no Chrome do usuário (extensão + permissões) é a trilha principal do MVP**; desktop (AT-SPI/UIA, OCR, visão) é fase posterior |
 | Segurança | ações irreversíveis exigem confirmação humana; parada de emergência sempre disponível |
 
 ## 2. Princípios
 
 1. **Interface antes do modelo.** O modelo pequeno acerta quando a ferramenta é fácil (nome exato, texto como texto); mouse
    cego é o último recurso.
-2. **Um cérebro residente.** Um único VLM de ~4B planeja e, quando pedido, enxerga. Sem planner + grounder duplicados.
+2. **Um cérebro residente.** Um único modelo planeja. No browser use ele lê **texto** (DOM/a11y), então o padrão é **só-texto**; a
+   visão é opcional e sob demanda (projetor na CPU ou carregado quando preciso). A VRAM liberada vira contexto ou um modelo maior
+   (7–9B), decidido por medição (testes §3). Sem planner + grounder duplicados.
 3. **Python orquestra e verifica; nunca decide o objetivo.** Quem escolhe a próxima ação é o modelo.
 4. **Verificação independente.** Efeito confirmado só por **leitura do estado** (campo/elemento), nunca pelo título da janela
    nem pela própria ação enviada. `done` exige referências a leituras confirmadas.
@@ -52,6 +58,9 @@ Ids `eN` são válidos só para essa observação (IDs obsoletos são recusados)
 são acionáveis por `activate`; `click_xy` nunca recebe (0,0) por falta de dado.
 
 ### 3.3 Escada de ferramentas (sempre A → B → C)
+No **browser use (MVP)** a escada é: **A** = DOM/a11y por `ref` (§3.9) → **C** = `screenshot` como reserva e como checagem independente.
+O degrau B (OCR) e os adaptadores de desktop abaixo ficam para a Fase 5 da tasklist.
+
 - **A · Semântica:** `activate(ref)`, `set_text(ref, text)`, `type(text)`, `key(combo)`, `read(ref)`, `wait_for(text)`.
 - **B · Texto na tela:** `click_text(label)` por OCR com caixas (recusa ambiguidade e ausência).
 - **C · Visão:** `click_visual(description)` — o próprio modelo localiza no screenshot (imagem reduzida, ~768 px).
@@ -79,7 +88,8 @@ que o pedido não distingue → `ask`. Parada: hotkey (Windows), botão "parar c
 Testes com cliques somente em ambiente isolado (Sandbox no Windows; `scripts/linux-test-session.sh` no Linux).
 
 ### 3.8 Runtime
-llama.cpp padrão (sem fork), **um** `llama-server`, modelo Q4_K_M + projetor Q8_0 na GPU, KV q8_0, contexto ~8192.
+llama.cpp padrão (sem fork), **um** `llama-server`, modelo Q4_K_M, KV q8_0, contexto ~8192 (a matriz modelo × contexto × VRAM da
+tasklist Fase 2 define o valor final). Projetor de visão (Q8_0) só se a visão sob demanda for aprovada, fora da GPU quando possível.
 Binário/descoberta: `server.py`. Segundo processo só para tier pesado sob demanda (troca, nunca coexistente).
 
 ### 3.9 Browser use: o Chrome do próprio usuário
@@ -149,7 +159,7 @@ lidos em uma memória estruturada (ex.: lista de {título, preço, url}) em vez 
 2. **Extensão Chrome + native host + permissões** (§3.9–3.10), testada em perfil descartável com as fixtures. **Topo do MVP.**
 3. **Orquestrador + cliente do cérebro + verificador + monitor** com o vocabulário de browser.
 4. **Seleção do modelo** (um a um) sobre as cenas e as tarefas de aceite web (ver testes §6).
-5. Adaptadores de desktop semânticos (AT-SPI/UIA) e escada OCR/visão para apps que não são web.
+5. **Adiado:** adaptadores de desktop semânticos (AT-SPI/UIA) e escada OCR/visão para apps que não são web.
 6. Aceite ao vivo no Chrome real, com o usuário presente (Amazon, e-mail, notícias).
 
 ## 7. Futuro (fora do MVP, já previsto)

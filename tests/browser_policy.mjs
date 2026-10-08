@@ -1,0 +1,14 @@
+import assert from 'node:assert/strict';
+import {originOf, patternFor, checkGrant} from '../extension/policy.js';
+const tab = {id:1,url:'http://localhost:8765/loja'};
+assert.equal(originOf(tab.url),'http://localhost:8765');
+assert.equal(patternFor(originOf(tab.url)),'http://localhost/*');
+assert.throws(() => originOf('javascript:alert(1)'),/origin_not_allowed/);
+assert.throws(() => originOf('https://user:secret@example.org/'),/origin_not_allowed/);
+assert.throws(() => checkGrant(tab,[],{}, {tool:'read_page'}),/tab_not_shared/);
+assert.throws(() => checkGrant(tab,[1],{}, {tool:'read_page'}),/origin_not_granted/);
+assert.throws(() => checkGrant(tab,[1],{'http://localhost:8765':'read'}, {tool:'form_input'}),/read_only/);
+assert.equal(checkGrant(tab,[1],{'http://localhost:8765':'read'}, {tool:'read_page'}),'http://localhost:8765');
+assert.throws(() => checkGrant(tab,[1],{'http://localhost:8766':'interact'}, {tool:'click'}),/origin_not_granted/);
+assert.throws(() => checkGrant(tab,[1],{'http://localhost:8765':'interact'}, {tool:'navigate',url:'https://outra.invalid'}),/destination_not_granted/);
+console.log('Política de browser: invariantes verdes.');
