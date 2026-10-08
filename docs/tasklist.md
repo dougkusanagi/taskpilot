@@ -31,8 +31,9 @@ ferramenta certa**.
 - **Saída:** `uv run python -m evals.brain run --model X` gera `results/X.json`; N0 verde.
 
 ## Fase 2 — Seleção do modelo (seu item 2), um a um
-- [ ] Instalados primeiro: Qwen3-4B-2507 (**linha de base só-texto**, entrada DOM) e Qwen3.5-4B (texto puro, sem projetor, e com
+- [x] Instalados primeiro: Qwen3-4B-2507 (**linha de base só-texto**, entrada DOM) e Qwen3.5-4B (texto puro, sem projetor, e com
       projetor) → registrar.
+- Evidência A2: três configurações completas em `results/*-8192.json`, registradas no quadro de testes; nenhum modelo passou o gate N1.
 - [ ] **Matriz modelo × contexto × VRAM** (por processo) para 4B e para uma classe 7–9B só-texto Q4: maior contexto estável e
       acerto N1 em cada ponto (KV q8_0/q4_0, offload parcial só se p95 ≤ 5 s). Pergunta a responder: modelo maior ou contexto maior?
 - [ ] Baixar (com autorização, tamanho e origem na pergunta): um 7–9B só-texto; Fara1.5-4B (forte em web); Qwen3-VL-4B como controle.
