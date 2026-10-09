@@ -10,6 +10,13 @@ from evals.brain.contract import Decision
 from evals.brain.fixtures import Fixture
 
 
+def compact(result: dict) -> dict:
+    """O corpo das leituras já está em `evidence`; o histórico leva só as referências."""
+    shown = dict(result)
+    shown["evidence"] = [e["ref"] for e in shown.get("evidence", [])]
+    return shown
+
+
 @dataclass
 class Episode:
     status: str = "budget_exhausted"
@@ -23,6 +30,8 @@ def run_episode(
     env: Fixture,
     decide: Callable[[dict], str],
     *,
+    decision=Decision,
+    evidence_window: int = 8,
     max_steps: int = 40,
     max_errors: int = 2,
     timeout: float = 180,
@@ -38,17 +47,19 @@ def run_episode(
             "goal": goal,
             "history": history[-8:],
             "observation": env.current.model_dump(),
-            "evidence": [e.model_dump() for e in env.evidence],
+            "evidence": [e.model_dump() for e in env.evidence[-evidence_window:]],
         }
-        turn = {"observation_id": env.current.id}
+        turn = {"observation_id": env.current.id, "observation_next": env.current.next}
         started = time.monotonic()
         try:
             raw = decide(payload)
             turn["response"] = raw
-            action = Decision.validate_json(raw)
+            action = decision.validate_json(raw)
+            target = env.describe(action) if hasattr(env, "describe") else ""
             result = env.execute(action)
-            turn.update(action=action.model_dump(), result=result.model_dump())
-            history.append({"action": action.model_dump(), "result": result.model_dump()})
+            shown = {**action.model_dump(), **({"target": target} if target else {})}
+            turn.update(action=shown, result=result.model_dump())
+            history.append({"action": shown, "result": compact(result.model_dump())})
             if action.tool == "done":
                 episode.status, episode.answer = "done", action.model_dump()
             elif action.tool in {"ask", "handoff", "fail"}:

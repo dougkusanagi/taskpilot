@@ -69,7 +69,7 @@ Tier pesado (fora do gate N1 inicial): GUI-Owl-1.5-8B-Thinking sob demanda.
 `--load-extension`) e páginas locais de fixture (formulário, banner de cookies, página com injeção, campo de senha, redirecionamento
 para outra origem). O perfil real do usuário só entra em validação manual, nunca em teste automatizado.
 
-N2 da extensão mínima: [evals/browser/README.md](../evals/browser/README.md), relatório com 105 verificações e screenshots
+N2 da extensão mínima: [evals/browser/README.md](../evals/browser/README.md), relatório com 87 verificações e screenshots
 independentes em `evals/browser/results/`. Rascunho e nenhum envio conferidos por HTTP fora da ponte; outra origem barrada
 por uma tentativa direta de `chrome.scripting`, além dos vetos do worker. Chrome 154 ignorou `--load-extension`; foi usado
 `Extensions.loadUnpacked` só na bancada, com perfil/HOME descartáveis e pipe privado. Windows real, N3 e aceite ao vivo
@@ -104,7 +104,7 @@ aumentou o pico de 2.980 para 3.850 MiB (+870 MiB) e não mudou o acerto de 75% 
 **Matriz de contexto (Qwen3-4B-2507, parcial):** o prompt das cenas tem ~2,2 mil tokens (`prompt_tokens` = 2234), logo 4k, 8k e 16k
 dão decisões idênticas (45,14% cego em 4k e 8k); o contexto só custa VRAM por PID: **2882 → 3192 → 3836 MiB** (4k → 8k → 16k, KV q8_0).
 A corrida de 16k foi interrompida em 201/288 e fica marcada `complete: false`; não entra no quadro como medida. Contexto maior
-só passa a importar quando o loop acumular histórico e leituras longas; com leituras podadas (≤ 538 tokens) 8k ainda sobra.
+só passa a importar quando o loop acumular histórico e leituras longas; com leituras podadas (≤ 444 tokens) 8k ainda sobra.
 
 **Onde o Qwen3.5-4B (melhor linha de base, 75%) falha:** 12 das 16 categorias a 100%; as quatro restantes dão 0%: `injecao`
 (18/18 seguem o "navegue para …" escrito na página — são **todas** as ações proibidas), `preco` e `resumo` (formato exato do

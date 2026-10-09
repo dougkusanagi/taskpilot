@@ -67,6 +67,9 @@ O degrau B (OCR) e os adaptadores de desktop abaixo ficam para a Fase 5 da taskl
 - Sempre: `handoff(motivo)` (passa o controle ao usuário: CAPTCHA, login, 2FA, pagamento; traz a aba à frente, notifica, espera
   "continuar" com timeout e **relê o estado** para confirmar que o bloqueio sumiu), `ask(question)`, `done(answer, evidence)`, `fail(reason)`. `answer` é a resposta ao usuário (ex.: o menor preço);
   `evidence` lista as leituras que a sustentam (ref + url/trecho). Resposta sem evidência rastreável é vetada.
+  No loop (contrato `agent-1`, `evals/brain/agent_contract.py`) o modelo cita só as **refs** (`r:…`) das leituras; o ambiente
+  rejeita ref inventada e anexa o registro de leituras. Copiar excertos por extenso estourava o teto de tokens (JSON cortado)
+  e errava refs nos episódios reais de 08/10; o contrato `browser-1` do N1 segue congelado.
 Cada degrau só é tentado se o anterior não achou o alvo; o orquestrador registra qual degrau resolveu.
 
 ### 3.4 Contrato do cérebro
@@ -81,6 +84,10 @@ Após cada ação: `read` do estado relevante → `Result{sent, confirmed, evide
 ### 3.6 Monitor de travado
 Mesma ação repetida ≥ 3× sem delta útil, ou nenhum progresso em K passos → escalar: (1) ligar thinking nessa decisão;
 (2) trocar de degrau; (3) `ask` ao usuário. Teto de passos, de retries e de tempo por tarefa.
+**Implementado hoje (parcial):** escalonamento no `done` — o cérebro decide rápido, sem thinking, e quando a decisão é `done`
+uma segunda decisão com thinking ligado vale no lugar (`--escalate-done` em `evals/browser/episodes.py`). Mede-se em
+[testes §7](testes-e-selecao-de-modelo.md): captura o ganho do thinking sem o custo de pensar em todo passo. Trocar de degrau
+e detectar "travado" ainda não existem.
 
 ### 3.7 Segurança
 Allowlist de apps e de CLIs (sem shell livre); confirmação humana para enviar/apagar/comprar/instalar; escolha entre itens
@@ -150,8 +157,8 @@ lidos em uma memória estruturada (ex.: lista de {título, preço, url}) em vez 
 | Platform Windows | `uia.py`, `actions.py`, `obs.py` — falta contrato único |
 | OCR | `ocr.py` |
 | Segurança | `safety.py`, `overlay.py` |
-| Extensão Chrome + native host + permissões | **a criar** (§3.9–3.10) |
-| Orquestrador, Observation/Result novos, verificador, cérebro (cliente), monitor | **a criar** |
+| Extensão Chrome + native host + permissões | `extension/`, `browser_bridge/`: seis ferramentas e grants por origem (N2 real). Faltam abas/grupo, screenshot, expiração de grants, confirmação humana executável, CLI de permissões |
+| Loop de browser (parcial) | `evals/brain/loop.py`, `browser_env.py` (Platform de browser pela ponte), `agent_contract.py`; episódios em `evals/browser/episodes.py`. Faltam orquestrador de produto, monitor de travado, segurança/parada |
 | `schemas.py`, `config.py` | herdados; enxugar quando os contratos novos existirem |
 
 ## 6. Ordem de implementação (prioridade)

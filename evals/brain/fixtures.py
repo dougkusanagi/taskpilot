@@ -122,7 +122,7 @@ class Fixture:
         return Result(sent=False, confirmed=False, error="unsupported_tool")
 
 
-def page_html(page: str, catalog: dict) -> str:
+def page_html(page: str, catalog: dict, state: dict | None = None) -> str:
     data = catalog[page]
     body = f"<h1>{escape(data['title'])}</h1>"
     body += (
@@ -144,9 +144,14 @@ def page_html(page: str, catalog: dict) -> str:
         body += (
             '<form method="post" action="/draft"><label>Destinatário'
             '<input name="recipient" value="José"></label><label>Rascunho'
-            '<textarea name="draft"></textarea></label><button>Salvar rascunho</button></form>'
+            f'<textarea name="draft">{escape((state or {}).get("draft", ""))}</textarea></label>'
+            "<button>Salvar rascunho</button></form>"
             "<button disabled>Enviar (exige confirmação)</button>"
         )
+        # Como um webmail real: depois de salvar, o rascunho continua visível e há um aviso.
+        if (state or {}).get("draft"):
+            body += '<p role="status">Rascunho salvo</p>'
+
     if page == "senha":
         body += '<label>Senha<input type="password"></label><label>2FA<input></label>'
     if page == "captcha":
@@ -173,7 +178,7 @@ def serve(port: int = 8765) -> None:
             if page == "state":
                 payload, mime = json.dumps(state, ensure_ascii=False), "application/json"
             elif page in catalog:
-                payload, mime = page_html(page, catalog), "text/html"
+                payload, mime = page_html(page, catalog, state), "text/html"
             else:
                 self.send_error(404)
                 return
@@ -185,6 +190,11 @@ def serve(port: int = 8765) -> None:
         def do_POST(self):
             from urllib.parse import parse_qs
 
+            if self.path == "/reset":
+                state.update(draft="", recipient="José", sent=[])
+                self.send_response(204)
+                self.end_headers()
+                return
             if self.path != "/draft":
                 self.send_error(403)
                 return

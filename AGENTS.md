@@ -8,9 +8,11 @@
 [docs/arquitetura.md](docs/arquitetura.md) (contratos e regras) → [docs/testes-e-selecao-de-modelo.md](docs/testes-e-selecao-de-modelo.md)
 (testes, gates, aceite) → [docs/teste-sessao-linux.md](docs/teste-sessao-linux.md) (ambiente de teste no Linux).
 
-**Foco atual (revisão browser-first, 07/10):** fechar a Fase 1 (bancada: medir tamanho do snapshot e matriz modelo × contexto × VRAM) e
-abrir a **Fase 3, a extensão Chrome + native host + permissões, como trilha principal**. Orquestrador só depois de a Fase 1 estar
-verde e a extensão operar as fixtures. **Não** implemente adaptadores de desktop (AT-SPI/UIA, OCR, `click_visual`): Fase 5, adiada.
+**Foco atual (08/10):** bancada (Fase 1) e extensão mínima (Fase 3) estão medidas; começou o **loop de browser** (Fase 4): o modelo
+opera a extensão real em Chrome descartável nas fixtures, com verificação independente (`evals/browser/episodes.py`, testes §7).
+Próximos: completar a Fase 3 (abas/grupo, screenshot, grants com validade, confirmação humana, CLI de permissões), o monitor de
+travado e a matriz com um 7–9B (download só com autorização). **Não** implemente adaptadores de desktop (AT-SPI/UIA, OCR,
+`click_visual`): Fase 5, adiada.
 
 **Combinados de trabalho**
 - Comece devolvendo um plano de 5–8 passos; depois implemente em passos pequenos, cada um com teste e commit (suíte e lint verdes:
@@ -32,6 +34,13 @@ verde e a extensão operar as fixtures. **Não** implemente adaptadores de deskt
   MAI-UI-2B em `models/`. O resto foi apagado de propósito.
 - Número de modelo de terceiros (OSWorld etc.) é autorreportado: serve para ordenar candidatos, não para aprovar.
 - O desenho antigo (planner texto + grounder, `loop.py`) está no `master`; não ressuscitar.
+- Episódios reais têm variância grande (n pequeno, GPU não determinística): compare configurações **no mesmo código**, com ≥5
+  repetições, e registre quais mudanças entraram entre rodadas. Uma rodada de 18 já variou de 72% a 89% na mesma configuração.
+- CDP `Page.captureScreenshot` trava até o timeout em aba em segundo plano: `Chrome.screenshot` chama `Page.bringToFront` antes.
+- A fixture de webmail precisa mostrar "Rascunho salvo" e manter o texto; sem isso o modelo salva duas vezes e a 2ª grava vazio.
+- O modelo não deve copiar evidência por extenso no `done` (estoura 512 tokens e erra refs): contrato `agent-1`, só refs.
+- O LM Studio tem dois modelos que este arquivo não listava e que nenhum teste usou: Gemma-4-E2B-it Q6_K (3,8 GB, com projetor) e
+  Qwen3.8-9B-heretic-uncensored IQ4_XS (5,2 GB só de pesos: passa do teto de 5 GB de VRAM e tem a recusa removida). Não são candidatos sem decisão do dono.
 
 ## Direção
 
@@ -53,7 +62,9 @@ verde e a extensão operar as fixtures. **Não** implemente adaptadores de deskt
 Runtime: `server.py`, `http_pool.py`, `config.py` (perfis antigos a reescrever). Platform: `platform_backend/` (Wayland),
 `uia.py`, `actions.py`, `obs.py`, `tools.py`. OCR: `ocr.py`. Segurança: `safety.py`, `overlay.py`. Medição: `telemetry.py`.
 Contratos herdados: `schemas.py` (enxugar). Dados: `evals/ground*`, `evals/ocr_bench.py`. **Contrato v0:** `evals/brain/contract.py` e `docs/brain-contract-v0.md` (isolado do runtime herdado).
-**A criar:** orquestrador, cliente do cérebro de produção, verificador, monitor de travado; bancada em `evals/brain/`.
+Browser: `extension/` (MV3), `browser_bridge/` (native host + broker), `evals/browser/` (N2 `run.py`, `harness.py` Rig, `episodes.py`),
+`evals/brain/browser_env.py` (Platform de browser pela ponte), `agent_contract.py` (contrato `agent-1` do loop; `browser-1` do N1 fica congelado).
+**A criar:** orquestrador de produto, cliente do cérebro de produção, monitor de travado, parada/segurança executável; bancada em `evals/brain/`.
 Removidos (no histórico): vocaela, guards, prefs, skills, state, verification, UI/ditado (`app.py`, `stt.py`, `ui/`).
 
 ## Comandos

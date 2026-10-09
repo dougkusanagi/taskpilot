@@ -72,6 +72,8 @@ class Chrome:
     def screenshot(self, session, path: Path):
         import base64
 
+        # Aba em segundo plano não renderiza: captureScreenshot trava até o timeout.
+        self.command("Page.bringToFront", {}, session)
         image = self.command("Page.captureScreenshot", {}, session)
         path.write_bytes(base64.b64decode(image["data"]))
 

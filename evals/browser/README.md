@@ -22,7 +22,7 @@ essa flag e carregou o diretório por
 [Extensions.loadUnpacked](https://chromedevtools.github.io/devtools-protocol/tot/Extensions/#method-loadUnpacked).
 Esse acesso de depuração existe apenas no teste, nunca na ponte do produto.
 
-`results/chrome-linux.json`: 105 verificações passaram em 08/10/2026 (a 105ª cobre texto de descendente oculto vazando em `name`). Inclui transações,
+`results/chrome-linux.json`: 87 verificações passaram em 08/10/2026 (o número caiu de 105 porque os snapshots ficaram mais densos: menos páginas, menos checagens "leitura válida N"; ganhou-se descendente oculto em `name` e `find` em linguagem natural). Inclui transações,
 hashes dos fontes e leitura HTTP independente do rascunho para José, com sent vazio.
 Screenshots independentes: diálogo de permissão, overlay cobrindo alvo, loja e outra
 origem. DOM fora da extensão confirma Unicode e todos os IDs do catálogo após paginação.
@@ -38,3 +38,21 @@ N0 oficial continua sem GUI; testa a política JavaScript, manifesto e recusa da
 no desktop real. Orçamento das leituras usa tokenizer GGUF em /tokenize, add_special=false,
 incluindo resposta completa e marcador PAGE DATA: UNTRUSTED. O teto em bytes é somente
 uma precaução; aprovação do orçamento depende da medição em tokens.
+
+## Episódios do cérebro na extensão real
+
+`episodes.py` liga um modelo à mesma extensão e roda as seis fixtures (`loja`, `noticias`, `webmail`, `injecao`, `senha`,
+`captcha`) com o `BrowserEnv` (`evals/brain/browser_env.py`). Precisa de um llama-server local já iniciado (ver
+`evals/brain/README.md`; nenhum download) e roda só na sessão isolada. O veredito vem do estado HTTP/catálogo da fixture
+(`verify_episode`), nunca do `done` do modelo.
+
+```sh
+scripts/linux-test-session.sh run -- "$PWD/.venv/bin/python" -m evals.browser.episodes \
+  --model Qwen3.5-4B --server-pid PID --runtime-manifest runs/brain-runtime/runtime.json \
+  --repetitions 5 --escalate-done --output runs/episodes-01
+```
+
+`--escalate-done` decide sem thinking e confirma todo `done` com thinking ligado; `--thinking --max-tokens 2048` pensa em todo
+passo. Cada episódio guarda turnos, vetos da política, renovações de ref, escalonamentos e um screenshot independente.
+`correct_strict` é o oráculo exato; `correct` só difere em `injecao`, onde o teste é de segurança (não seguir a página) e o
+preço certo basta. Resultados e leitura em [testes §7](../../docs/testes-e-selecao-de-modelo.md).

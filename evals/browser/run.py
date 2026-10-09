@@ -3,49 +3,17 @@
 import argparse
 import hashlib
 import json
-import os
-import subprocess
-import sys
-import time
-import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 from urllib.request import urlopen
 
-from browser_bridge.broker import Broker, write_config
-from browser_bridge.install import generate
 from evals.brain.runner import save
-from evals.browser.cdp import Chrome
-
-
-def wait(predicate, timeout=10):
-    deadline = time.monotonic() + timeout
-    while time.monotonic() < deadline:
-        value = predicate()
-        if value:
-            return value
-        time.sleep(0.1)
-    raise TimeoutError("estado independente não chegou")
+from evals.browser.harness import Rig, wait
 
 
 def run(output):
-    runtime = f"/run/user/{os.getuid()}/taskpilot-test-session"
-    if (
-        os.environ.get("XDG_RUNTIME_DIR") != runtime
-        or os.environ.get("TASKPILOT_TEST_SESSION") != "1"
-        or os.environ.get("WAYLAND_DISPLAY") != "wayland-tp"
-    ):
-        raise ValueError("rode por scripts/linux-test-session.sh run --; nunca no desktop real")
-    output.mkdir(parents=True, exist_ok=False)
-    os.environ["TP_BROWSER_HEADFUL"] = "1"
-    fixture_log = (output / "fixture.log").open("w")
-    server = subprocess.Popen(
-        [sys.executable, "-m", "evals.brain", "serve", "--port", "0"],
-        stdout=subprocess.PIPE,
-        stderr=fixture_log,
-        text=True,
-    )
-    base = server.stdout.readline().strip().split(" ")[-1]
+    rig = Rig(output)
+    base = rig.base
     chrome = broker = None
     sources = sorted(Path("extension").glob("*.js")) + [
         Path("extension/manifest.json"),
@@ -70,25 +38,11 @@ def run(output):
             raise AssertionError(name)
 
     try:
-        chrome = Chrome(output)
+        connected = rig.start()
+        chrome, broker = rig.chrome, rig.broker
         report["chrome"] = chrome.metadata
-        eid = chrome.metadata["extensionId"]
-        broker = Broker(eid).start()
-        config = Path(os.environ["XDG_RUNTIME_DIR"]) / f"native-{uuid.uuid4().hex}" / "config.json"
-        write_config(config, broker)
-        manifest = generate(output / "native", eid, str(config))
-        for registry in [
-            output / "home/.config/google-chrome/NativeMessagingHosts",
-            output / "profile/NativeMessagingHosts",
-        ]:
-            registry.mkdir(parents=True, exist_ok=True)
-            (registry / manifest.name).write_bytes(manifest.read_bytes())
-        page = chrome.tab(base + "/webmail")
-        popup = chrome.tab(f"chrome-extension://{eid}/popup.html")
-        chrome.evaluate(popup, 'chrome.runtime.sendMessage({type:"connect"})')
-        check("native messaging real conectado", broker.ready.wait(10))
-        tabs = chrome.evaluate(popup, "chrome.tabs.query({})")
-        tab = next(t["id"] for t in tabs if t.get("url") == base + "/webmail")
+        page, popup, tab = rig.page, rig.popup, rig.tab
+        check("native messaging real conectado", connected)
 
         def request(action):
             response = broker.request(action, tab)
@@ -100,43 +54,7 @@ def run(output):
             request({"tool": "read_page"}).get("error") == "tab_not_shared",
         )
         # O botão real pede permissão ao Chrome. A resposta de teste ocorre só no GNOME isolado.
-        chrome.evaluate(
-            popup,
-            f'document.getElementById("tab").value="{tab}";'
-            'document.getElementById("share").click()',
-        )
-        time.sleep(1)
-        subprocess.run(
-            [
-                "/usr/bin/python3",
-                "scripts/linux_session_tool.py",
-                "shot",
-                str(output / "permission.png"),
-            ],
-            check=True,
-        )
-        subprocess.run(
-            [
-                "/usr/bin/python3",
-                "scripts/linux_session_tool.py",
-                "key",
-                "Shift_L",
-                "Tab",
-                "Return",
-            ],
-            check=True,
-        )
-        wait(
-            lambda: chrome.evaluate(
-                popup, 'chrome.permissions.contains({origins:["http://localhost/*"]})'
-            )
-        )
-        wait(
-            lambda: chrome.evaluate(
-                popup,
-                'document.getElementById("status").textContent.startsWith("Aba compartilhada")',
-            )
-        )
+        rig.share(output / "permission.png")
         check(
             "Chrome concedeu somente localhost",
             chrome.evaluate(popup, "chrome.permissions.getAll()")["origins"]
@@ -148,9 +66,7 @@ def run(output):
             request({"tool": "form_input", "ref": "qualquer", "text": "x"}).get("error")
             == "read_only",
         )
-        chrome.evaluate(
-            popup, f'chrome.runtime.sendMessage({{type:"share",tab:{tab},level:"interact"}})'
-        )
+        rig.set_level("interact")
 
         def read_all(tool="read_page", **extra):
             reads, action = [], {"tool": tool, **extra}
@@ -172,6 +88,19 @@ def run(output):
         check("hidden omitido", "SEGREDO_OCULTO" not in json.dumps(readings))
         draft = next(e for e in elements if e["name"] == "Rascunho")
         # Releitura find cria refs atuais, mesmo após paginação.
+        natural = request(
+            {
+                "tool": "find",
+                "description": "Localizar campo 'Rascunho' para inserir o texto da confirmação.",
+            }
+        )
+        check(
+            "find aceita descrição em linguagem natural",
+            any(
+                e["role"] == "textbox" and e["name"] == "Rascunho"
+                for e in natural["observation"]["elements"]
+            ),
+        )
         found = request({"tool": "find", "description": "Rascunho"})
         current = next(e for e in found["observation"]["elements"] if e["role"] == "textbox")
         check(
@@ -339,14 +268,7 @@ def run(output):
         raise
     finally:
         save(output / "report.json", report)
-        if chrome:
-            chrome.close()
-        if broker:
-            broker.close()
-        server.terminate()
-        server.wait(timeout=5)
-        server.stdout.close()
-        fixture_log.close()
+        rig.close()
     return report
 
 

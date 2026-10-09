@@ -34,6 +34,8 @@ uv run python -m evals.brain.snapshot_bench --model ALIAS \
 N2 da extensão confirmou as leituras paginadas, todos os IDs do catálogo por DOM
 independente, hidden/covered e scope. `evals/brain/results/snapshot-Chrome-Qwen3.5-4B.json`
 mede corpo completo (Observation + Result + marcador de dado não confiável): máximo
-538 tokens no Qwen3.5 e 539 no Qwen3, com tokenizadores GGUF.
-O segundo arquivo é `evals/brain/results/snapshot-Chrome-Qwen3-4B-2507.json`. Relatório e screenshots em `evals/browser/results/`.
+444 tokens no Qwen3.5 (re-medido em 08/10 depois de encurtar ids/cursores para 8 hex e trocar o excerto
+de elementos por linhas `papel: nome`; antes: 538). O segundo arquivo,
+`evals/brain/results/snapshot-Chrome-Qwen3-4B-2507.json`, é a medição anterior (539 tokens) e não foi refeita: exigiria
+carregar o Qwen3-4B-2507. Relatório e screenshots em `evals/browser/results/`.
 O teto conservador de 1.200 bytes da extensão não substitui medição em tokens.

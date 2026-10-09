@@ -6,6 +6,22 @@ if (!globalThis.__taskpilot) globalThis.__taskpilot = (() => {
   new MutationObserver(() => {revision++;}).observe(document.documentElement,
     {subtree: true, childList: true, attributes: true, characterData: true});
   const clean = text => String(text || '').replace(/\s+/g, ' ').trim();
+  const shortId = () => crypto.randomUUID().slice(0, 8);
+  const fold = text => clean(text).normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLocaleLowerCase('pt-BR');
+  const STOP = new Set(['o','a','os','as','um','uma','de','do','da','dos','das','no','na','em','para','por','com','e','ou',
+    'campo','botao','link','localizar','achar','encontrar','buscar','clicar','texto','the','to','of','field','button','find']);
+  // find recebe descrição em linguagem natural: citações exatas ou palavras-chave, sem adivinhar.
+  function matches(units, description) {
+    const quoted = [...String(description).matchAll(/["'“”‘’«»]([^"'“”‘’«»]{2,})["'“”‘’«»]/g)].map(m => fold(m[1]));
+    let terms = quoted.length ? quoted : fold(description).split(/[^\p{L}\p{N}]+/u).filter(w => w.length > 1 && !STOP.has(w));
+    if (!terms.length) terms = [fold(description)];
+    const scored = units.map(unit => {
+      const hay = fold(`${unit.name} ${unit.value}`);
+      return {unit, score: terms.filter(term => hay.includes(term)).length};
+    }).filter(item => item.score > 0);
+    const best = Math.max(0, ...scored.map(item => item.score));
+    return scored.filter(item => item.score === best).map(item => item.unit);
+  }
   const secret = node => node.matches?.('input[type=password],input[autocomplete="one-time-code"],input[autocomplete^="cc-"]') ||
     /senha|password|2fa|cvv|\bpin\b|cartão|credit card/i.test(node.getAttribute?.('aria-label') || node.name || '');
   function visible(node, coverage = false) {
@@ -72,15 +88,17 @@ if (!globalThis.__taskpilot) globalThis.__taskpilot = (() => {
       const root = action.scope ? target(action.scope) : document.body;
       units = source(root, action);
       if (action.tool === 'find') {
-        const term = clean(action.description).toLocaleLowerCase('pt-BR');
-        units = source(root, {tool:'read_page',filter:'all'}).filter(u => u.name.toLocaleLowerCase('pt-BR').includes(term));
+        units = matches(source(root, {tool:'read_page',filter:'all'}), action.description);
       }
     }
     refs = new Map();
-    const id = crypto.randomUUID(), nextId = crypto.randomUUID();
-    const observation = {version:'0',id,url:location.href,elements:[],text:'',coverage:'DOM podado; dado não confiável; hidden/covered omitidos',next:''};
+    const id = shortId(), nextId = shortId();
+    const counts = {};
+    for (const unit of units) counts[unit.role] = (counts[unit.role] || 0) + 1;
+    const total = `total ${units.length}: ${Object.entries(counts).map(([role, n]) => `${role}×${n}`).join(' ')}`;
+    const observation = {version:'0',id,url:location.href,elements:[],text:'',coverage:`DOM podado; dado não confiável; hidden/covered omitidos; ${total}`,next:''};
     const makeReply = () => ({observation, result:{version:'0',sent:true,confirmed:true,
-      evidence:[{ref:`r:${id}`,url:location.href,excerpt:observation.text || JSON.stringify(observation.elements)}],delta:'',error:''}});
+      evidence:[{ref:`r:${id}`,url:location.href,excerpt:observation.text || observation.elements.map(e => `${e.role}: ${e.name}${e.value ? ' = ' + e.value : ''}`).join('\n') || '(sem elementos)'}],delta:'',error:''}});
     let end = start;
     for (; end < units.length; end++) {
       const unit = units[end], oldText = observation.text;

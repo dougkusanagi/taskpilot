@@ -53,12 +53,15 @@ ferramenta certa**.
 - [x] Snapshot compacto: árvore interativa com refs, poda de ruído, `scope` e paginação (`next`), dentro do orçamento da Fase 1.
       Marcar texto de página como dado não confiável; detectar elementos ocultos/cobertos (anti-injeção por DOM enganoso).
 - [x] Testes N2 em perfil descartável (`--user-data-dir` temporário, `--load-extension`) contra as fixtures.
-- Evidência parcial da Fase 3: 105 verificações reais das seis ferramentas em `evals/browser/results/chrome-linux.json`; snapshots reais até 538 tokens Qwen3.5 em `results/snapshot-Chrome-Qwen3.5-4B.json`. Chrome 154 ignorou `--load-extension`; fallback de teste `Extensions.loadUnpacked` registrado em `evals/browser/README.md`. Abas/grupo, screenshot-ferramenta e política completa continuam pendentes.
+- Evidência parcial da Fase 3: 87 verificações reais das seis ferramentas em `evals/browser/results/chrome-linux.json`; snapshots reais até 444 tokens Qwen3.5 (re-medido em 08/10 após compactar ids e excertos) em `results/snapshot-Chrome-Qwen3.5-4B.json`. Chrome 154 ignorou `--load-extension`; fallback de teste `Extensions.loadUnpacked` registrado em `evals/browser/README.md`. Abas/grupo, screenshot-ferramenta e política completa continuam pendentes.
 - **Saída:** todas as fixtures operáveis só por ferramentas; origem não liberada é barrada pelo Chrome.
 
 ## Fase 4 — Agent loop (seu item 3) — só com a Fase 1 verde, a Fase 3 operando as fixtures e o modelo da Fase 2
 - [ ] Promover o eval loop: Platform **de browser** (ponte da extensão), cliente do cérebro, verificador por leitura, monitor de travado (thinking → trocar de
       degrau → `ask`), orçamentos (passos/retries/tempo), segurança e parada.
+- Evidência parcial (08/10): Platform de browser (`BrowserEnv`), contrato `agent-1`, episódios reais com o Qwen3.5-4B na extensão em Chrome
+  descartável e verificação independente (estado HTTP da fixture): ver testes §7. Ainda sem monitor de travado, sem produto
+  orquestrador, sem parada/segurança executável, sem 7–9B, e fora do aceite (fixture, não AC ao vivo).
 - [ ] Confirmação humana e, se a Fase 2 aprovar, checagem por screenshot antes de enviar/apagar/comprar (fora do alcance do modelo).
 - **Saída:** AC-1, AC-2a, AC-2b e AC-3 **em fixture**, 3 repetições, nos critérios do testes §6.
 
