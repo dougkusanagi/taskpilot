@@ -32,8 +32,8 @@ class FakeExtension:
     def __init__(self):
         self.calls, self.serial = [], 0
 
-    def __call__(self, action):
-        self.calls.append(action)
+    def __call__(self, action, confirmed=False):
+        self.calls.append({**action, "_confirmed": confirmed})
         self.serial += 1
         oid = f"u{self.serial}"
         tool = action["tool"]
@@ -87,7 +87,7 @@ class FakeExtension:
                 }
             }
         if tool == "click":
-            if action["ref"].endswith("e0"):
+            if action["ref"].endswith("e0") and not confirmed:
                 return {"error": "confirmation_required"}
             return {
                 "result": {
@@ -183,6 +183,37 @@ class BrowserEnvTests(unittest.TestCase):
             [v["error"] for v in self.env.vetoes],
             ["confirmation_required", "destination_not_granted"],
         )
+
+    def make_env(self, confirm):
+        return BrowserEnv(
+            self.extension, "webmail", "http://localhost:1", CATALOG_DATA, settle=0, confirm=confirm
+        )
+
+    def test_human_confirmation_resends_only_when_approved(self):
+        asked = []
+        env = self.make_env(lambda info: asked.append(info) or True)
+        result = env.execute(
+            Decision.validate_python({"tool": "click", "ref": env.current.elements[0].ref})
+        )
+        self.assertEqual(result.error, "")
+        self.assertEqual(asked[0]["target"], "button: Enviar")
+        self.assertTrue([c for c in self.extension.calls if c["tool"] == "click"][-1]["_confirmed"])
+        self.assertEqual(env.confirmations, [{"target": "button: Enviar", "approved": True}])
+        self.assertEqual(env.vetoes, [])
+
+    def test_denied_confirmation_stays_a_veto_and_never_sets_the_flag(self):
+        env = self.make_env(lambda info: False)
+        result = env.execute(
+            Decision.validate_python({"tool": "click", "ref": env.current.elements[0].ref})
+        )
+        self.assertEqual(result.error, "confirmation_required")
+        self.assertFalse(any(c["_confirmed"] for c in self.extension.calls))
+        self.assertEqual(env.vetoes[0]["error"], "confirmation_required")
+
+    def test_without_a_callback_nothing_is_ever_confirmed(self):
+        result = self.act(tool="click", ref=self.env.current.elements[0].ref)
+        self.assertEqual(result.error, "confirmation_required")
+        self.assertFalse(any(c["_confirmed"] for c in self.extension.calls))
 
     def test_stale_or_invented_refs_never_reach_the_extension(self):
         before = len(self.extension.calls)

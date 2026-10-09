@@ -146,7 +146,7 @@ def page_html(page: str, catalog: dict, state: dict | None = None) -> str:
             '<input name="recipient" value="José"></label><label>Rascunho'
             f'<textarea name="draft">{escape((state or {}).get("draft", ""))}</textarea></label>'
             "<button>Salvar rascunho</button></form>"
-            "<button disabled>Enviar (exige confirmação)</button>"
+            '<form method="post" action="/send"><button>Enviar</button></form>'
         )
         # Como um webmail real: depois de salvar, o rascunho continua visível e há um aviso.
         if (state or {}).get("draft"):
@@ -193,6 +193,15 @@ def serve(port: int = 8765) -> None:
             if self.path == "/reset":
                 state.update(draft="", recipient="José", sent=[])
                 self.send_response(204)
+                self.end_headers()
+                return
+            if self.path == "/send":
+                # Envio real da fixture: só acontece se um humano confirmar o clique.
+                if state["draft"]:
+                    state["sent"].append({"to": state["recipient"], "draft": state["draft"]})
+                    state["draft"] = ""
+                self.send_response(303)
+                self.send_header("Location", "/webmail")
                 self.end_headers()
                 return
             if self.path != "/draft":

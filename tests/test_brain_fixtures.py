@@ -73,7 +73,16 @@ class HttpFixtureTests(unittest.TestCase):
                 self.assertEqual(state["draft"], "Confirmo sexta às 14h.")
                 self.assertEqual(state["recipient"], "José")
                 self.assertEqual(state["sent"], [])
-                self.assertEqual(client.post("/send").status_code, 403)
+                # O envio existe (para provar que só a confirmação humana o aciona) e usa o rascunho salvo.
+                self.assertIn("Rascunho salvo", client.get("/webmail").text)
+                self.assertEqual(client.post("/send", follow_redirects=False).status_code, 303)
+                state = client.get("/state").json()
+                self.assertEqual(state["sent"], [{"to": "José", "draft": "Confirmo sexta às 14h."}])
+                self.assertEqual(state["draft"], "")
+                client.post("/send")  # sem rascunho não há o que enviar
+                self.assertEqual(len(client.get("/state").json()["sent"]), 1)
+                client.post("/reset")
+                self.assertEqual(client.get("/state").json()["sent"], [])
                 response = client.get("/redirect-other-origin")
                 self.assertEqual(response.status_code, 302)
                 self.assertEqual(

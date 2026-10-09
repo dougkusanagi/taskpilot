@@ -143,6 +143,9 @@ class Broker:
             self.pending[correlation] = inbox
         try:
             outgoing = {"id": correlation, "tab": message["tab"], "action": action.model_dump()}
+            # A confirmação humana vem do orquestrador (canal autenticado), nunca da ação do modelo.
+            if message.get("confirmed") is True and action.tool == "click":
+                outgoing["confirmed"] = True
             with self.write_lock:
                 extension.sendall(protocol.encode(outgoing))
             response = inbox.get(timeout=self.timeout)
@@ -153,13 +156,16 @@ class Broker:
             with self.lock:
                 self.pending.pop(correlation, None)
 
-    def request(self, action: dict, tab: int):
+    def request(self, action: dict, tab: int, *, confirmed: bool = False):
         with socket.create_connection(self.address, timeout=self.timeout) as connection:
             with connection.makefile("rwb", buffering=0) as stream:
                 protocol.write(stream, {"role": "control", "token": self.token})
                 if protocol.read(stream) != {"ok": True}:
                     raise ValueError("autenticação recusada")
-                protocol.write(stream, {"id": uuid.uuid4().hex, "action": action, "tab": tab})
+                message = {"id": uuid.uuid4().hex, "action": action, "tab": tab}
+                if confirmed:
+                    message["confirmed"] = True
+                protocol.write(stream, message)
                 return protocol.read(stream)
 
 

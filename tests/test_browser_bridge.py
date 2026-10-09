@@ -52,6 +52,41 @@ class BridgeTests(unittest.TestCase):
         finally:
             broker.close()
 
+    def test_confirmation_flag_comes_only_from_the_control_channel_and_only_for_click(self):
+        broker = Broker(EXTENSION).start()
+        seen = []
+        try:
+            with socket.create_connection(broker.address) as connection:
+                with connection.makefile("rwb", buffering=0) as stream:
+                    protocol.write(
+                        stream,
+                        {
+                            "role": "extension",
+                            "token": broker.token,
+                            "origin": f"chrome-extension://{EXTENSION}/",
+                        },
+                    )
+                    self.assertEqual(protocol.read(stream), {"ok": True})
+
+                    def answer():
+                        for _ in range(3):
+                            message = protocol.read(stream)
+                            seen.append(message)
+                            protocol.write(stream, {"id": message["id"], "result": {"ok": 1}})
+
+                    worker = threading.Thread(target=answer)
+                    worker.start()
+                    click = {"tool": "click", "ref": "a:e1"}
+                    broker.request(click, 5)
+                    broker.request(click, 5, confirmed=True)
+                    broker.request({"tool": "read_page"}, 5, confirmed=True)
+                    worker.join(5)
+        finally:
+            broker.close()
+        self.assertNotIn("confirmed", seen[0])
+        self.assertIs(seen[1]["confirmed"], True)
+        self.assertNotIn("confirmed", seen[2])
+
     def test_native_stdio_to_authenticated_socket_roundtrip(self):
         broker = Broker(EXTENSION).start()
         try:

@@ -44,11 +44,15 @@ class BrowserEnv:
         *,
         state_url: str | None = None,
         settle: float = 0.4,
+        confirm: Callable[[dict], bool] | None = None,
     ):
         self.request, self.page, self.base_url = request, page, base_url.rstrip("/")
         self.catalog = catalog
         self.state_url = state_url or f"{self.base_url}/state"
         self.settle = settle
+        # Quem aprova é o humano (callback do orquestrador); sem callback, nada é confirmado.
+        self.confirm = confirm
+        self.confirmations: list[dict] = []
         self.evidence: list[Evidence] = []
         self.vetoes: list[dict] = []
         self.final_evidence: list[Evidence] = []
@@ -149,6 +153,12 @@ class BrowserEnv:
                 sent=False, confirmed=False, error="stale_cursor", delta=f"vale: {latest}"
             )
         reply = self.request(action.model_dump())
+        if reply.get("error") == "confirmation_required" and self.confirm:
+            target = self.describe(action)
+            approved = bool(self.confirm({"tool": tool, "target": target, "url": self.current.url}))
+            self.confirmations.append({"target": target, "approved": approved})
+            if approved:
+                reply = self.request(action.model_dump(), confirmed=True)
         if reply.get("error"):
             reason = f":{reply['reason']}" if reply.get("reason") else ""
             self._veto(action, reply["error"])
