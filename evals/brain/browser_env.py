@@ -10,8 +10,20 @@ from urllib.request import urlopen
 from evals.brain.contract import Evidence, Observation, Result, Strict, validate_context
 
 # Ferramentas que a extensão implementa; o resto é devolvido como não suportado (sem fingir).
-SUPPORTED = {"read_page", "get_page_text", "find", "click", "form_input", "navigate"}
+SUPPORTED = {
+    "read_page",
+    "get_page_text",
+    "find",
+    "click",
+    "form_input",
+    "navigate",
+    "tabs_list",
+    "tabs_create",
+    "tabs_select",
+    "tabs_close",
+}
 READS = {"read_page", "get_page_text", "find"}
+TABS = {"tabs_list", "tabs_create", "tabs_select", "tabs_close"}
 # Erros de política: o cérebro tentou algo que a extensão ou a política barrou.
 VETOES = {
     "confirmation_required",
@@ -25,6 +37,7 @@ VETOES = {
     "tab_not_shared",
     "chrome_permission_missing",
     "origin_not_allowed",
+    "not_agent_tab",
 }
 
 
@@ -56,11 +69,21 @@ class BrowserEnv:
         self.evidence: list[Evidence] = []
         self.vetoes: list[dict] = []
         self.final_evidence: list[Evidence] = []
+        self.tab: int | None = None
         self.known: dict[str, tuple[str, str]] = {}
         self.renewals: list[dict] = []
         self.serial = 0
         self.current = self._stub(f"{self.base_url}/{page}", "sem leitura ainda")
         self.refresh(record=True)
+
+    def _send(self, action: dict, *, confirmed: bool = False) -> dict:
+        """Envia pela ponte na aba de trabalho atual (None = a aba inicial)."""
+        extra = {}
+        if confirmed:
+            extra["confirmed"] = True
+        if self.tab is not None:
+            extra["tab"] = self.tab
+        return self.request(action, **extra)
 
     def snapshot(self) -> dict:
         """Estado HTTP do servidor da fixture, independente da página e do agente."""
@@ -79,10 +102,10 @@ class BrowserEnv:
         if settle and self.settle:
             time.sleep(self.settle)
         action = {"tool": "read_page", "filter": "interactive", "scope": "", "next": ""}
-        reply = self.request(action)
+        reply = self._send(action)
         if "observation" not in reply and reply.get("error") not in VETOES and settle:
             time.sleep(self.settle)
-            reply = self.request(action)
+            reply = self._send(action)
         self._adopt(reply)
         if record and "result" in reply:
             # A página de entrada foi lida para o modelo: é leitura registrada, citável no done.
@@ -152,19 +175,37 @@ class BrowserEnv:
             return Result(
                 sent=False, confirmed=False, error="stale_cursor", delta=f"vale: {latest}"
             )
-        reply = self.request(action.model_dump())
+        reply = self._send(action.model_dump())
         if reply.get("error") == "confirmation_required" and self.confirm:
             target = self.describe(action)
             approved = bool(self.confirm({"tool": tool, "target": target, "url": self.current.url}))
             self.confirmations.append({"target": target, "approved": approved})
             if approved:
-                reply = self.request(action.model_dump(), confirmed=True)
+                reply = self._send(action.model_dump(), confirmed=True)
         if reply.get("error"):
             reason = f":{reply['reason']}" if reply.get("reason") else ""
             self._veto(action, reply["error"])
             if tool in READS:
                 self._adopt(reply)
             return Result(sent=False, confirmed=False, error=reply["error"] + reason)
+        if tool == "tabs_list":
+            result = Result.model_validate(reply["result"])
+            self.evidence.extend(result.evidence)
+            # A lista não substitui a observação da página (as refs dela seguem válidas).
+            return result.model_copy(update={"delta": reply["observation"]["text"]})
+        if tool in {"tabs_create", "tabs_select"}:
+            self.tab = reply["tab"]
+            self.refresh(settle=True, record=True)
+            return Result(
+                sent=True,
+                confirmed=bool(reply.get("confirmed")),
+                delta=json.dumps({"tab": reply["tab"], "url": reply.get("url", "")}),
+            )
+        if tool == "tabs_close":
+            if reply["tab"] == self.tab:
+                self.tab = None
+                self.refresh(settle=True)
+            return Result(sent=True, confirmed=True, delta=json.dumps({"closed": reply["tab"]}))
         if tool in READS:
             self._adopt(reply)
             result = Result.model_validate(reply["result"])

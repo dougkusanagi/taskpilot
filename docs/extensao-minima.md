@@ -2,7 +2,7 @@
 
 `extension/` implementa `read_page`, `get_page_text`, `find`, `click`, `form_input`
 e `navigate`, ligados ao native host de [native-host.md](native-host.md).
-Não há orquestrador. Abas/grupo, screenshot como ferramenta, expiração de grants,
+Não há orquestrador. Screenshot como ferramenta (bloqueado, ver arquitetura §3.9), expiração de grants,
 e CLI de permissões continuam pendentes na Fase 3. A confirmação humana é executável: o orquestrador reenvia o clique com `confirmed` pelo canal autenticado do broker (nunca pela ação do modelo) e a extensão só o honra em `click`; N2 prova envio barrado sem humano e executado com ele.
 
 O popup pede `optional_host_permissions` ao Chrome por gesto do usuário e compartilha
@@ -36,3 +36,11 @@ N0: política de origens, níveis e abas compartilhadas testada em Node sem depe
 manifesto sem host_permissions obrigatório, content_scripts ou externally_connectable.
 N2 usa somente o perfil descartável criado pela bancada; nunca registra host nem
 permissões no perfil real.
+
+## Abas (09/10)
+
+`tabs_list`, `tabs_create`, `tabs_select` e `tabs_close` existem na extensão. O agente só enxerga abas **compartilhadas** (o
+título da aba é dado da página: truncado em 80 caracteres e marcado não confiável); só cria aba em origem já liberada com
+`interact` (redirecionamento para outra origem fecha a aba e devolve `redirect_not_granted`); só fecha aba que ele mesmo criou
+(`not_agent_tab`). Abas criadas entram no grupo "TaskPilot" (permissão `tabGroups`). O `BrowserEnv` acompanha a aba de trabalho.
+N2 real confere lista, grupo (lido pela API do Chrome), leitura da aba nova, bloqueio de origem e de fechamento da aba do usuário.

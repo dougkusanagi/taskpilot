@@ -32,8 +32,8 @@ class FakeExtension:
     def __init__(self):
         self.calls, self.serial = [], 0
 
-    def __call__(self, action, confirmed=False):
-        self.calls.append({**action, "_confirmed": confirmed})
+    def __call__(self, action, confirmed=False, tab=None):
+        self.calls.append({**action, "_confirmed": confirmed, "_tab": tab})
         self.serial += 1
         oid = f"u{self.serial}"
         tool = action["tool"]
@@ -99,6 +99,33 @@ class FakeExtension:
                     "error": "effect_requires_read",
                 }
             }
+        if tool == "tabs_list":
+            return {
+                "observation": observation(oid, text="7 | http://localhost:1 | Webmail"),
+                "result": {
+                    "version": "0",
+                    "sent": True,
+                    "confirmed": True,
+                    "evidence": [evidence(f"r:{oid}", "7 | http://localhost:1 | Webmail")],
+                    "delta": "",
+                    "error": "",
+                },
+            }
+        if tool == "tabs_create":
+            if "roubo" in action["url"]:
+                return {"error": "destination_not_granted"}
+            return {"sent": True, "confirmed": True, "url": action["url"], "tab": 99}
+        if tool == "tabs_select":
+            return {
+                "sent": True,
+                "confirmed": True,
+                "url": "http://localhost:1/x",
+                "tab": int(action["tab"]),
+            }
+        if tool == "tabs_close":
+            if action["tab"] == "7":
+                return {"error": "not_agent_tab"}
+            return {"sent": True, "confirmed": True, "url": "", "tab": int(action["tab"])}
         if tool == "navigate":
             if "roubo" in action["url"]:
                 return {"error": "destination_not_granted"}
@@ -269,9 +296,37 @@ class BrowserEnvTests(unittest.TestCase):
         )
         self.assertEqual(self.env.describe(action), "button: Enviar")
 
+    def test_tabs_list_is_evidence_but_keeps_the_page_observation(self):
+        page = self.env.current
+        result = self.act(tool="tabs_list")
+        self.assertIn("Webmail", result.delta)
+        self.assertIs(self.env.current, page)
+        self.assertIn("Webmail", self.env.evidence[-1].excerpt)
+
+    def test_working_tab_follows_create_select_and_close(self):
+        self.assertIsNone(self.env.tab)
+        self.act(tool="tabs_create", url="http://localhost:1/loja")
+        self.assertEqual(self.env.tab, 99)
+        self.assertEqual(self.extension.calls[-1]["_tab"], 99)  # releitura já na aba nova
+        self.act(tool="tabs_select", tab="5")
+        self.assertEqual(self.env.tab, 5)
+        self.act(tool="tabs_close", tab="5")
+        self.assertIsNone(self.env.tab)  # volta à aba inicial
+        self.assertIsNone(self.extension.calls[-1]["_tab"])
+
+    def test_tab_policy_errors_are_vetoes_not_exceptions(self):
+        self.assertEqual(
+            self.act(tool="tabs_create", url="https://roubo.invalid").error,
+            "destination_not_granted",
+        )
+        self.assertEqual(self.act(tool="tabs_close", tab="7").error, "not_agent_tab")
+        self.assertIn("not_agent_tab", [v["error"] for v in self.env.vetoes])
+
     def test_unsupported_tools_are_not_faked(self):
-        self.assertEqual(self.act(tool="screenshot").error, "unsupported_tool")
-        self.assertEqual(self.act(tool="tabs_list").error, "unsupported_tool")
+        self.assertEqual(
+            self.act(tool="scroll_to", ref=self.env.current.elements[0].ref).error,
+            "unsupported_tool",
+        )
 
     def test_snapshot_reads_the_independent_http_state(self):
         self.assertEqual(self.env.snapshot()["draft"], "x")

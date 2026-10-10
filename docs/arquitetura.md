@@ -106,7 +106,10 @@ Requisito: agir **no Chrome do usuário** (continuar abas, usar contas logadas),
 - **Como:** extensão MV3 "TaskPilot Bridge" (Chrome/Chromium/Edge/Brave) + **native messaging host** (executável do projeto,
   `allowed_origins` restrito ao ID da extensão) falando JSON por stdio com o orquestrador (socket local autenticado).
   A extensão usa `tabs`, `scripting` (conteúdo: árvore compacta com refs, leitura de texto, eventos reais) e `debugger` só
-  quando precisa de screenshot/input confiável (o Chrome mostra o aviso de depuração).
+  quando precisa de screenshot/input confiável (o Chrome mostra o aviso de depuração). **Achado de 09/10:** `debugger` não pode ser
+  permissão opcional (o Chrome responde "Only permissions specified in the manifest may be requested") e `captureVisibleTab` exige
+  `<all_urls>` ou `activeTab` (gesto). Screenshot na extensão exige, portanto, declarar `debugger` como permissão obrigatória (alerta de
+  instalação forte; o canal de debug não respeita o limite por origem do Chrome, só a política do worker) ou `<all_urls>`. Decisão do dono.
 - **Vocabulário** (mesmo dos adaptadores de desktop): `read_page(filter=interactive)`, `find(descrição)`, `click(ref)`,
   `form_input(ref, valor)`, `get_page_text`, `navigate(url)`, `tabs_*`, `screenshot(scale)`, `scroll_to(ref)`, `wait_for(texto)`.
   Refs valem só para a leitura em que nasceram. Screenshot é sob demanda; coordenadas só no degrau C.

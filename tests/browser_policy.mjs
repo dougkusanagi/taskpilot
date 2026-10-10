@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import {originOf, patternFor, checkGrant} from '../extension/policy.js';
+import {originOf, patternFor, checkGrant, checkTabTarget} from '../extension/policy.js';
 const tab = {id:1,url:'http://localhost:8765/loja'};
 assert.equal(originOf(tab.url),'http://localhost:8765');
 assert.equal(patternFor(originOf(tab.url)),'http://localhost/*');
@@ -11,4 +11,12 @@ assert.throws(() => checkGrant(tab,[1],{'http://localhost:8765':'read'}, {tool:'
 assert.equal(checkGrant(tab,[1],{'http://localhost:8765':'read'}, {tool:'read_page'}),'http://localhost:8765');
 assert.throws(() => checkGrant(tab,[1],{'http://localhost:8766':'interact'}, {tool:'click'}),/origin_not_granted/);
 assert.throws(() => checkGrant(tab,[1],{'http://localhost:8765':'interact'}, {tool:'navigate',url:'https://outra.invalid'}),/destination_not_granted/);
+assert.throws(() => checkGrant(tab,[1],{'http://localhost:8765':'interact'}, {tool:'tabs_create',url:'https://outra.invalid'}),/destination_not_granted/);
+assert.throws(() => checkGrant(tab,[1],{'http://localhost:8765':'read'}, {tool:'tabs_create',url:'http://localhost:8765/x'}),/read_only/);
+assert.equal(checkGrant(tab,[1],{'http://localhost:8765':'read'}, {tool:'tabs_list'}),'http://localhost:8765');
+assert.throws(() => checkTabTarget({tool:'tabs_select',tab:'9'},[1],[]),/tab_not_shared/);
+assert.throws(() => checkTabTarget({tool:'tabs_select',tab:'abc'},[1],[]),/tab_not_shared/);
+assert.throws(() => checkTabTarget({tool:'tabs_close',tab:'1'},[1],[]),/not_agent_tab/);
+assert.equal(checkTabTarget({tool:'tabs_close',tab:'2'},[1,2],[2]),2);
+assert.equal(checkTabTarget({tool:'tabs_select',tab:'1'},[1,2],[2]),1);
 console.log('Política de browser: invariantes verdes.');

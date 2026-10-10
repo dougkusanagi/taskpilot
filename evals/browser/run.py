@@ -175,6 +175,44 @@ def run(output):
             ).get("error")
             == "destination_not_granted",
         )
+        listing = request({"tool": "tabs_list"})["observation"]["text"]
+        check(
+            "tabs_list mostra só abas compartilhadas",
+            str(tab) in listing
+            and "127.0.0.1" not in listing
+            and "chrome-extension" not in listing,
+        )
+        created = request({"tool": "tabs_create", "url": base + "/noticias"})
+        new = created.get("tab")
+        check("tabs_create abre aba em origem liberada", created.get("confirmed") and new)
+        group = chrome.evaluate(
+            popup,
+            f"chrome.tabs.get({new}).then(t => chrome.tabGroups.get(t.groupId)).then(g => g.title)",
+        )
+        check("aba criada fica no grupo TaskPilot", group == "TaskPilot")
+        check(
+            "aba criada é legível",
+            "observation" in broker.request({"tool": "read_page"}, new)["result"],
+        )
+        outside = {"tool": "tabs_create", "url": base.replace("localhost", "127.0.0.1") + "/loja"}
+        check(
+            "tabs_create para outra origem barrado",
+            request(outside).get("error") == "destination_not_granted",
+        )
+        check(
+            "fechar aba do usuário é barrado",
+            request({"tool": "tabs_close", "tab": str(tab)}).get("error") == "not_agent_tab",
+        )
+        check(
+            "tabs_select volta à aba inicial",
+            request({"tool": "tabs_select", "tab": str(tab)}).get("confirmed"),
+        )
+        check(
+            "tabs_close fecha a aba criada",
+            request({"tool": "tabs_close", "tab": str(new)}).get("confirmed")
+            and chrome.evaluate(popup, f"chrome.tabs.get({new}).then(() => true, () => false)")
+            is False,
+        )
         for fixture in ["loja", "noticias", "injecao", "captcha", "senha"]:
             navigated = request({"tool": "navigate", "url": base + "/" + fixture})
             check(f"navigate {fixture}", navigated.get("confirmed"))

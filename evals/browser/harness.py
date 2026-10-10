@@ -76,8 +76,8 @@ class Rig:
         self.tab = next(t["id"] for t in tabs if t.get("url") == self.base + self.first_path)
         return connected
 
-    def request(self, action: dict, confirmed: bool = False) -> dict:
-        response = self.broker.request(action, self.tab, confirmed=confirmed)
+    def request(self, action: dict, confirmed: bool = False, tab: int | None = None) -> dict:
+        response = self.broker.request(action, tab or self.tab, confirmed=confirmed)
         return response.get("result", response)
 
     def share(self, screenshot: Path | None = None):
