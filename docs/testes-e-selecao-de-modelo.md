@@ -90,6 +90,7 @@ teste, não pelo agente).
 | Qwen3-4B-Instruct-2507 Q4_K_M texto, 8k/q8_0 | schema-thinking-off | 45.14% | 14.58% | 100.00% | 4.920 | 3192 / 173707 | reprovou |
 | Qwen3.5-4B Q4_K_M + projetor BF16, 8k/q8_0 | schema-thinking-off | 75.00% | 6.25% | 100.00% | 2.447 | 3850 / 181022 | reprovou |
 | Qwen3.5-9B IQ3_M (bartowski, 4,98 GB), 8k/q8_0, **ngl 28, ubatch 256** | schema-thinking-off | 51.39% | 23.61% | 100.00% | 10.308 | 3812 / 178859 | reprovou |
+| Gemma-4-E2B-it Q6_K texto (sem projetor), 8k/q8_0 | schema-thinking-off | 25.00% | 20.49% | 100.00% | 2.011 | 2152 / 217234 | reprovou |
 | Qwen3-4B-Instruct-2507 Q4_K_M texto, 4k/q8_0 | schema-thinking-off | 45.14% | 14.58% | 100.00% | 4.929 | 2882 / 188725 | reprovou |
 | Qwen3-4B-Instruct-2507 Q4_K_M texto, 16k/q8_0 (**incompleto**, 201/288) | schema-thinking-off | 35.40% | 17.91% | 100.00% | 4.928 | 3836 / 195993 | não conta |
 
@@ -195,3 +196,20 @@ No N1 o 9B clica em vez de perguntar (ambiguidade 0/18) e conclui sem ler (`ler_
 (3 bits + offload parcial), não "o 9B"; Q4 ou maior não cabe nesta GPU, então a pergunta "modelo maior ou contexto maior?" fica
 respondida só para o que cabe aqui: **modelo maior em 3 bits não ganha do 4B em Q4**. Reprovou o gate N1; não avança. Dados:
 `evals/brain/results/Qwen3.5-9B-IQ3_M-ngl28-8192.json`, `evals/browser/results/episodes-Qwen3.5-9B-IQ3_M-fast.json`.
+
+### 7.2 Gemma-4-E2B (09/10): rápido e inútil como cérebro
+
+`gemma-4-E2B-it-Q6_K.gguf` (3,8 GB, já instalado; nenhum download), só texto, tudo na GPU, 8k/q8_0, mesmo protocolo.
+
+| Medida | Gemma-4-E2B Q6_K | Qwen3.5-4B Q4_K_M |
+| --- | ---: | ---: |
+| N1 acerto cego | 25,0% | 75,0% |
+| N1 ação proibida | 20,5% | 6,25% |
+| N1 p95 | 2,0 s | 2,5 s |
+| Episódios na extensão, sem thinking | 6/18 (33%), 12 falsos `done` | 22/30 (73%), 5 falsos `done` |
+| Pico de VRAM por processo | 2.152 MiB | 2.982 MiB |
+
+Nos episódios ela responde `done` no primeiro passo em loja, notícias, webmail e injeção (12/12 falsos `done`) e só acerta as duas
+fixtures de `handoff`. Falhas no N1: ambiguidade, ler antes de `done`, origem, preço, progresso e transferência a 0%. Reprovou o gate.
+Dados: `evals/brain/results/Gemma-4-E2B-Q6_K-8192.json`, `evals/browser/results/episodes-Gemma-4-E2B-fast.json`.
+Ressalva: Gemma-4-E2B é o menor da família; foi testado só em texto, sem thinking (não há condição de thinking comparável aqui).

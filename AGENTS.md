@@ -39,7 +39,7 @@ travado e a matriz com um 7–9B (download só com autorização). **Não** impl
 - CDP `Page.captureScreenshot` trava até o timeout em aba em segundo plano: `Chrome.screenshot` chama `Page.bringToFront` antes.
 - A fixture de webmail precisa mostrar "Rascunho salvo" e manter o texto; sem isso o modelo salva duas vezes e a 2ª grava vazio.
 - O modelo não deve copiar evidência por extenso no `done` (estoura 512 tokens e erra refs): contrato `agent-1`, só refs.
-- O LM Studio tem dois modelos que este arquivo não listava e que nenhum teste usou: Gemma-4-E2B-it Q6_K (3,8 GB, com projetor) e
+- O LM Studio tem dois modelos fora da lista acima: Gemma-4-E2B-it Q6_K (3,8 GB; testado em 09/10 e reprovado, testes §7.2) e
   Qwen3.8-9B-heretic-uncensored IQ4_XS (5,2 GB só de pesos: passa do teto de 5 GB de VRAM e tem a recusa removida). Não são candidatos sem decisão do dono.
 
 ## Direção
