@@ -44,3 +44,19 @@ título da aba é dado da página: truncado em 80 caracteres e marcado não conf
 `interact` (redirecionamento para outra origem fecha a aba e devolve `redirect_not_granted`); só fecha aba que ele mesmo criou
 (`not_agent_tab`). Abas criadas entram no grupo "TaskPilot" (permissão `tabGroups`). O `BrowserEnv` acompanha a aba de trabalho.
 N2 real confere lista, grupo (lido pela API do Chrome), leitura da aba nova, bloqueio de origem e de fechamento da aba do usuário.
+
+## Validade de grants e CLI (09/10)
+
+O popup escolhe a validade: **esta tarefa** (30 min, contados no worker) ou **sessão do Chrome**. Ao expirar, a extensão apaga o
+grant **e remove a permissão de host do Chrome** (só quando nenhuma outra origem usa o mesmo host, porque o Chrome não distingue
+porta). Não existe "sempre": persistir acesso é decisão de segurança do dono. O CLI não concede nada (isso é gesto do usuário no
+popup); ele enxerga e revoga pelo canal de controle autenticado do broker:
+
+```sh
+uv run python -m browser_bridge.permissions list            # origem, nível, validade, tempo restante
+uv run python -m browser_bridge.permissions revoke https://exemplo.com
+uv run python -m browser_bridge.permissions revoke-all
+```
+
+Lê o mesmo arquivo de configuração 0600 do native host (`$XDG_RUNTIME_DIR/taskpilot/bridge.json` por padrão; `--config` troca) e
+recusa configuração que não seja privada. Comandos de admin só existem nesse canal: a ação do modelo não os alcança.

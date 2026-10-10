@@ -1,4 +1,4 @@
-import {originOf, patternFor, checkGrant, checkTabTarget} from './policy.js';
+import {originOf, patternFor, checkGrant, checkTabTarget, expiredOrigins, patternsToRemove, TASK_TTL_MS} from './policy.js';
 let port = null;
 
 function connect() {
@@ -12,7 +12,10 @@ function connect() {
   });
   port.onMessage.addListener(async message => {
     let result;
-    try { result = await execute(message.tab, message.action, message.confirmed === true); }
+    try {
+      result = message.admin ? await admin(message)
+        : await execute(message.tab, message.action, message.confirmed === true);
+    }
     catch (error) { result = {error: error.message}; }
     port?.postMessage({id: message.id, result});
   });
@@ -84,7 +87,39 @@ async function tabsTool(routing, action, grants) {
   return {sent: true, confirmed: true, url: '', tab: id};
 }
 
+async function dropGrants(origins) {
+  const {grants = {}, expiry = {}} = await chrome.storage.session.get(['grants', 'expiry']);
+  for (const origin of origins) { delete grants[origin]; delete expiry[origin]; }
+  await chrome.storage.session.set({grants, expiry});
+  // Revogação real: tira também a permissão de host do Chrome quando nenhuma origem restante a usa.
+  const remove = patternsToRemove(origins, Object.keys(grants));
+  if (remove.length) await chrome.permissions.remove({origins: remove});
+}
+
+async function pruneExpired() {
+  const {expiry = {}} = await chrome.storage.session.get('expiry');
+  const dropped = expiredOrigins(expiry, Date.now());
+  if (dropped.length) await dropGrants(dropped);
+}
+
+async function admin(message) {
+  await pruneExpired();
+  const {grants = {}, expiry = {}} = await chrome.storage.session.get(['grants', 'expiry']);
+  if (message.admin === 'grants_list') {
+    return {grants: Object.keys(grants).map(origin => ({origin, level: grants[origin],
+      validity: expiry[origin] ? 'task' : 'session',
+      expires_in_s: expiry[origin] ? Math.max(0, Math.round((expiry[origin] - Date.now()) / 1000)) : 0}))};
+  }
+  if (message.admin === 'grants_revoke') {
+    if (!grants[message.origin]) throw new Error('origin_not_granted');
+    await dropGrants([message.origin]);
+    return {revoked: message.origin};
+  }
+  throw new Error('invalid_admin');
+}
+
 async function execute(tabId, action, confirmed = false) {
+  await pruneExpired();
   const tab = await chrome.tabs.get(tabId);
   const {shared = [], grants = {}} = await chrome.storage.session.get(['shared', 'grants']);
   const origin = checkGrant(tab, shared, grants, action);
@@ -130,7 +165,7 @@ chrome.runtime.onMessage.addListener((message, sender, respond) => {
     if (message.type === 'connect') {connect(); return {ok: true};}
     if (message.type === 'stop') {
       port?.disconnect(); port = null;
-      await chrome.storage.session.set({shared: [], grants: {}, created: []});
+      await chrome.storage.session.set({shared: [], grants: {}, created: [], expiry: {}});
       const permissions = await chrome.permissions.getAll();
       if (permissions.origins?.length) await chrome.permissions.remove({origins: permissions.origins});
       await chrome.action.setBadgeText({text: 'STOP'});
@@ -141,10 +176,13 @@ chrome.runtime.onMessage.addListener((message, sender, respond) => {
       const origin = originOf(tab.url);
       if (!['read', 'interact'].includes(message.level)) throw new Error('invalid_level');
       if (!await chrome.permissions.contains({origins: [patternFor(origin)]})) throw new Error('chrome_permission_missing');
-      const {shared = [], grants = {}} = await chrome.storage.session.get(['shared', 'grants']);
+      if (!['task', 'session'].includes(message.validity || 'session')) throw new Error('invalid_validity');
+      const {shared = [], grants = {}, expiry = {}} = await chrome.storage.session.get(['shared', 'grants', 'expiry']);
       if (!shared.includes(tab.id)) shared.push(tab.id);
       grants[origin] = message.level;
-      await chrome.storage.session.set({shared, grants});
+      if (message.validity === 'task') expiry[origin] = Date.now() + (Number(message.ttl_ms) > 0 ? Number(message.ttl_ms) : TASK_TTL_MS);
+      else delete expiry[origin];
+      await chrome.storage.session.set({shared, grants, expiry});
       await chrome.action.setBadgeText({text: 'ON'});
       return {ok: true};
     }

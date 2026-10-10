@@ -69,7 +69,7 @@ Tier pesado (fora do gate N1 inicial): GUI-Owl-1.5-8B-Thinking sob demanda.
 `--load-extension`) e páginas locais de fixture (formulário, banner de cookies, página com injeção, campo de senha, redirecionamento
 para outra origem). O perfil real do usuário só entra em validação manual, nunca em teste automatizado.
 
-N2 da extensão mínima: [evals/browser/README.md](../evals/browser/README.md), relatório com 97 verificações e screenshots
+N2 da extensão mínima: [evals/browser/README.md](../evals/browser/README.md), relatório com 104 verificações e screenshots
 independentes em `evals/browser/results/`. Rascunho e nenhum envio conferidos por HTTP fora da ponte; outra origem barrada
 por uma tentativa direta de `chrome.scripting`, além dos vetos do worker. Chrome 154 ignorou `--load-extension`; foi usado
 `Extensions.loadUnpacked` só na bancada, com perfil/HOME descartáveis e pipe privado. Windows real, N3 e aceite ao vivo

@@ -160,7 +160,7 @@ lidos em uma memória estruturada (ex.: lista de {título, preço, url}) em vez 
 | Platform Windows | `uia.py`, `actions.py`, `obs.py` — falta contrato único |
 | OCR | `ocr.py` |
 | Segurança | `safety.py`, `overlay.py` |
-| Extensão Chrome + native host + permissões | `extension/`, `browser_bridge/`: seis ferramentas e grants por origem (N2 real). Abas/grupo e confirmação humana executável prontos. Faltam expiração de grants e CLI de permissões; screenshot adiado (decisão 09/10) |
+| Extensão Chrome + native host + permissões | `extension/`, `browser_bridge/`: seis ferramentas e grants por origem (N2 real). Abas/grupo, confirmação humana, validade de grants e CLI de permissões prontos. Faltam categorias sensíveis e "sempre" (decisão de segurança); screenshot adiado (decisão 09/10) |
 | Loop de browser (parcial) | `evals/brain/loop.py`, `browser_env.py` (Platform de browser pela ponte), `agent_contract.py`; episódios em `evals/browser/episodes.py`. Faltam orquestrador de produto, monitor de travado, segurança/parada |
 | `schemas.py`, `config.py` | herdados; enxugar quando os contratos novos existirem |
 

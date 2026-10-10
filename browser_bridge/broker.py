@@ -18,6 +18,8 @@ from pathlib import Path
 from browser_bridge import protocol
 from evals.brain.browser_contract import Decision
 
+ADMIN = {"grants_list", "grants_revoke"}
+
 
 class Broker:
     def __init__(self, extension_id: str, *, timeout: float = 10):
@@ -127,7 +129,36 @@ class Broker:
                             pass
             connection.close()
 
+    def _admin(self, message):
+        """Comandos de grants vindos do canal de controle autenticado (CLI/orquestrador)."""
+        command, origin = message.get("admin"), message.get("origin")
+        if command not in ADMIN or (command == "grants_revoke" and not isinstance(origin, str)):
+            return {"error": "invalid_admin"}
+        outgoing = {"admin": command} | ({"origin": origin} if command == "grants_revoke" else {})
+        return self._forward(message, outgoing)
+
+    def _forward(self, message, outgoing):
+        correlation = uuid.uuid4().hex
+        inbox = queue.Queue(maxsize=1)
+        with self.lock:
+            extension = self.extension
+            if extension is None:
+                return {"error": "extension_not_connected"}
+            self.pending[correlation] = inbox
+        try:
+            with self.write_lock:
+                extension.sendall(protocol.encode({"id": correlation, **outgoing}))
+            response = inbox.get(timeout=self.timeout)
+            return {"id": message.get("id"), "result": response.get("result", {})}
+        except (OSError, queue.Empty):
+            return {"error": "extension_timeout_or_disconnected"}
+        finally:
+            with self.lock:
+                self.pending.pop(correlation, None)
+
     def _dispatch(self, message):
+        if "admin" in message:
+            return self._admin(message)
         if type(message.get("tab")) is not int or message["tab"] <= 0:
             return {"error": "invalid_tab"}
         try:
@@ -157,16 +188,27 @@ class Broker:
                 self.pending.pop(correlation, None)
 
     def request(self, action: dict, tab: int, *, confirmed: bool = False):
-        with socket.create_connection(self.address, timeout=self.timeout) as connection:
-            with connection.makefile("rwb", buffering=0) as stream:
-                protocol.write(stream, {"role": "control", "token": self.token})
-                if protocol.read(stream) != {"ok": True}:
-                    raise ValueError("autenticação recusada")
-                message = {"id": uuid.uuid4().hex, "action": action, "tab": tab}
-                if confirmed:
-                    message["confirmed"] = True
-                protocol.write(stream, message)
-                return protocol.read(stream)
+        message = {"id": uuid.uuid4().hex, "action": action, "tab": tab}
+        if confirmed:
+            message["confirmed"] = True
+        return control_call(self.address, self.token, message, self.timeout)
+
+    def admin(self, command: str, origin: str | None = None):
+        message = {"id": uuid.uuid4().hex, "admin": command}
+        if origin is not None:
+            message["origin"] = origin
+        return control_call(self.address, self.token, message, self.timeout)
+
+
+def control_call(address, token: str, message: dict, timeout: float = 10):
+    """Uma chamada autenticada ao canal de controle do broker."""
+    with socket.create_connection(tuple(address), timeout=timeout) as connection:
+        with connection.makefile("rwb", buffering=0) as stream:
+            protocol.write(stream, {"role": "control", "token": token})
+            if protocol.read(stream) != {"ok": True}:
+                raise ValueError("autenticação recusada")
+            protocol.write(stream, message)
+            return protocol.read(stream)
 
 
 def write_config(path: Path, broker: Broker):

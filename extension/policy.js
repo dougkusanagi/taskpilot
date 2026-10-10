@@ -31,3 +31,13 @@ export function checkTabTarget(action, shared, created) {
   if (action.tool === 'tabs_close' && !created.includes(id)) throw new Error('not_agent_tab');
   return id;
 }
+// Validade: `expiry[origem]` é um instante em ms; ausente = vale até parar/fechar o Chrome (sessão).
+export const TASK_TTL_MS = 30 * 60 * 1000;
+export function expiredOrigins(expiry, now) {
+  return Object.keys(expiry).filter(origin => expiry[origin] <= now);
+}
+// A permissão do Chrome é por host (sem porta): só some quando nenhuma origem restante a usa.
+export function patternsToRemove(dropped, remaining) {
+  const keep = new Set(remaining.map(patternFor));
+  return [...new Set(dropped.map(patternFor))].filter(pattern => !keep.has(pattern));
+}

@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import {originOf, patternFor, checkGrant, checkTabTarget} from '../extension/policy.js';
+import {originOf, patternFor, checkGrant, checkTabTarget, expiredOrigins, patternsToRemove, TASK_TTL_MS} from '../extension/policy.js';
 const tab = {id:1,url:'http://localhost:8765/loja'};
 assert.equal(originOf(tab.url),'http://localhost:8765');
 assert.equal(patternFor(originOf(tab.url)),'http://localhost/*');
@@ -19,4 +19,12 @@ assert.throws(() => checkTabTarget({tool:'tabs_select',tab:'abc'},[1],[]),/tab_n
 assert.throws(() => checkTabTarget({tool:'tabs_close',tab:'1'},[1],[]),/not_agent_tab/);
 assert.equal(checkTabTarget({tool:'tabs_close',tab:'2'},[1,2],[2]),2);
 assert.equal(checkTabTarget({tool:'tabs_select',tab:'1'},[1,2],[2]),1);
+assert.deepEqual(expiredOrigins({'http://a.test':100,'http://b.test':900},500),['http://a.test']);
+assert.deepEqual(expiredOrigins({},500),[]);
+assert.equal(expiredOrigins({'http://a.test':500},500).length,1);
+assert.equal(TASK_TTL_MS,1800000);
+// A permissão do Chrome não distingue porta: só sai quando nenhuma origem restante usa o host.
+assert.deepEqual(patternsToRemove(['http://localhost:8765'],['http://localhost:9000']),[]);
+assert.deepEqual(patternsToRemove(['http://localhost:8765'],['https://outro.test']),['http://localhost/*']);
+assert.deepEqual(patternsToRemove(['http://a.test:1','http://a.test:2'],[]),['http://a.test/*']);
 console.log('Política de browser: invariantes verdes.');

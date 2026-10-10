@@ -87,6 +87,94 @@ class BridgeTests(unittest.TestCase):
         self.assertIs(seen[1]["confirmed"], True)
         self.assertNotIn("confirmed", seen[2])
 
+    def _fake_extension(self, broker, replies, seen):
+        connection = socket.create_connection(broker.address)
+        stream = connection.makefile("rwb", buffering=0)
+        protocol.write(
+            stream,
+            {
+                "role": "extension",
+                "token": broker.token,
+                "origin": f"chrome-extension://{EXTENSION}/",
+            },
+        )
+        self.assertEqual(protocol.read(stream), {"ok": True})
+
+        def answer():
+            for result in replies:
+                message = protocol.read(stream)
+                seen.append(message)
+                protocol.write(stream, {"id": message["id"], "result": result})
+
+        worker = threading.Thread(target=answer)
+        worker.start()
+        return connection, stream, worker
+
+    def test_admin_commands_are_validated_and_forwarded_without_a_tab(self):
+        broker = Broker(EXTENSION).start()
+        seen = []
+        connection = stream = worker = None
+        try:
+            self.assertEqual(broker.admin("grants_list")["error"], "extension_not_connected")
+            connection, stream, worker = self._fake_extension(
+                broker, [{"grants": []}, {"revoked": "http://a.test"}], seen
+            )
+            self.assertEqual(broker.admin("apagar_tudo")["error"], "invalid_admin")
+            self.assertEqual(broker.admin("grants_revoke")["error"], "invalid_admin")
+            self.assertEqual(broker.admin("grants_list")["result"], {"grants": []})
+            broker.admin("grants_revoke", "http://a.test")
+            worker.join(5)
+        finally:
+            if stream:
+                stream.close()
+                connection.close()
+            broker.close()
+        self.assertEqual(seen[0]["admin"], "grants_list")
+        self.assertNotIn("tab", seen[0])
+        self.assertEqual((seen[1]["admin"], seen[1]["origin"]), ("grants_revoke", "http://a.test"))
+
+    def test_permissions_cli_lists_revokes_and_refuses_unsafe_config(self):
+        import contextlib
+
+        from browser_bridge import permissions
+
+        broker = Broker(EXTENSION).start()
+        seen = []
+        grant = {
+            "origin": "http://a.test",
+            "level": "interact",
+            "validity": "task",
+            "expires_in_s": 90,
+        }
+        connection = stream = worker = None
+        try:
+            with tempfile.TemporaryDirectory() as temp:
+                config = Path(temp) / "bridge.json"
+                write_config(config, broker)
+                connection, stream, worker = self._fake_extension(
+                    broker,
+                    [{"grants": [grant]}, {"grants": [grant]}, {"revoked": "http://a.test"}],
+                    seen,
+                )
+                out = io.StringIO()
+                with contextlib.redirect_stdout(out):
+                    self.assertEqual(permissions.main(["list", "--config", str(config)]), 0)
+                    self.assertEqual(permissions.main(["revoke-all", "--config", str(config)]), 0)
+                worker.join(5)
+                text = out.getvalue()
+                self.assertIn("http://a.test  interact  task  90s", text)
+                self.assertIn("Revogado: http://a.test", text)
+                config.chmod(0o644)
+                err = io.StringIO()
+                with contextlib.redirect_stderr(err):
+                    self.assertEqual(permissions.main(["list", "--config", str(config)]), 1)
+                self.assertIn("não é privada", err.getvalue())
+        finally:
+            if stream:
+                stream.close()
+                connection.close()
+            broker.close()
+
     def test_native_stdio_to_authenticated_socket_roundtrip(self):
         broker = Broker(EXTENSION).start()
         try:

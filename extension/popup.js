@@ -19,7 +19,7 @@ document.getElementById('share').addEventListener('click', async () => {
     const granted = await chrome.permissions.request({origins: [patternFor(origin)]});
     if (!granted) throw new Error('Permissão negada.');
     const result = await chrome.runtime.sendMessage({type: 'share', tab: tab.id,
-      level: document.getElementById('level').value});
+      level: document.getElementById('level').value, validity: document.getElementById('validity').value});
     status.textContent = result.error || `Aba compartilhada: ${origin}`;
   } catch (error) { status.textContent = error.message; }
 });

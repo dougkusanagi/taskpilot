@@ -3,6 +3,7 @@
 import argparse
 import hashlib
 import json
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 from urllib.request import urlopen
@@ -310,6 +311,40 @@ def run(output):
             for r in report["reads"]
         )
         check("corpo completo no orçamento conservador", report["max_reply_bytes"] <= 1200)
+        listed = broker.admin("grants_list")["result"]["grants"]
+        check(
+            "CLI enxerga a origem liberada",
+            [(g["origin"], g["level"]) for g in listed] == [(base, "interact")],
+        )
+        chrome.evaluate(
+            popup,
+            f'chrome.runtime.sendMessage({{type:"share",tab:{tab},level:"interact",'
+            'validity:"task",ttl_ms:1200})',
+        )
+        task = broker.admin("grants_list")["result"]["grants"][0]
+        check(
+            "validade de tarefa aparece com contagem",
+            task["validity"] == "task" and task["expires_in_s"] >= 1,
+        )
+        time.sleep(1.8)
+        check(
+            "grant expirado é negado",
+            request({"tool": "read_page"}).get("error") == "origin_not_granted",
+        )
+        check(
+            "expiração revoga a permissão do Chrome",
+            chrome.evaluate(popup, "chrome.permissions.getAll()")["origins"] == [],
+        )
+        rig.share(output / "permission-regrant.png")
+        rig.set_level("interact")
+        check("nova concessão por gesto funciona", "observation" in request({"tool": "read_page"}))
+        revoked = broker.admin("grants_revoke", base)["result"]
+        check("revogação pelo CLI responde", revoked.get("revoked") == base)
+        check(
+            "revogação nega e remove a permissão do Chrome",
+            request({"tool": "read_page"}).get("error") == "origin_not_granted"
+            and chrome.evaluate(popup, "chrome.permissions.getAll()")["origins"] == [],
+        )
         chrome.evaluate(popup, 'chrome.runtime.sendMessage({type:"stop"})')
         check(
             "parar revoga permissão Chrome",
