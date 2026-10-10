@@ -138,6 +138,22 @@ def run(output):
             "envio requer humano",
             request({"tool": "click", "ref": send["ref"]}).get("error") == "confirmation_required",
         )
+        # Confirmação humana: o flag viaja só pelo canal autenticado, nunca pela ação do modelo.
+        confirmed = broker.request({"tool": "click", "ref": send["ref"]}, tab, confirmed=True)
+        check(
+            "clique confirmado pelo humano é executado",
+            confirmed["result"].get("result", {}).get("sent"),
+        )
+        state = wait(
+            lambda: (
+                json.load(urlopen(base + "/state")).get("sent")
+                and json.load(urlopen(base + "/state"))
+            )
+        )
+        check(
+            "envio confirmado chega ao servidor com o rascunho certo",
+            state["sent"] == [{"to": "José", "draft": text}],
+        )
         other = chrome.tab(base.replace("localhost", "127.0.0.1") + "/loja")
         other_tab = next(
             t["id"]

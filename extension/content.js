@@ -120,7 +120,7 @@ if (!globalThis.__taskpilot) globalThis.__taskpilot = (() => {
     cursor = observation.next ? {id:nextId,units,offset:end,revision,tool:action.tool,filter:action.filter} : null;
     return makeReply();
   }
-  function execute(action) {
+  function execute(action, confirmed = false) {
     const blocker = humanBlock();
     if (blocker) return {error:'human_required',reason:blocker};
     if (['read_page','get_page_text','find'].includes(action.tool)) return reading(action);
@@ -140,8 +140,11 @@ if (!globalThis.__taskpilot) globalThis.__taskpilot = (() => {
         delta:JSON.stringify({field:[before,after]}),error:''}};
     }
     const label = clean(`${textOf(node)} ${node.getAttribute('aria-label')} ${node.name} ${node.form?.action}`);
-    if (/\b(send|enviar|delete|apagar|excluir|buy|comprar|pay|pagar|publish|publicar|install|instalar|oauth|download|baixar)\b/i.test(label)) return {error:'confirmation_required'};
-    if (node.type === 'submit' && !/rascunho|draft|pesquis|search|filtr/i.test(label)) return {error:'confirmation_required'};
+    // `confirmed` só chega pelo canal autenticado do orquestrador depois de um humano aprovar; nunca vem da ação do modelo.
+    if (!confirmed) {
+      if (/\b(send|enviar|delete|apagar|excluir|buy|comprar|pay|pagar|publish|publicar|install|instalar|oauth|download|baixar)\b/i.test(label)) return {error:'confirmation_required'};
+      if (node.type === 'submit' && !/rascunho|draft|pesquis|search|filtr/i.test(label)) return {error:'confirmation_required'};
+    }
     if (node.tagName === 'A') {
       const url = new URL(node.href);
       if (!['http:','https:'].includes(url.protocol) || url.origin !== location.origin) return {error:'destination_not_granted'};

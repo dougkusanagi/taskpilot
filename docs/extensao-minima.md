@@ -3,7 +3,7 @@
 `extension/` implementa `read_page`, `get_page_text`, `find`, `click`, `form_input`
 e `navigate`, ligados ao native host de [native-host.md](native-host.md).
 Não há orquestrador. Abas/grupo, screenshot como ferramenta, expiração de grants,
-confirmação humana executável e CLI de permissões continuam pendentes na Fase 3.
+e CLI de permissões continuam pendentes na Fase 3. A confirmação humana é executável: o orquestrador reenvia o clique com `confirmed` pelo canal autenticado do broker (nunca pela ação do modelo) e a extensão só o honra em `click`; N2 prova envio barrado sem humano e executado com ele.
 
 O popup pede `optional_host_permissions` ao Chrome por gesto do usuário e compartilha
 uma aba com nível read/interact. Há duas barreiras: a concessão do Chrome e o grant

@@ -12,14 +12,14 @@ function connect() {
   });
   port.onMessage.addListener(async message => {
     let result;
-    try { result = await execute(message.tab, message.action); }
+    try { result = await execute(message.tab, message.action, message.confirmed === true); }
     catch (error) { result = {error: error.message}; }
     port?.postMessage({id: message.id, result});
   });
   chrome.action.setBadgeText({text: 'ON'});
 }
 
-async function execute(tabId, action) {
+async function execute(tabId, action, confirmed = false) {
   const tab = await chrome.tabs.get(tabId);
   const {shared = [], grants = {}} = await chrome.storage.session.get(['shared', 'grants']);
   const origin = checkGrant(tab, shared, grants, action);
@@ -49,10 +49,10 @@ async function execute(tabId, action) {
   }
   await chrome.scripting.executeScript({target: {tabId}, files: ['content.js']});
   const [response] = await chrome.scripting.executeScript({target: {tabId},
-    func: action => {
-      try {return globalThis.__taskpilot.execute(action);}
+    func: (action, confirmed) => {
+      try {return globalThis.__taskpilot.execute(action, confirmed);}
       catch (error) {return {error:error.message};}
-    }, args: [action]});
+    }, args: [action, confirmed && action.tool === 'click']});
   const after = await chrome.tabs.get(tabId);
   if (originOf(after.url) !== origin) throw new Error('origin_changed');
   return response.result;
