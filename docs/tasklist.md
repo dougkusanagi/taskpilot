@@ -36,7 +36,7 @@ ferramenta certa**.
 - Evidência A2: três configurações completas em `results/*-8192.json`, registradas no quadro de testes; nenhum modelo passou o gate N1.
 - [ ] **Matriz modelo × contexto × VRAM** (por processo) para 4B e para uma classe 7–9B só-texto Q4: maior contexto estável e
       acerto N1 em cada ponto (KV q8_0/q4_0, offload parcial só se p95 ≤ 5 s). Pergunta a responder: modelo maior ou contexto maior?
-- [ ] Baixar (com autorização, tamanho e origem na pergunta): um 7–9B só-texto; Fara1.5-4B (forte em web); Qwen3-VL-4B como controle.
+- [x] 7–9B só-texto baixado com autorização (Qwen3.5-9B IQ3_M, 4,98 GB, único que chega perto de caber): **reprovou** N1 e piorou nos episódios (testes §7.1). Ainda a baixar, se o dono quiser: Fara1.5-4B (forte em web); Qwen3-VL-4B como controle.
       GUI-Owl-1.5-4B desce de prioridade (treinado para GUI por pixels; a vantagem some com entrada DOM).
 - [ ] **Adiado (sem screenshot no MVP, decisão 09/10):** visão sob demanda: VLM pequeno (ou o mesmo 4B com projetor na CPU/carregado só quando preciso) para `screenshot` em páginas
       com DOM inconclusivo e para checagem antes de ação irreversível. Medir o custo; decidir se entra no MVP.

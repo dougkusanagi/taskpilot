@@ -89,6 +89,7 @@ teste, não pelo agente).
 | Qwen3.5-4B Q4_K_M sem projetor, 8k/q8_0 | schema-thinking-on | 72.92% | 0.00% | 89.93% | 8.333 | 2982 / 86600 | reprovou |
 | Qwen3-4B-Instruct-2507 Q4_K_M texto, 8k/q8_0 | schema-thinking-off | 45.14% | 14.58% | 100.00% | 4.920 | 3192 / 173707 | reprovou |
 | Qwen3.5-4B Q4_K_M + projetor BF16, 8k/q8_0 | schema-thinking-off | 75.00% | 6.25% | 100.00% | 2.447 | 3850 / 181022 | reprovou |
+| Qwen3.5-9B IQ3_M (bartowski, 4,98 GB), 8k/q8_0, **ngl 28, ubatch 256** | schema-thinking-off | 51.39% | 23.61% | 100.00% | 10.308 | 3812 / 178859 | reprovou |
 | Qwen3-4B-Instruct-2507 Q4_K_M texto, 4k/q8_0 | schema-thinking-off | 45.14% | 14.58% | 100.00% | 4.929 | 2882 / 188725 | reprovou |
 | Qwen3-4B-Instruct-2507 Q4_K_M texto, 16k/q8_0 (**incompleto**, 201/288) | schema-thinking-off | 35.40% | 17.91% | 100.00% | 4.928 | 3836 / 195993 | não conta |
 
@@ -174,3 +175,23 @@ snapshots densos, página de entrada como evidência, fixture de webmail que mos
 uma fixture que fazia o modelo salvar duas vezes e sobrescrever o rascunho com vazio.
 
 Pendente: 7–9B só-texto (exige autorização de download), Windows, aceite ao vivo, confirmação humana na extensão (lado Python pronto).
+
+### 7.1 7–9B só-texto (09/10): o maior não ajudou
+
+Baixado com autorização: Qwen3.5-9B IQ3_M, 4.981.092.384 bytes, de `bartowski/Qwen_Qwen3.5-9B-GGUF` (Hugging Face), SHA-256 conferido.
+Escolha forçada pelo hardware: nos pesos do 9B, IQ4_XS = 5,50 GB, Q3_K_M = 5,18 GB e IQ3_M = 4,98 GB; com o desktop usando ~1,2 GB
+dos 6 GB, **nem o IQ3_M carrega com todas as camadas na GPU** ("failed to allocate compute pp buffers"). Rodou com `--ngl 28
+--ubatch 256` (offload parcial; o launcher agora aceita os dois, validados e gravados no manifesto).
+
+| Medida | Qwen3.5-9B IQ3_M | Qwen3.5-4B Q4_K_M |
+| --- | ---: | ---: |
+| N1 acerto cego (schema, thinking off) | 51,4% | 75,0% |
+| N1 ação proibida | 23,6% | 6,25% |
+| N1 p95 | 10,3 s | 2,5 s |
+| Episódios na extensão, sem thinking | 11/18 (61%), 7 falsos `done` | 22/30 (73%), 5 falsos `done` |
+| Pico de VRAM por processo | 3.812 MiB | 2.982 MiB |
+
+No N1 o 9B clica em vez de perguntar (ambiguidade 0/18) e conclui sem ler (`ler_antes_done` 0/18). Limitações honestas: é **um** ponto
+(3 bits + offload parcial), não "o 9B"; Q4 ou maior não cabe nesta GPU, então a pergunta "modelo maior ou contexto maior?" fica
+respondida só para o que cabe aqui: **modelo maior em 3 bits não ganha do 4B em Q4**. Reprovou o gate N1; não avança. Dados:
+`evals/brain/results/Qwen3.5-9B-IQ3_M-ngl28-8192.json`, `evals/browser/results/episodes-Qwen3.5-9B-IQ3_M-fast.json`.

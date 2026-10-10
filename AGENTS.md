@@ -30,7 +30,7 @@ travado e a matriz com um 7–9B (download só com autorização). **Não** impl
   configurado pelo usuário. `.venv` roda normal, mas I/O de muitos arquivos pequenos é lento.
 - `pkill -f <padrão que aparece no próprio comando>` derruba o seu shell: mate por PID.
 - Hardware de referência: RTX 2060 6 GB, Ryzen 5 4500, 14 GB de RAM, Ubuntu 26.04 GNOME/Wayland. VRAM é medida **por processo**.
-  Modelos instalados: Qwen3.5-4B (`~/.lmstudio/models/lmstudio-community/Qwen3.5-4B-GGUF`, com projetor), Qwen3-4B-Instruct-2507 e
+  Modelos instalados: Qwen3.5-9B IQ3_M (`~/.lmstudio/models/bartowski/`, 4,98 GB; reprovado, só carrega com `--ngl 28`), Qwen3.5-4B (`~/.lmstudio/models/lmstudio-community/Qwen3.5-4B-GGUF`, com projetor), Qwen3-4B-Instruct-2507 e
   MAI-UI-2B em `models/`. O resto foi apagado de propósito.
 - Número de modelo de terceiros (OSWorld etc.) é autorreportado: serve para ordenar candidatos, não para aprovar.
 - O desenho antigo (planner texto + grounder, `loop.py`) está no `master`; não ressuscitar.

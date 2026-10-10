@@ -20,9 +20,13 @@ def launch(
     port: int = 8091,
     context: int = 8192,
     kv: str = "q8_0",
+    ngl: int = 99,
+    ubatch: int | None = None,
 ):
     if context not in {4096, 8192, 16384} or kv not in {"q8_0", "q4_0"}:
         raise ValueError("contexto ou KV fora da matriz")
+    if not 0 <= ngl <= 99 or ubatch not in {None, 128, 256, 512}:
+        raise ValueError("ngl ou ubatch fora da matriz")
     for path in [gguf] + ([mmproj] if mmproj else []):
         if not path.is_file():
             raise ValueError(f"arquivo instalado ausente: {path}")
@@ -41,7 +45,7 @@ def launch(
         "--port",
         str(port),
         "-ngl",
-        "99",
+        str(ngl),
         "-c",
         str(context),
         "-np",
@@ -58,6 +62,8 @@ def launch(
         "--reasoning-format",
         "deepseek",
     ]
+    if ubatch:
+        command += ["-ub", str(ubatch)]
     if mmproj:
         command += ["--mmproj", str(mmproj)]
     else:
@@ -73,6 +79,8 @@ def launch(
             "mmproj": str(mmproj) if mmproj else None,
             "context": context,
             "kv": kv,
+            "ngl": ngl,
+            "ubatch": ubatch,
             "binary_sha256": hashlib.sha256(exe.read_bytes()).hexdigest(),
             "peak_vram_mib": None,
         }
@@ -110,5 +118,17 @@ if __name__ == "__main__":
     parser.add_argument("--port", type=int, default=8091)
     parser.add_argument("--context", type=int, choices=[4096, 8192, 16384], default=8192)
     parser.add_argument("--kv", choices=["q8_0", "q4_0"], default="q8_0")
+    parser.add_argument("--ngl", type=int, default=99, help="camadas na GPU (offload parcial)")
+    parser.add_argument("--ubatch", type=int, choices=[128, 256, 512])
     args = parser.parse_args()
-    launch(args.model, args.gguf, args.mmproj, args.output, args.port, args.context, args.kv)
+    launch(
+        args.model,
+        args.gguf,
+        args.mmproj,
+        args.output,
+        args.port,
+        args.context,
+        args.kv,
+        args.ngl,
+        args.ubatch,
+    )

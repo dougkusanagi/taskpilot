@@ -25,8 +25,10 @@ class RuntimeMatrixTests(unittest.TestCase):
                 process.pid, process.returncode = 432, 0
                 process.poll.return_value = 0
                 monitor.return_value.__enter__.return_value.peak_mib = 1200
-                launch("teste", gguf, None, root / "run", context=4096)
+                launch("teste", gguf, None, root / "run", context=4096, ngl=30, ubatch=256)
                 command = spawn.call_args.args[0]
+                self.assertEqual(command[command.index("-ngl") + 1], "30")
+                self.assertEqual(command[command.index("-ub") + 1], "256")
                 self.assertIn("--no-mmproj", command)
                 self.assertNotIn("--mmproj", command)
                 self.assertEqual(command[command.index("-c") + 1], "4096")
@@ -37,6 +39,10 @@ class RuntimeMatrixTests(unittest.TestCase):
     def test_invalid_matrix_or_missing_files_never_download(self):
         with self.assertRaises(ValueError):
             launch("teste", Path("missing"), None, Path("runs"), context=100)
+        with self.assertRaises(ValueError):
+            launch("teste", Path("missing"), None, Path("runs"), ngl=200)
+        with self.assertRaises(ValueError):
+            launch("teste", Path("missing"), None, Path("runs"), ubatch=64)
         with patch("evals.brain.runtime.subprocess.Popen") as spawn:
             with self.assertRaises(ValueError):
                 launch("teste", Path("missing"), None, Path("runs"))
