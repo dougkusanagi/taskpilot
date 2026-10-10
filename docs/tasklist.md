@@ -38,7 +38,7 @@ ferramenta certa**.
       acerto N1 em cada ponto (KV q8_0/q4_0, offload parcial só se p95 ≤ 5 s). Pergunta a responder: modelo maior ou contexto maior?
 - [ ] Baixar (com autorização, tamanho e origem na pergunta): um 7–9B só-texto; Fara1.5-4B (forte em web); Qwen3-VL-4B como controle.
       GUI-Owl-1.5-4B desce de prioridade (treinado para GUI por pixels; a vantagem some com entrada DOM).
-- [ ] Visão sob demanda: VLM pequeno (ou o mesmo 4B com projetor na CPU/carregado só quando preciso) para `screenshot` em páginas
+- [ ] **Adiado (sem screenshot no MVP, decisão 09/10):** visão sob demanda: VLM pequeno (ou o mesmo 4B com projetor na CPU/carregado só quando preciso) para `screenshot` em páginas
       com DOM inconclusivo e para checagem antes de ação irreversível. Medir o custo; decidir se entra no MVP.
 - [ ] Quantizações do melhor (Q4_K_M vs Q5/IQ4); VRAM de pico por processo.
 - **Saída:** modelo escolhido pelo gate N1 (≥85% nas cenas cegas, ação proibida = 0, JSON ≥98%, p95 ≤5 s, VRAM ≤5 GB).
@@ -46,10 +46,10 @@ ferramenta certa**.
 ## Fase 3 — Extensão Chrome + native host + permissões (**trilha principal do MVP**; começa já, depende só da Fase 0)
 - [x] Native host (stdio JSON ↔ socket local autenticado) e manifesto por SO (Linux/Windows).
 - Evidência: N0 da ponte (auth, framing, subprocesso, manifestos Linux/Windows) verde; integração real Linux em `evals/browser/results/chrome-linux.json`. Windows executável ainda não medido.
-- [ ] Extensão MV3: `read_page` com refs, `find`, `click`, `form_input`, `get_page_text`, `navigate`, abas/grupo "TaskPilot",
-      screenshot; `optional_host_permissions` por origem.
+- [x] Extensão MV3: `read_page` com refs, `find`, `click`, `form_input`, `get_page_text`, `navigate`, abas/grupo "TaskPilot";
+      `optional_host_permissions` por origem. **Screenshot fora do MVP (decisão do dono, 09/10):** o MVP é só DOM/a11y; ver arquitetura §3.9.
 - [ ] Permissões: allowlist por origem (read/interact, validade), categorias sensíveis, confirmação por ação, `handoff`,
-      botão de parar, log com screenshots; CLI `taskpilot permissions`.
+      botão de parar, log de ações (sem screenshots); CLI `taskpilot permissions`.
 - [x] Snapshot compacto: árvore interativa com refs, poda de ruído, `scope` e paginação (`next`), dentro do orçamento da Fase 1.
       Marcar texto de página como dado não confiável; detectar elementos ocultos/cobertos (anti-injeção por DOM enganoso).
 - [x] Testes N2 em perfil descartável (`--user-data-dir` temporário, `--load-extension`) contra as fixtures.
@@ -62,7 +62,7 @@ ferramenta certa**.
 - Evidência parcial (08/10): Platform de browser (`BrowserEnv`), contrato `agent-1`, episódios reais com o Qwen3.5-4B na extensão em Chrome
   descartável e verificação independente (estado HTTP da fixture): ver testes §7. Ainda sem monitor de travado, sem produto
   orquestrador, sem parada/segurança executável, sem 7–9B, e fora do aceite (fixture, não AC ao vivo).
-- [ ] Confirmação humana e, se a Fase 2 aprovar, checagem por screenshot antes de enviar/apagar/comprar (fora do alcance do modelo).
+- [ ] Confirmação humana antes de enviar/apagar/comprar (fora do alcance do modelo): extensão e broker prontos; falta o prompt ao usuário no orquestrador. Checagem por screenshot adiada.
 - **Saída:** AC-1, AC-2a, AC-2b e AC-3 **em fixture**, 3 repetições, nos critérios do testes §6.
 
 ## Fase 5 — Desktop e visão (adiada: só depois do aceite web em fixture; fora do gate do MVP)

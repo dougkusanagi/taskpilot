@@ -58,7 +58,7 @@ Ids `eN` são válidos só para essa observação (IDs obsoletos são recusados)
 são acionáveis por `activate`; `click_xy` nunca recebe (0,0) por falta de dado.
 
 ### 3.3 Escada de ferramentas (sempre A → B → C)
-No **browser use (MVP)** a escada é: **A** = DOM/a11y por `ref` (§3.9) → **C** = `screenshot` como reserva e como checagem independente.
+No **browser use (MVP)** a escada é só **A** = DOM/a11y por `ref` (§3.9). **Decisão do dono (09/10): sem screenshot no MVP**; a reserva visual (C) e a checagem por imagem voltam depois, junto de uma decisão sobre permissão (§3.9).
 O degrau B (OCR) e os adaptadores de desktop abaixo ficam para a Fase 5 da tasklist.
 
 - **A · Semântica:** `activate(ref)`, `set_text(ref, text)`, `type(text)`, `key(combo)`, `read(ref)`, `wait_for(text)`.
@@ -109,7 +109,7 @@ Requisito: agir **no Chrome do usuário** (continuar abas, usar contas logadas),
   quando precisa de screenshot/input confiável (o Chrome mostra o aviso de depuração). **Achado de 09/10:** `debugger` não pode ser
   permissão opcional (o Chrome responde "Only permissions specified in the manifest may be requested") e `captureVisibleTab` exige
   `<all_urls>` ou `activeTab` (gesto). Screenshot na extensão exige, portanto, declarar `debugger` como permissão obrigatória (alerta de
-  instalação forte; o canal de debug não respeita o limite por origem do Chrome, só a política do worker) ou `<all_urls>`. Decisão do dono.
+  instalação forte; o canal de debug não respeita o limite por origem do Chrome, só a política do worker) ou `<all_urls>`. **Decisão do dono (09/10): nenhuma das duas agora; o MVP segue sem screenshot.**
 - **Vocabulário** (mesmo dos adaptadores de desktop): `read_page(filter=interactive)`, `find(descrição)`, `click(ref)`,
   `form_input(ref, valor)`, `get_page_text`, `navigate(url)`, `tabs_*`, `screenshot(scale)`, `scroll_to(ref)`, `wait_for(texto)`.
   Refs valem só para a leitura em que nasceram. Screenshot é sob demanda; coordenadas só no degrau C.
@@ -160,7 +160,7 @@ lidos em uma memória estruturada (ex.: lista de {título, preço, url}) em vez 
 | Platform Windows | `uia.py`, `actions.py`, `obs.py` — falta contrato único |
 | OCR | `ocr.py` |
 | Segurança | `safety.py`, `overlay.py` |
-| Extensão Chrome + native host + permissões | `extension/`, `browser_bridge/`: seis ferramentas e grants por origem (N2 real). Faltam abas/grupo, screenshot, expiração de grants, confirmação humana executável, CLI de permissões |
+| Extensão Chrome + native host + permissões | `extension/`, `browser_bridge/`: seis ferramentas e grants por origem (N2 real). Abas/grupo e confirmação humana executável prontos. Faltam expiração de grants e CLI de permissões; screenshot adiado (decisão 09/10) |
 | Loop de browser (parcial) | `evals/brain/loop.py`, `browser_env.py` (Platform de browser pela ponte), `agent_contract.py`; episódios em `evals/browser/episodes.py`. Faltam orquestrador de produto, monitor de travado, segurança/parada |
 | `schemas.py`, `config.py` | herdados; enxugar quando os contratos novos existirem |
 

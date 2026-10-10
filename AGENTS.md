@@ -10,7 +10,7 @@
 
 **Foco atual (08/10):** bancada (Fase 1) e extensão mínima (Fase 3) estão medidas; começou o **loop de browser** (Fase 4): o modelo
 opera a extensão real em Chrome descartável nas fixtures, com verificação independente (`evals/browser/episodes.py`, testes §7).
-Próximos: completar a Fase 3 (abas/grupo, screenshot, grants com validade, confirmação humana, CLI de permissões), o monitor de
+Próximos: completar a Fase 3 (grants com validade, CLI de permissões, prompt de confirmação no orquestrador; abas e confirmação na extensão já prontas), o monitor de
 travado e a matriz com um 7–9B (download só com autorização). **Não** implemente adaptadores de desktop (AT-SPI/UIA, OCR,
 `click_visual`): Fase 5, adiada.
 
@@ -47,7 +47,7 @@ travado e a matriz com um 7–9B (download só com autorização). **Não** impl
 - Arquitetura normativa: [docs/arquitetura.md](docs/arquitetura.md); seleção de modelo e testes:
   [docs/testes-e-selecao-de-modelo.md](docs/testes-e-selecao-de-modelo.md); racional: [docs/arquitetura-do-zero-2026-10-07.html](docs/arquitetura-do-zero-2026-10-07.html). Produto: assistente **local** (browser use primeiro, computer use depois)
   para GPU de **6 GB de VRAM**. Cérebro = 1 modelo **só-texto** lendo DOM/a11y (4B ou 7–9B Q4, decidido por medição; Qwen3.5-4B e Qwen3-4B-2507 são a linha de base),
-  com visão apenas sob demanda; ferramentas do MVP: **DOM/a11y por ref → screenshot (reserva e checagem)**. Desktop (AT-SPI/UIA → OCR →
+  com visão apenas sob demanda; ferramentas do MVP: **só DOM/a11y por ref** (sem screenshot por decisão de 09/10: `debugger` não pode ser opcional e `captureVisibleTab` exige `<all_urls>`/`activeTab`). Desktop (AT-SPI/UIA → OCR →
   visão) é fase posterior; Python orquestra, verifica,
   veta e executa; verificador lê o **campo**, nunca o título da janela.
 - **Decidido:** ação semântica permitida; **browser use no Chrome do usuário via extensão + native messaging e permissões por origem é a trilha principal do MVP** (a bancada continua em curso e a extensão começa em paralelo). Aceite: Amazon (menor preço RTX 5090), e-mail (leitura e rascunho), notícias do dia — ver docs/testes-e-selecao-de-modelo.md §6.
