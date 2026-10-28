@@ -26,8 +26,10 @@ Estado: **protótipo opt-in**. Windows e default (B1) inalterados. Nada aqui apr
 | P1 com llama-server CUDA do LM Studio | sobe; **5340 MiB** de VRAM total (planner+visão) |
 | Testes | 486 OK (11 novos, só stubs/puros), ruff limpo |
 
-**Não verificado até aqui:** sessão do portal real (diálogo, frame PipeWire, input), loop completo
-com planner+visão no Linux. Tudo isso exige rodar o comando abaixo.
+**Atualização em 28/10:** diálogo do portal e frame PipeWire de 1280×800 confirmados em GNOME
+isolado após corrigir `signal-handoffs` no pipeline. Input pelo portal e loop completo com
+modelos continuam pendentes. O cliente recusa input sem a permissão correspondente e pede
+para ativar “Allow Remote Interaction” no diálogo. Ver [relatório](validacao-ubuntu-2026-10-28.md).
 
 ## Setup Ubuntu
 
@@ -36,10 +38,11 @@ sudo apt install python3-gi gir1.2-gst-plugins-base-1.0 gstreamer1.0-pipewire gs
 uv sync --extra ocr
 ```
 
-Runtime (o `server.py` ainda recusa fora do Windows): suba os dois `llama-server` à mão (P1:
-Qwen3-4B 8091 + MAI-UI-2B 8082, ctx 4096, `-ngl 99 -np 1 -fa on -ctk q8_0 -ctv q8_0`, visão com
-`--no-mmproj-offload`) e use `--no-runtime`. Binários Linux existem no release b11053 do llama.cpp
-(`ubuntu-x64`, `ubuntu-vulkan-x64`, `ubuntu-cuda-12.8-x64`) ou use o do LM Studio.
+Runtime (atualizado em 28/10): `server.py` seleciona binários Ubuntu x86_64, com CPU por
+padrão e `runtime.backend: cuda|vulkan` opcionais. `uv run python -m server` inicia os modelos;
+`--no-runtime` continua disponível para usar endpoints já iniciados. A extração e execução do
+binário oficial CPU b11954 foram verificadas no Ubuntu. Isso não valida o controle do desktop.
+CUDA usa o pacote oficial 12.8; suporte depende do driver instalado. GGUFs são os mesmos do Windows.
 
 ## Rodar
 

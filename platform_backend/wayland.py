@@ -73,6 +73,7 @@ class WaylandBackend:
         self._proc: subprocess.Popen | None = None
         self._lock = threading.Lock()
         self.size = (0, 0)
+        self.devices = 0
         self._tmp = Path(tempfile.mkdtemp(prefix="taskpilot-wl-"))
         self.input = _Input(self)
 
@@ -91,6 +92,7 @@ class WaylandBackend:
             [self._python(), "-u", str(BRIDGE)], stdin=subprocess.PIPE, stdout=subprocess.PIPE,
             stderr=sys.stderr, text=True, bufsize=1)
         r = self._call({"cmd": "start"}, timeout=150)
+        self.devices = int(r.get("devices", 0))
         self.size = tuple(r.get("frame_size") or (0, 0))
         got = self._call({"cmd": "frame", "path": str(self._tmp / "probe.png")}, timeout=20)
         self.size = tuple(got["size"])
@@ -171,6 +173,11 @@ class _Input:
 
     def _c(self, req: dict) -> None:
         self._be._ensure()
+        required = 1 if req["cmd"] == "keysym" else 2
+        if not self._be.devices & required:
+            raise RuntimeError("O compartilhamento não permite controlar "
+                               "o teclado/mouse. Encerre a sessão e ative "
+                               "‘Allow Remote Interaction’ no diálogo do GNOME.")
         self._be._call(req)
 
     def moveTo(self, x, y, duration=0.0):  # noqa: N802 (nome da API pyautogui)

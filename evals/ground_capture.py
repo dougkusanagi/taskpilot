@@ -71,6 +71,12 @@ def main() -> int:
                         skipped.append((case["id"], str(exc)[:80]))
                         continue
                 cases.append(case)
+            present = [t for t in page_spec["targets"] if not t.get("absent")]
+            if present and not any(c["page"] == page_spec["id"] and c["bbox"] for c in cases):
+                # Nenhum alvo real achado: a página veio errada (bloqueio, erro, layout novo).
+                # Os "ausentes" dela não provariam nada; descarta a página inteira.
+                cases = [c for c in cases if c["page"] != page_spec["id"]]
+                skipped.append((page_spec["id"], "nenhum alvo existente; página descartada"))
             ctx.close()
         browser.close()
     out = {"version": specs["version"], "cases": cases}

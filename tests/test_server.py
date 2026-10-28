@@ -232,6 +232,7 @@ class TestBackendsAndMemoryFlags(unittest.TestCase):
     def cfg(self, **runtime):
         return {"runtime": runtime}
 
+    @patch.object(server.sys, "platform", "win32")
     def test_urls_per_backend(self):
         cpu = server.llama_urls("cpu")
         self.assertEqual(len(cpu), 1)
@@ -287,11 +288,35 @@ class TestRegistryAndProfiles(unittest.TestCase):
 
     def downloads(self, cfg):
         got = []
+        mark = f"{cfg.get('runtime', {}).get('backend', 'cpu')}@{server.LLAMA_TAG}"
         with patch.object(server.sys, "platform", "win32"), \
                 patch.object(server, "_download", lambda url, dest, **k: got.append(dest.name)), \
-                patch.object(Path, "exists", lambda self: self.name == "llama-server.exe"):
+                patch.object(server.shutil, "rmtree", lambda *a, **k: None), \
+                patch.object(Path, "read_text", lambda self, **k: mark), \
+                patch.object(Path, "exists", lambda self: self.name in ("llama-server.exe",
+                                                                         ".backend")):
             server.ensure_assets(progress=lambda *_: None, cfg=cfg)
         return got
+
+    def test_old_llama_release_is_replaced_by_the_pinned_one(self):
+        # Marca antiga ("cpu", sem @tag) = binário anterior ao suporte a LFM3: baixa de novo.
+        got, removed = [], []
+
+        def exists(self):  # binário some no rmtree; o .backend existe antes dele
+            if self.name == "llama-server.exe":
+                return not removed or any(server.LLAMA_TAG in u for u in got)
+            return self.name == ".backend" and not removed
+        with patch.object(server.sys, "platform", "win32"), \
+                patch.object(server, "_download", lambda url, dest, **k: got.append(url)), \
+                patch.object(server, "_extract_zip", lambda *a: None), \
+                patch.object(server.shutil, "rmtree", lambda path, **k: removed.append(path)), \
+                patch.object(Path, "read_text", lambda self, **k: "cpu"), \
+                patch.object(Path, "write_text", lambda self, *a, **k: None), \
+                patch.object(Path, "mkdir", lambda self, *a, **k: None), \
+                patch.object(Path, "exists", exists):
+            server.ensure_assets(progress=lambda *_: None, cfg={"runtime": {}})
+        self.assertEqual(removed, [server.BIN_DIR])
+        self.assertTrue(any(server.LLAMA_TAG in u for u in got))
 
     def test_dual_profile_downloads_planner_and_vision_with_projector(self):
         cfg = cfgmod.apply_profile({"runtime": {}}, "P1")
@@ -335,10 +360,165 @@ class TestRegistryAndProfiles(unittest.TestCase):
 
 
 class TestPlatformGuard(unittest.TestCase):
-    def test_non_windows_fails_before_downloading_anything(self):
+    def test_unsupported_platform_fails_before_downloading_anything(self):
         calls = []
-        with patch.object(server.sys, "platform", "linux"), \
+        with patch.object(server.sys, "platform", "darwin"), \
                 patch.object(server, "_download", lambda *a, **k: calls.append(a)):
-            with self.assertRaisesRegex(RuntimeError, "só funcionam no Windows"):
+            with self.assertRaisesRegex(RuntimeError, "Windows e Linux"):
                 server.ensure_assets(progress=lambda *_: None, cfg={})
         self.assertEqual(calls, [])
+
+
+class TestLinuxRuntime(unittest.TestCase):
+    @patch.object(server.sys, "platform", "linux")
+    @patch.object(server.platform, "machine", return_value="x86_64")
+    def test_linux_urls_and_executable(self, _machine):
+        self.assertTrue(server.llama_urls()[0].endswith("bin-ubuntu-x64.tar.gz"))
+        self.assertIn("ubuntu-vulkan-x64", server.llama_urls("vulkan")[0])
+        cuda = server.llama_urls("cuda")
+        self.assertEqual(len(cuda), 2)
+        self.assertIn("cudart-llama-" + server.LLAMA_TAG, cuda[1])
+        args = server._server_args("planner", Path("m.gguf"), None, 8091, {})
+        self.assertEqual(Path(args[0]).name, "llama-server")
+
+    @patch.object(server.sys, "platform", "linux")
+    @patch.object(server.platform, "machine", return_value="aarch64")
+    def test_unsupported_architecture_does_not_download(self, _machine):
+        with patch.object(server, "_download") as download:
+            with self.assertRaisesRegex(RuntimeError, "x86_64"):
+                server.ensure_assets()
+            download.assert_not_called()
+
+    def test_tar_extracts_nested_binary_with_libraries_and_permissions(self):
+        import io
+        import tarfile
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            archive = root / "runtime.tar.gz"
+            with tarfile.open(archive, "w:gz") as tf:
+                for name in ("llama-server", "libggml.so"):
+                    info = tarfile.TarInfo("release/" + name)
+                    info.size, info.mode = 4, 0o755
+                    tf.addfile(info, io.BytesIO(b"test"))
+            server._extract_tar(archive, root / "bin")
+            if sys.platform != "win32":  # Windows não representa permissões POSIX de execução.
+                self.assertTrue((root / "bin/llama-server").stat().st_mode & 0o111)
+            self.assertEqual((root / "bin/libggml.so").read_bytes(), b"test")
+            self.assertFalse(archive.exists())
+
+    def test_tar_rejects_path_traversal(self):
+        import io
+        import tarfile
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            archive = root / "unsafe.tar.gz"
+            with tarfile.open(archive, "w:gz") as tf:
+                info = tarfile.TarInfo("../escaped")
+                info.size = 1
+                tf.addfile(info, io.BytesIO(b"x"))
+            with self.assertRaises(tarfile.FilterError):
+                server._extract_tar(archive, root / "bin")
+            self.assertFalse((root / "escaped").exists())
+
+
+    def test_cudart_is_placed_beside_an_existing_server(self):
+        import io
+        import tarfile
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            dest = root / "bin"
+            dest.mkdir()
+            (dest / "llama-server").write_bytes(b"server")
+            archive = root / "cudart.tar.gz"
+            with tarfile.open(archive, "w:gz") as tf:
+                info = tarfile.TarInfo("cuda/libcudart.so.12")
+                info.size = 3
+                tf.addfile(info, io.BytesIO(b"lib"))
+            server._extract_tar(archive, dest)
+            self.assertEqual((dest / "libcudart.so.12").read_bytes(), b"lib")
+            self.assertEqual((dest / "llama-server").read_bytes(), b"server")
+
+
+class TestVerifierRuntime(unittest.TestCase):
+    def cfg(self, url="http://127.0.0.1:8083/v1"):
+        return {"runtime": {"backend": "cuda", "ngl": 99, "ctx": 4096,
+                            "kv_cache": "q8_0", "mmproj_offload": True},
+                "vision": {"verifier": {"base_url": url, "auto_start": True}}}
+
+    def test_disabled_and_remote_verifiers_do_not_start_or_download(self):
+        with patch.object(server, "_endpoint_alive") as alive, \
+                patch.object(server, "ensure_runtime") as runtime:
+            self.assertIsNone(server.ensure_verifier({}))
+            self.assertIsNone(server.ensure_verifier(self.cfg("http://192.0.2.1:8083/v1")))
+            alive.assert_not_called()
+            runtime.assert_not_called()
+
+    def test_reuses_d1_but_rejects_another_model(self):
+        for model in ("d1", "d1-2B-Q4_K_M.gguf", "other"):
+            with self.subTest(model=model), \
+                    patch.object(server, "_endpoint_alive", return_value={"models": [model]}), \
+                    patch.object(server, "ensure_runtime") as runtime:
+                if model == "other":
+                    with self.assertRaisesRegex(RuntimeError, "não d1"):
+                        server.ensure_verifier(self.cfg())
+                else:
+                    self.assertIsNone(server.ensure_verifier(self.cfg(), progress=lambda *a: None))
+                runtime.assert_not_called()
+
+    def test_missing_url_or_busy_port_fails_before_download(self):
+        with patch.object(server, "ensure_runtime") as runtime:
+            with self.assertRaisesRegex(ValueError, "base_url"):
+                server.ensure_verifier(self.cfg(""))
+            with patch.object(server, "_endpoint_alive", return_value=None), \
+                    patch.object(server, "_port_in_use", return_value=True):
+                with self.assertRaisesRegex(RuntimeError, "ocupada"):
+                    server.ensure_verifier(self.cfg())
+            runtime.assert_not_called()
+
+    def test_verifier_stays_on_cpu_with_gpu_profile_and_projector(self):
+        args = server._server_args("verifier", Path("d.gguf"), Path("p.gguf"), 8083, self.cfg())
+        self.assertEqual(args[args.index("-ngl") + 1], "0")
+        self.assertEqual(args[args.index("-c") + 1], "1024")
+        self.assertEqual(args[args.index("-np") + 1], "1")
+        self.assertEqual(args[args.index("--alias") + 1], "d1")
+        self.assertIn("--no-mmproj-offload", args)
+        self.assertNotIn("-ctk", args)
+
+    def test_start_downloads_only_verifier_weights(self):
+        downloaded = []
+        with patch.object(server, "_endpoint_alive", return_value=None), \
+                patch.object(server, "_port_in_use", return_value=False), \
+                patch.object(server, "ensure_runtime"), \
+                patch.object(Path, "exists", return_value=False), \
+                patch.object(server, "_download", side_effect=lambda u, d, **k: downloaded.append(d.name)), \
+                patch.object(server, "_spawn_one", return_value="proc") as spawn:
+            proc = server.ensure_verifier(self.cfg(), progress=lambda *a: None)
+        self.assertEqual(proc, "proc")
+        self.assertEqual(downloaded, ["d1-2B-Q4_K_M.gguf", "mmproj-d1-2B-F16.gguf"])
+        self.assertEqual(spawn.call_args.args[0], "verifier")
+
+    def test_verifier_failure_stops_our_profile_processes(self):
+        ours = {"planner": object(), "vision": None}
+        with patch.object(server, "_ensure_profile_servers", return_value=ours), \
+                patch.object(server, "ensure_verifier", side_effect=RuntimeError("startup")), \
+                patch.object(server, "stop_servers") as stop:
+            with self.assertRaisesRegex(RuntimeError, "startup"):
+                server.ensure_servers_for_profile(("a", "b"), self.cfg())
+            stop.assert_called_once_with(ours)
+
+    def test_vision_failure_also_stops_already_started_planner(self):
+        planner = object()
+        with patch.object(server, "_endpoint_alive", return_value=None), \
+                patch.object(server, "_port_in_use", return_value=False), \
+                patch.object(server, "ensure_assets", return_value={}), \
+                patch.object(server, "_spawn_one", side_effect=[planner, RuntimeError("vision")]), \
+                patch.object(server, "stop_servers") as stop:
+            with self.assertRaisesRegex(RuntimeError, "vision"):
+                server.ensure_servers(("http://localhost:8091/v1", "http://localhost:8082/v1"), {})
+            stop.assert_called_once_with({"planner": planner, "vision": None})

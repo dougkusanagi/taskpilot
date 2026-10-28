@@ -99,7 +99,8 @@ class TestAdapterConfig(unittest.TestCase):
     def test_protocol_is_derived_from_the_model_family(self):
         for model, want in (("Qwen3-VL-2B-Instruct", "p2d"), ("qwen3-vl-4b-instruct", "p2d"),
                             ("MAI-UI-2B", "pyauto"), ("gui-owl-1.5-2b-instruct", "pyauto"),
-                            ("Qwen3.5-4B", "json"), ("Vocaela-2", "json")):
+                            ("Qwen3.5-4B", "json"), ("Vocaela-2", "json"),
+                            ("LFM3-VL-2B", "p2d")):
             self.assertEqual(v.default_protocol(model), want, model)
         self.assertEqual(v.QwenGroundingAdapter().protocol, "p2d")  # modelo padrão: Qwen3-VL-2B
 

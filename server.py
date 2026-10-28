@@ -2,7 +2,7 @@
 
 Meta: `uv run python main.py "..."` funciona SEM subir nada externo. O projeto
 tem seu próprio runtime: na 1ª execução baixa o binário do `llama-server`
-(llama.cpp, release Windows x64 CPU) e os GGUFs para `models/` (gitignored);
+(llama.cpp, release Windows ou Ubuntu x64) e os GGUFs para `models/` (gitignored);
 nas seguintes, só reusa. O "erro honesto" (loop.py) passa a valer só quando
 algo de verdade falha (download, porta ocupada por servidor de outro modelo,
 runtime ausente) — não quando ninguém subiu servidor externo.
@@ -16,11 +16,14 @@ vivo (ou com outro modelo) = erro honesto, nunca matamos processo alheio.
 from __future__ import annotations
 
 import os
+import platform
 import re
 import shutil
 import socket
 import subprocess
 import sys
+import tarfile
+import tempfile
 import time
 import urllib.parse
 import urllib.request
@@ -103,6 +106,11 @@ GGUF_REGISTRY: dict[str, dict] = {
         "mmproj": {"file": "GUI-Owl-1.5-2B-Instruct.mmproj-f16.gguf", "url": _HF
                    + "mradermacher/GUI-Owl-1.5-2B-Instruct-GGUF/resolve/main/"
                    "GUI-Owl-1.5-2B-Instruct.mmproj-f16.gguf"}},
+    "lfm3-vl-2b": {  # localizador (28/10): 96/96 alvos existentes; precisa de raciocínio
+        "gguf": {"file": "LFM3-VL-2B-QAD-Q4_0.gguf", "url": _HF
+                 + "LiquidAI/LFM3-VL-2B-GGUF/resolve/main/LFM3-VL-2B-QAD-Q4_0.gguf"},
+        "mmproj": {"file": "mmproj-LFM3-VL-2B-F16.gguf", "url": _HF
+                   + "LiquidAI/LFM3-VL-2B-GGUF/resolve/main/mmproj-LFM3-VL-2B-F16.gguf"}},
     "qwen3-vl-4b-instruct": {  # unificado: planeja (25/25) e localiza (81%) num processo só
         "gguf": {"file": "Qwen3-VL-4B-Instruct-Q4_K_M.gguf", "url": _HF
                  + "unsloth/Qwen3-VL-4B-Instruct-GGUF/resolve/main/"
@@ -112,22 +120,27 @@ GGUF_REGISTRY: dict[str, dict] = {
 }
 
 
+VERIFIER_GGUF = {"file": "d1-2B-Q4_K_M.gguf", "url": _HF
+                 + "LiquidAI/d1-2B-GGUF/resolve/main/d1-2B-Q4_K_M.gguf"}
+VERIFIER_MMPROJ = {"file": "mmproj-d1-2B-F16.gguf", "url": _HF
+                   + "LiquidAI/d1-2B-GGUF/resolve/main/mmproj-d1-2B-F16.gguf"}
+
+
 def registry_entry(model: str) -> dict | None:
     """Entrada do GGUF_REGISTRY para o nome do modelo (puro)."""
     key = re.sub(r"[^a-z0-9.]+", "-", str(model or "").lower()).strip("-")
     return GGUF_REGISTRY.get(key)
 
 
-# Release fixa do llama.cpp (binários Windows x64 CPU); atualize o tag de vez
-# em quando. CPU-only de propósito: roda em qualquer PC; quem quiser GPU pode
-# subir llama-server externo — o reuso por porta cobre isso.
-LLAMA_TAG = "b11053"
+# Release fixa do llama.cpp; CPU por padrão, CUDA/Vulkan opt-in.
+# Ubuntu x86_64 usa tar.gz; Windows x64 usa ZIP.
+LLAMA_TAG = "b11954"  # >= b11935: suporte a LFM3 (VL e d1)
 LLAMA_ZIP_URL = (
     "https://github.com/ggml-org/llama.cpp/releases/download/"
     f"{LLAMA_TAG}/llama-{LLAMA_TAG}-bin-win-cpu-x64.zip"
 )
 LLAMA_EXE = BIN_DIR / "llama-server.exe"
-BACKEND_MARK = BIN_DIR / ".backend"  # backend do llama-server extraído (cpu|vulkan|cuda)
+BACKEND_MARK = BIN_DIR / ".backend"  # "<backend>@<tag>" do llama-server extraído
 
 # Backends do llama.cpp (assets da release LLAMA_TAG, conferidos na API do GitHub):
 #  cpu    18 MB  roda em qualquer PC (padrão histórico; ngl não tem efeito)
@@ -136,11 +149,25 @@ BACKEND_MARK = BIN_DIR / ".backend"  # backend do llama-server extraído (cpu|vu
 BACKENDS = ("cpu", "vulkan", "cuda")
 
 
+def runtime_exe() -> Path:
+    return BIN_DIR / "llama-server" if sys.platform == "linux" else LLAMA_EXE
+
+
 def llama_urls(backend: str = "cpu") -> list[str]:
-    """URLs do(s) zip(s) do llama.cpp para o backend (puro, testável)."""
+    """URLs dos arquivos do llama.cpp por backend e plataforma."""
     if backend not in BACKENDS:
         raise ValueError(f"runtime.backend inválido: {backend!r}; use {BACKENDS}")
     base = f"https://github.com/ggml-org/llama.cpp/releases/download/{LLAMA_TAG}/"
+    if sys.platform == "linux":
+        if platform.machine().lower() not in ("x86_64", "amd64"):
+            raise RuntimeError("runtime Linux requer arquitetura x86_64")
+        suffix = {"cpu": "x64", "vulkan": "vulkan-x64", "cuda": "cuda-12.8-x64"}[backend]
+        urls = [base + f"llama-{LLAMA_TAG}-bin-ubuntu-{suffix}.tar.gz"]
+        if backend == "cuda":
+            urls.append(base + f"cudart-llama-{LLAMA_TAG}-bin-ubuntu-{suffix}.tar.gz")
+        return urls
+    if sys.platform != "win32":
+        raise RuntimeError("runtime próprio disponível para Windows e Linux x86_64")
     if backend == "cuda":
         return [base + f"llama-{LLAMA_TAG}-bin-win-cuda-12.4-x64.zip",
                 base + "cudart-llama-bin-win-cuda-12.4-x64.zip"]
@@ -223,6 +250,24 @@ def _extract_zip(zip_path: Path, dest: Path) -> None:
             break
 
 
+def _extract_tar(archive: Path, dest: Path) -> None:
+    """Extrai release Linux com filtro de caminhos; mantém libs ao lado do executável."""
+    dest.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory(prefix="llama-extract-") as tmp:
+        unpacked = Path(tmp)
+        with tarfile.open(archive) as tf:
+            tf.extractall(unpacked, filter="data")
+        candidates = list(unpacked.rglob("llama-server")) or list(unpacked.rglob("libcudart.so*"))
+        if not candidates:
+            raise RuntimeError(f"arquivo de runtime sem executável ou biblioteca CUDA: {archive}")
+        for item in candidates[0].parent.iterdir():
+            target = dest / item.name
+            # As bibliotecas do cudart ficam junto ao executável, mesmo quando este já existe.
+            if not target.exists() and not target.is_symlink():
+                shutil.move(str(item), str(target))
+    archive.unlink(missing_ok=True)
+
+
 def _endpoint_alive(base_url: str, timeout_s: float = 5.0) -> dict | None:
     """/v1/models vivo? Retorna {"models": [...]} ou None."""
     import httpx
@@ -266,41 +311,44 @@ def planner_gguf_for(cfg: dict) -> dict:
     return PLANNER_GGUF
 
 
-def ensure_assets(progress=print, cfg: dict | None = None) -> dict:
-    """Baixa o que falta (llama.cpp + GGUFs) e extrai. Idempotente.
-
-    Retorna Paths {exe, planner_gguf, vision_gguf, mmproj}.
-    Erro honesto (RuntimeError) se download/extração falhar.
-    """
-    if sys.platform != "win32":
-        # Os binários baixados são do Windows e o agente (UIA/pyautogui) só roda lá: falhar ANTES
-        # de baixar gigabytes que nunca vão executar.
-        raise RuntimeError(
-            "o runtime próprio e o agente só funcionam no Windows (baixa llama-server.exe). "
-            "Neste sistema, suba um llama-server/LM Studio e use --no-runtime "
-            "(só serve para as baterias de avaliação, não para controlar o desktop)."
-        )
-    MODELS_DIR.mkdir(parents=True, exist_ok=True)
-
+def ensure_runtime(progress=print, cfg: dict | None = None) -> Path:
+    """Garante só o binário, sem baixar pesos de papéis que não serão usados."""
+    # Valida plataforma/arquitetura antes de qualquer download.
     backend = str((cfg or {}).get("runtime", {}).get("backend", "cpu"))
     urls = llama_urls(backend)
+    exe = runtime_exe()
+    MODELS_DIR.mkdir(parents=True, exist_ok=True)
+
+    want = f"{backend}@{LLAMA_TAG}"
+    if sys.platform == "linux":
+        want += "@linux-x64"
     have = BACKEND_MARK.read_text(encoding="utf-8").strip() if BACKEND_MARK.exists() else "cpu"
-    if LLAMA_EXE.exists() and have != backend:
-        progress(f"runtime.backend mudou ({have} -> {backend}): baixando outro llama.cpp...")
+    if exe.exists() and have != want:
+        # Marca antiga sem "@tag" = release anterior: modelos novos (LFM3) não carregariam nela.
+        progress(f"llama.cpp instalado ({have}) difere do pedido ({want}): baixando de novo...")
         shutil.rmtree(BIN_DIR, ignore_errors=True)
-    if not LLAMA_EXE.exists():
+    if not exe.exists():
         progress(f"baixando llama.cpp {LLAMA_TAG} ({backend}, 1ª vez)...")
         for n, url in enumerate(urls):
-            zp = MODELS_DIR / f"llama{n}.zip"
+            zp = MODELS_DIR / (f"llama{n}.tar.gz" if sys.platform == "linux" else f"llama{n}.zip")
             _download(url, zp, min_bytes=10_000_000, progress=progress)
-            _extract_zip(zp, BIN_DIR)
-        if not LLAMA_EXE.exists():
+            if sys.platform == "linux":
+                _extract_tar(zp, BIN_DIR)
+            else:
+                _extract_zip(zp, BIN_DIR)
+        if not exe.exists():
             raise RuntimeError(
-                f"llama-server.exe não apareceu em {BIN_DIR} após extrair {urls}"
+                f"llama-server não apareceu em {BIN_DIR} após extrair {urls}"
             )
         BACKEND_MARK.parent.mkdir(parents=True, exist_ok=True)
-        BACKEND_MARK.write_text(backend, encoding="utf-8")
+        BACKEND_MARK.write_text(want, encoding="utf-8")
 
+    return exe
+
+
+def ensure_assets(progress=print, cfg: dict | None = None) -> dict:
+    """Garante runtime e pesos do planner/localizador configurados."""
+    exe = ensure_runtime(progress=progress, cfg=cfg)
     cfg = cfg or {}
     reg_planner = registry_entry(cfg.get("planner", {}).get("model", ""))
     reg_vision = registry_entry(cfg.get("vision", {}).get("model", ""))
@@ -320,7 +368,7 @@ def ensure_assets(progress=print, cfg: dict | None = None) -> dict:
     else:
         inv["vision_gguf"] = (MODELS_DIR / VISION_GGUF["file"], VISION_GGUF, 100_000_000)
         inv["mmproj"] = (MODELS_DIR / VISION_MMPROJ["file"], VISION_MMPROJ, 10_000_000)
-    assets: dict[str, Path] = {"exe": LLAMA_EXE}
+    assets: dict[str, Path] = {"exe": exe}
     for key, (dest, src, min_bytes) in inv.items():
         if not dest.exists():
             progress(f"baixando {src['file']} (1ª vez)...")
@@ -339,10 +387,12 @@ def _server_args(role: str, gguf: Path, mmproj: Path | None, port: int, cfg: dic
         threads = DEFAULT_THREADS
     ctx = int(rt.get("ctx", DEFAULT_CTX))
     backend = str(rt.get("backend", "cpu"))
-    if backend != "cpu" and ngl == 0:
+    if role == "verifier":
+        ngl, ctx, threads = 0, 1024, min(threads, 4)
+    if backend != "cpu" and ngl == 0 and role != "verifier":
         ngl = 99  # GPU: com ngl=0 o backend GPU rodaria tudo na CPU
     args = [
-        str(LLAMA_EXE),
+        str(runtime_exe()),
         "-m",
         str(gguf),
         "--host",
@@ -358,17 +408,19 @@ def _server_args(role: str, gguf: Path, mmproj: Path | None, port: int, cfg: dic
     ]
     if mmproj is not None:
         args += ["--mmproj", str(mmproj)]
-        if not bool(rt.get("mmproj_offload", True)):
+        if role == "verifier" or not bool(rt.get("mmproj_offload", True)):
             # encoder de imagem na CPU: libera ~0,8 GB e o buffer de computação na GPU
             args += ["--no-mmproj-offload"]
-    parallel = int(rt.get("parallel", 0) or 0)
+    parallel = 1 if role == "verifier" else int(rt.get("parallel", 0) or 0)
     if parallel > 0:
         args += ["-np", str(parallel)]  # 1 = uma geração por vez (sem slots extras de KV)
-    kv = str(rt.get("kv_cache", "f16"))
+    kv = "f16" if role == "verifier" else str(rt.get("kv_cache", "f16"))
     if kv != "f16":
         if kv not in ("q8_0", "q4_0"):
             raise ValueError(f"runtime.kv_cache inválido: {kv!r}; use f16, q8_0 ou q4_0")
         args += ["-fa", "on", "-ctk", kv, "-ctv", kv]  # KV quantizado exige flash attention
+    if role == "verifier":
+        args += ["--alias", "d1"]
     if role == "planner":
         # jinja: o template oficial do MiniCPM5 (planner.py conta com ele p/
         # chat_template_kwargs.enable_thinking).
@@ -437,8 +489,8 @@ def _wait_alive(
 def _spawn_one(
     role: str, base_url: str, port: int, assets: dict, cfg: dict, progress=print
 ) -> subprocess.Popen:
-    gguf = assets["planner_gguf" if role == "planner" else "vision_gguf"]
-    mmproj = assets.get("planner_mmproj") if role == "planner" else assets.get("mmproj")
+    gguf = assets[f"{role}_gguf"]
+    mmproj = assets.get(f"{role}_mmproj") if role != "vision" else assets.get("mmproj")
     args = _server_args(role, gguf, mmproj, port, cfg)
     log = MODELS_DIR / f"llama-server-{role}.log"
     host = str(cfg.get("runtime", {}).get("host", "127.0.0.1"))
@@ -494,12 +546,16 @@ def ensure_servers(base_urls: tuple[str, str], cfg: dict, progress=print) -> dic
     if needed:
         progress("modelos não estão no ar; garantindo runtime local...")
         assets = ensure_assets(progress=progress, cfg=cfg)
-        for role, (base_url, port) in needed.items():
-            out[role] = _spawn_one(role, base_url, port, assets, cfg, progress=progress)
+        try:
+            for role, (base_url, port) in needed.items():
+                out[role] = _spawn_one(role, base_url, port, assets, cfg, progress=progress)
+        except Exception:
+            stop_servers(out)
+            raise
     return out
 
 
-def ensure_servers_for_profile(
+def _ensure_profile_servers(
     base_urls: tuple[str, str], cfg: dict, profile: dict | None = None, progress=print
 ) -> dict:
     """F4: unificado com mesmo checkpoint sobe UM processo (alias lógico).
@@ -540,6 +596,49 @@ def ensure_servers_for_profile(
     return ensure_servers(base_urls, cfg, progress=progress)
 
 
+def ensure_verifier(cfg: dict, progress=print):
+    """Inicia d1 na CPU somente com auto_start explícito e URL local; reusa externos."""
+    ver = cfg.get("vision", {}).get("verifier") or {}
+    if not ver.get("auto_start", False):
+        return None
+    url = str(ver.get("base_url") or "")
+    if not url:
+        raise ValueError("vision.verifier.auto_start requer vision.verifier.base_url")
+    if not needs_local_serve((url,)):
+        return None
+    alive = _endpoint_alive(url)
+    if alive:
+        if not (_models_match(alive, "d1-2b") or "d1" in alive.get("models", [])):
+            raise RuntimeError(f"endpoint do verificador {url} serve {alive['models']}, não d1")
+        progress(f"verificador: reusando {url}")
+        return None
+    host, port = _split_host_port(url)
+    if _port_in_use(host, port):
+        raise RuntimeError(f"porta {port} do verificador ocupada sem endpoint; escolha outra URL")
+    ensure_runtime(progress=progress, cfg=cfg)
+    assets = {}
+    for key, entry in (("verifier_gguf", VERIFIER_GGUF), ("verifier_mmproj", VERIFIER_MMPROJ)):
+        dest = MODELS_DIR / entry["file"]
+        if not dest.exists():
+            progress(f"baixando {entry['file']} (verificador opt-in)...")
+            _download(entry["url"], dest, min_bytes=100_000_000, progress=progress)
+        assets[key] = dest
+    return _spawn_one("verifier", url, port, assets, cfg, progress=progress)
+
+
+def ensure_servers_for_profile(
+    base_urls: tuple[str, str], cfg: dict, profile: dict | None = None, progress=print
+) -> dict:
+    out = _ensure_profile_servers(base_urls, cfg, profile, progress=progress)
+    try:
+        if (cfg.get("vision", {}).get("verifier") or {}).get("auto_start", False):
+            out["verifier"] = ensure_verifier(cfg, progress=progress)
+    except Exception:
+        stop_servers(out)
+        raise
+    return out
+
+
 def gpu_status(cfg: dict) -> dict:
     """GPU real e orçamento (§7, §3.2): offload efetivo + dedicada/compartilhada.
 
@@ -553,7 +652,7 @@ def gpu_status(cfg: dict) -> dict:
     except Exception:
         gpu = {}
     ngl = int(cfg.get("runtime", {}).get("ngl", DEFAULT_NGL))
-    exe = str(LLAMA_EXE)
+    exe = str(runtime_exe())
     cpu_only = "cpu" in exe.lower() or "bin" in exe.lower()
     warn = ""
     if ngl > 0 and cpu_only:

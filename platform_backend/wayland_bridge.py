@@ -118,7 +118,8 @@ class Bridge:
         self.node_id, props = streams[0]
         self.stream_size = tuple(props.get("size", (0, 0)))
         self._open_pipeline()
-        return {"stream_size": list(self.stream_size), "node": int(self.node_id)}
+        return {"stream_size": list(self.stream_size), "node": int(self.node_id),
+                "devices": int(res.get("devices", 0))}
 
     def _open_pipeline(self) -> None:
         Gst.init(None)
@@ -128,7 +129,7 @@ class Bridge:
             Gio.DBusCallFlags.NONE, 10000, None, None)
         fd = fds.get(reply.unpack()[0])
         desc = (f"pipewiresrc fd={fd} path={self.node_id} do-timestamp=true ! videoconvert ! "
-                "video/x-raw,format=RGB ! fakesink name=sink sync=false signal-handoff=true")
+                "video/x-raw,format=RGB ! fakesink name=sink sync=false signal-handoffs=true")
         self.pipeline = Gst.parse_launch(desc)
         sink = self.pipeline.get_by_name("sink")
 

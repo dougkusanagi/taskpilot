@@ -123,7 +123,12 @@ def build_adapters(cfg: dict):
     """
     import config as cfgmod
     from planner import MiniCPMPlanner, QwenVLPlanner
-    from vocaela import QwenGroundingAdapter, VocaelaAdapter, is_grounding_family
+    from vocaela import (
+        QwenGroundingAdapter,
+        TargetVerifier,
+        VocaelaAdapter,
+        is_grounding_family,
+    )
 
     prof = cfgmod.profile_of(cfg)
     pc, vc = cfg.get("planner", {}), cfg.get("vision", {})
@@ -138,12 +143,16 @@ def build_adapters(cfg: dict):
                              features=tuple(pc.get("features", ())))
     v_model = vc.get("model", prof.get("vision", ""))
     if is_grounding_family(v_model):
+        ver = vc.get("verifier") or {}
+        verifier = (TargetVerifier(ver["base_url"], float(ver.get("threshold", 0.2)))
+                    if ver.get("base_url") else None)
         vision = QwenGroundingAdapter(
             base_url=v_url, model=v_model,
             timeout_s=float(vc.get("timeout_s", 180)),
             max_long_edge=int(cfg.get("screenshot_max_width", 1024)),
             zoom=bool(vc.get("zoom", False)), coords=vc.get("coords") or None,
-            protocol=vc.get("protocol") or None, zoom_frac=float(vc.get("zoom_frac", 0.35)))
+            protocol=vc.get("protocol") or None, zoom_frac=float(vc.get("zoom_frac", 0.35)),
+            max_tokens=int(vc.get("max_tokens") or 64), verifier=verifier)
     else:
         vision = VocaelaAdapter(
             base_url=v_url, model=v_model,

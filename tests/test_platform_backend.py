@@ -87,5 +87,106 @@ class SeamTests(unittest.TestCase):
                 actions._check_coords(100, 10)  # fora do monitor compartilhado
 
 
+class CliPlatformTests(unittest.TestCase):
+    def test_locate_uses_platform_and_always_closes_it(self):
+        import main
+
+        calls = []
+        with mock.patch.object(sys, "argv", ["main.py", "--platform", "wayland", "--locate", "OK"]), \
+                mock.patch.object(main.cfgmod, "load", return_value={}), \
+                mock.patch.object(platform_backend, "enable", side_effect=lambda p: calls.append(p)), \
+                mock.patch.object(platform_backend, "disable", side_effect=lambda: calls.append("close")), \
+                mock.patch.object(main, "locate_only", side_effect=lambda *a: calls.append("locate")):
+            main.main()
+        self.assertEqual(calls, ["wayland", "locate", "close"])
+
+    def test_platform_closes_after_locate_error(self):
+        import main
+
+        with mock.patch.object(sys, "argv", ["main.py", "--platform", "wayland", "--locate", "OK"]), \
+                mock.patch.object(main.cfgmod, "load", return_value={}), \
+                mock.patch.object(platform_backend, "enable"), \
+                mock.patch.object(platform_backend, "disable") as close, \
+                mock.patch.object(main, "locate_only", side_effect=RuntimeError("captura falhou")):
+            with self.assertRaisesRegex(RuntimeError, "captura falhou"):
+                main.main()
+            close.assert_called_once()
+
+    def test_self_test_captures_with_selected_backend_and_closes(self):
+        import main
+        import obs
+        import safety
+
+        calls = []
+        with mock.patch.object(sys, "argv", ["main.py", "--self-test", "--platform", "wayland"]), \
+                mock.patch.object(main.cfgmod, "load", return_value={}), \
+                mock.patch.object(platform_backend, "enable", side_effect=lambda p: calls.append(p)), \
+                mock.patch.object(platform_backend, "disable", side_effect=lambda: calls.append("close")), \
+                mock.patch.object(obs, "take_screenshot", side_effect=lambda: (calls.append("capture") or ("frame.png", (100, 80)))), \
+                mock.patch.object(safety, "start"), mock.patch("builtins.print"):
+            main.main()
+        self.assertEqual(calls, ["wayland", "capture", "close"])
+
+    def test_dry_run_does_not_enable_platform(self):
+        import main
+
+        with mock.patch.object(sys, "argv", ["main.py", "--dry-run", "--platform", "wayland", "--locate", "OK"]), \
+                mock.patch.object(main.cfgmod, "load", return_value={}), \
+                mock.patch.object(platform_backend, "enable") as enable, \
+                mock.patch.object(platform_backend, "disable"), mock.patch.object(main, "locate_only"):
+            main.main()
+            enable.assert_not_called()
+
+
+class BridgeInitializationTests(unittest.TestCase):
+    def test_pipeline_uses_the_fakesink_handoff_property(self):
+        import runpy
+        from pathlib import Path
+
+        gst, gio, glib = mock.Mock(), mock.Mock(), mock.Mock()
+        repository = mock.Mock(Gst=gst, Gio=gio, GLib=glib)
+        with mock.patch.dict(sys.modules, {"gi": mock.Mock(), "gi.repository": repository}):
+            module = runpy.run_path(str(Path(wayland.__file__).with_name("wayland_bridge.py")))
+        bridge = module["Bridge"].__new__(module["Bridge"])
+        bridge.bus = mock.Mock()
+        reply, fds = mock.Mock(), mock.Mock()
+        reply.unpack.return_value = (0,)
+        fds.get.return_value = 7
+        bridge.bus.call_with_unix_fd_list_sync.return_value = (reply, fds)
+        bridge.session, bridge.node_id = "/session", 42
+        bridge._open_pipeline()
+        gst.init.assert_called_once_with(None)
+        description = gst.parse_launch.call_args.args[0]
+        self.assertIn("signal-handoffs=true", description)
+        self.assertNotIn("signal-handoff=", description)
+
+
+class PortalPermissionTests(unittest.TestCase):
+    def test_capture_only_permission_never_sends_input(self):
+        backend = mock.Mock(devices=0)
+        input_api = wayland._Input(backend)
+        for request in ({"cmd": "keysym", "sym": 97, "state": 1},
+                        {"cmd": "button", "code": 272, "state": 1}):
+            with self.assertRaisesRegex(RuntimeError, "Allow Remote Interaction"):
+                input_api._c(request)
+        backend._call.assert_not_called()
+
+    def test_keyboard_and_pointer_permissions_are_checked_separately(self):
+        for devices, allowed, denied in ((1, "keysym", "move"), (2, "move", "keysym")):
+            backend = mock.Mock(devices=devices)
+            input_api = wayland._Input(backend)
+            input_api._c({"cmd": allowed})
+            backend._call.assert_called_once_with({"cmd": allowed})
+            with self.assertRaises(RuntimeError):
+                input_api._c({"cmd": denied})
+
+    def test_full_permission_allows_both_devices(self):
+        backend = mock.Mock(devices=3)
+        input_api = wayland._Input(backend)
+        input_api._c({"cmd": "move"})
+        input_api._c({"cmd": "keysym"})
+        self.assertEqual(backend._call.call_count, 2)
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -369,3 +369,23 @@ abaixo são legado a substituir conforme o plano vigente, não regras a perpetua
 - Quirks: `mss` no Wayland = tela preta; AT-SPI devolve bounds `(0,0)` em janela Wayland nativa; Chrome
   do usuário roda com ozone wayland. Execução real (diálogo do portal + loop com modelos) ainda não
   verificada em 02/10; nenhum teste automatizado abre sessão no desktop.
+
+## Bancada 6 GB com modelos novos (28/10/2026)
+
+- Relatório: `docs/bancada-6gb-lfm3-2026-10-28.md`. Orçamento emulado 4608 MB (6 GB − 1,5 GB p/ o
+  sistema) via `evals/vram_budget.py`; `evals/budget_bench.py --plan evals/budget_plan.json` sobe
+  servidores, mede VRAM por PID e roda as suítes. No Linux falta de memória falha (WDDM transbordaria).
+  Offline, sem E2E Windows/Sandbox; default B1 inalterado.
+- Visão ground-v2 (32 existentes + 31 ausentes ×3): LFM3-VL-2B p2d (512 tokens) achou 96/96 mas clica
+  em ausentes (38/93); MAI-UI 84/96, 15/93. reasoning-budget 256 no LFM3-VL piora (93/93 errados).
+  Resposta truncada = alvo ausente, sem clique.
+- Verificador d1-2B (`/v1/systemone`, `noul`, recorte de 192 px no ponto; `vision.verifier`, opt-in,
+  runtime não sobe o d1): limite 0,20 → cliques errados 45→9, acertos 96→93 (limite escolhido nos
+  mesmos dados). Marcar o ponto na tela inteira não funcionou. Falha do verificador = sem clique.
+- Planner: Qwen3-4B 30/33 traj, 47% prod, 223 ms; Nemotron 3.5 Bolt E4B IQ3_XXS 29/33, 73%, 1,65 s
+  (thinking-off ignorado pelo template; `--reasoning-budget 0` → 53%, 485 ms); Ministral-3-3B,
+  Nemotron-Nano-4B e LFM3-1.7B ficaram bem abaixo.
+- Em 4,6 GB: Qwen + visão 2B só cabe com mmproj na CPU; Bolt + LFM3-VL cabe todo na GPU (4,5 GB);
+  d1 na GPU como 3º modelo sempre estoura, na CPU (ngl 0) cabe e leva ~310 ms.
+- Quirks: llama.cpp ≥ b11935 p/ LFM3 (pinado b11954; marca `.backend` = `backend@tag`); cudart precisa
+  estar ao lado do llama-server senão roda em CPU sem erro (bench recusa < 300 MB de GPU).

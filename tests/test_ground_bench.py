@@ -59,11 +59,24 @@ class TestGroundBench(unittest.TestCase):
         self.assertTrue(row["hit_if_scale_1000"])
         self.assertFalse(row["passed"])
 
-    def test_garbage_and_truncation_are_failures(self):
+    def test_garbage_is_a_format_failure(self):
         self.assertEqual(self.ev("não sei")["error_kind"], "format")
-        self.assertEqual(self.ev('{"x":0.5,"y":0.45}', finish="length")["error_kind"],
-                         "truncated")
-        self.assertFalse(self.ev('{"x":0.5,"y":0.45}', finish="length")["passed"])
+
+    def test_truncation_means_no_click_like_production(self):
+        # vocaela.grounding_content: truncou = alvo não visível; nunca clicar no texto cortado.
+        absent = self.ev('{"x":0.5,"y":0.45}', finish="length", bbox=None)
+        self.assertTrue(absent["passed"] and absent["truncated"] and not absent["false_click"])
+        present = self.ev('{"x":0.5,"y":0.45}', finish="length")
+        self.assertFalse(present["passed"])
+        self.assertIsNone(present["decision"])
+        extra = gb.extra_summary([absent, present])
+        self.assertEqual(extra["Ausentes resolvidos por truncamento (sem clique)"], "1/1")
+        self.assertEqual(extra["Alvos existentes perdidos por truncamento"], "1/1")
+
+    def test_committed_specs_have_enough_absent_targets(self):
+        specs = json.loads((gb.GROUND.parent / "ground_specs.json").read_text(encoding="utf-8"))
+        absent = [t for p in specs["pages"] for t in p["targets"] if t.get("absent")]
+        self.assertGreaterEqual(len(absent), 30)
 
     def test_extra_summary_counts_false_clicks_and_scale(self):
         rows = [self.ev('{"x":0.5,"y":0.5}', bbox=None), self.ev('{"x":null,"y":null}', bbox=None),

@@ -1,0 +1,769 @@
+{
+ "note": "Plano da bancada de 28/10/2026: orçamento de 6 GB - 1,5 GB. Caminhos relativos a --models.",
+ "configs": [
+  {
+   "name": "vis-maiui",
+   "servers": [
+    {
+     "alias": "mai-ui",
+     "gguf": "MAI-UI-2B.Q4_K_M.gguf",
+     "mmproj": "MAI-UI-2B.mmproj-f16.gguf",
+     "ctx": 4096
+    }
+   ],
+   "runs": [
+    {
+     "suite": "ground",
+     "model": "mai-ui",
+     "tag": "ground-pyauto",
+     "features": "pyauto",
+     "reps": 3,
+     "max_tokens": 128,
+     "thinking": "native"
+    }
+   ]
+  },
+  {
+   "name": "vis-lfm3vl",
+   "servers": [
+    {
+     "alias": "lfm3-vl",
+     "gguf": "LFM3-VL-2B-QAD-Q4_0.gguf",
+     "mmproj": "mmproj-LFM3-VL-2B-F16.gguf",
+     "ctx": 4096
+    }
+   ],
+   "runs": [
+    {
+     "suite": "ground",
+     "model": "lfm3-vl",
+     "tag": "ground-p2d-512",
+     "features": "p2d",
+     "reps": 3,
+     "max_tokens": 512,
+     "thinking": "native"
+    }
+   ]
+  },
+  {
+   "name": "vis-lfm3vl-rb256",
+   "servers": [
+    {
+     "alias": "lfm3-vl",
+     "gguf": "LFM3-VL-2B-QAD-Q4_0.gguf",
+     "mmproj": "mmproj-LFM3-VL-2B-F16.gguf",
+     "ctx": 4096,
+     "reasoning_budget": 256
+    }
+   ],
+   "runs": [
+    {
+     "suite": "ground",
+     "model": "lfm3-vl",
+     "tag": "ground-p2d-rb256",
+     "features": "p2d",
+     "reps": 3,
+     "max_tokens": 1024,
+     "thinking": "native"
+    }
+   ]
+  },
+  {
+   "name": "plan-qwen3-4b",
+   "servers": [
+    {
+     "alias": "qwen3-4b",
+     "gguf": "Qwen3-4B-Instruct-2507-Q4_K_M.gguf",
+     "ctx": 4096
+    }
+   ],
+   "runs": [
+    {
+     "suite": "trajectory",
+     "model": "qwen3-4b",
+     "tag": "traj-native",
+     "features": "dynschema,fewshot,plan",
+     "thinking": "native",
+     "reps": 3,
+     "max_tokens": 2048
+    },
+    {
+     "suite": "production",
+     "model": "qwen3-4b",
+     "tag": "prod-native",
+     "features": "dynschema,fewshot,plan",
+     "thinking": "native",
+     "reps": 3,
+     "max_tokens": 2048
+    }
+   ]
+  },
+  {
+   "name": "plan-nemo-nano-4b",
+   "servers": [
+    {
+     "alias": "nemo-nano-4b",
+     "gguf": "NVIDIA-Nemotron-3-Nano-4B-Q4_K_M.gguf",
+     "ctx": 4096
+    }
+   ],
+   "runs": [
+    {
+     "suite": "trajectory",
+     "model": "nemo-nano-4b",
+     "tag": "traj-off",
+     "features": "dynschema,fewshot,plan",
+     "thinking": "off",
+     "reps": 3,
+     "max_tokens": 2048
+    },
+    {
+     "suite": "production",
+     "model": "nemo-nano-4b",
+     "tag": "prod-off",
+     "features": "dynschema,fewshot,plan",
+     "thinking": "off",
+     "reps": 3,
+     "max_tokens": 2048
+    },
+    {
+     "suite": "trajectory",
+     "model": "nemo-nano-4b",
+     "tag": "traj-native",
+     "features": "dynschema,fewshot,plan",
+     "thinking": "native",
+     "reps": 1,
+     "max_tokens": 2048
+    },
+    {
+     "suite": "production",
+     "model": "nemo-nano-4b",
+     "tag": "prod-native",
+     "features": "dynschema,fewshot,plan",
+     "thinking": "native",
+     "reps": 1,
+     "max_tokens": 2048
+    }
+   ]
+  },
+  {
+   "name": "plan-ministral-3b",
+   "servers": [
+    {
+     "alias": "ministral-3b",
+     "gguf": "Ministral-3-3B-Instruct-2512-Q4_K_M.gguf",
+     "ctx": 4096
+    }
+   ],
+   "runs": [
+    {
+     "suite": "trajectory",
+     "model": "ministral-3b",
+     "tag": "traj-native",
+     "features": "dynschema,fewshot,plan",
+     "thinking": "native",
+     "reps": 3,
+     "max_tokens": 2048
+    },
+    {
+     "suite": "production",
+     "model": "ministral-3b",
+     "tag": "prod-native",
+     "features": "dynschema,fewshot,plan",
+     "thinking": "native",
+     "reps": 3,
+     "max_tokens": 2048
+    }
+   ]
+  },
+  {
+   "name": "plan-bolt-e4b",
+   "servers": [
+    {
+     "alias": "bolt-e4b",
+     "gguf": "NVIDIA-Nemotron-3.5-Bolt-E4B-UD-IQ3_XXS.gguf",
+     "ctx": 4096
+    }
+   ],
+   "runs": [
+    {
+     "suite": "trajectory",
+     "model": "bolt-e4b",
+     "tag": "traj-off",
+     "features": "dynschema,fewshot,plan",
+     "thinking": "off",
+     "reps": 3,
+     "max_tokens": 2048
+    },
+    {
+     "suite": "production",
+     "model": "bolt-e4b",
+     "tag": "prod-off",
+     "features": "dynschema,fewshot,plan",
+     "thinking": "off",
+     "reps": 3,
+     "max_tokens": 2048
+    },
+    {
+     "suite": "trajectory",
+     "model": "bolt-e4b",
+     "tag": "traj-native",
+     "features": "dynschema,fewshot,plan",
+     "thinking": "native",
+     "reps": 1,
+     "max_tokens": 2048
+    },
+    {
+     "suite": "production",
+     "model": "bolt-e4b",
+     "tag": "prod-native",
+     "features": "dynschema,fewshot,plan",
+     "thinking": "native",
+     "reps": 1,
+     "max_tokens": 2048
+    }
+   ]
+  },
+  {
+   "name": "plan-lfm3-1.7b",
+   "servers": [
+    {
+     "alias": "lfm3-1.7b",
+     "gguf": "LFM3-1.7B-QAD-Q4_0.gguf",
+     "ctx": 4096
+    }
+   ],
+   "runs": [
+    {
+     "suite": "trajectory",
+     "model": "lfm3-1.7b",
+     "tag": "traj-off",
+     "features": "dynschema,fewshot,plan",
+     "thinking": "off",
+     "reps": 3,
+     "max_tokens": 2048
+    },
+    {
+     "suite": "production",
+     "model": "lfm3-1.7b",
+     "tag": "prod-off",
+     "features": "dynschema,fewshot,plan",
+     "thinking": "off",
+     "reps": 3,
+     "max_tokens": 2048
+    }
+   ]
+  },
+  {
+   "name": "verify-lfm3vl-d1",
+   "servers": [
+    {
+     "alias": "lfm3-vl",
+     "gguf": "LFM3-VL-2B-QAD-Q4_0.gguf",
+     "mmproj": "mmproj-LFM3-VL-2B-F16.gguf",
+     "ctx": 4096
+    },
+    {
+     "alias": "d1",
+     "gguf": "d1-2B-Q4_K_M.gguf",
+     "mmproj": "mmproj-d1-2B-F16.gguf",
+     "ctx": 4096
+    }
+   ],
+   "runs": [
+    {
+     "suite": "verify",
+     "model": "lfm3-vl",
+     "verifier": "d1",
+     "tag": "verify",
+     "protocol": "p2d",
+     "max_tokens": 512,
+     "reps": 3
+    }
+   ]
+  },
+  {
+   "name": "pair-P1-qwen-maiui",
+   "servers": [
+    {
+     "alias": "qwen3-4b",
+     "gguf": "Qwen3-4B-Instruct-2507-Q4_K_M.gguf",
+     "ctx": 4096
+    },
+    {
+     "alias": "mai-ui",
+     "gguf": "MAI-UI-2B.Q4_K_M.gguf",
+     "mmproj": "MAI-UI-2B.mmproj-f16.gguf",
+     "ctx": 4096
+    }
+   ],
+   "runs": [
+    {
+     "suite": "ground",
+     "model": "mai-ui",
+     "tag": "ground-pyauto",
+     "features": "pyauto",
+     "reps": 1,
+     "max_tokens": 128,
+     "thinking": "native"
+    },
+    {
+     "suite": "trajectory",
+     "model": "qwen3-4b",
+     "tag": "traj-native",
+     "features": "dynschema,fewshot,plan",
+     "thinking": "native",
+     "reps": 1,
+     "max_tokens": 2048
+    }
+   ]
+  },
+  {
+   "name": "pair-P3-qwen-lfm3vl",
+   "servers": [
+    {
+     "alias": "qwen3-4b",
+     "gguf": "Qwen3-4B-Instruct-2507-Q4_K_M.gguf",
+     "ctx": 4096
+    },
+    {
+     "alias": "lfm3-vl",
+     "gguf": "LFM3-VL-2B-QAD-Q4_0.gguf",
+     "mmproj": "mmproj-LFM3-VL-2B-F16.gguf",
+     "ctx": 4096
+    }
+   ],
+   "runs": [
+    {
+     "suite": "ground",
+     "model": "lfm3-vl",
+     "tag": "ground-p2d-512",
+     "features": "p2d",
+     "reps": 1,
+     "max_tokens": 512,
+     "thinking": "native"
+    },
+    {
+     "suite": "trajectory",
+     "model": "qwen3-4b",
+     "tag": "traj-native",
+     "features": "dynschema,fewshot,plan",
+     "thinking": "native",
+     "reps": 1,
+     "max_tokens": 2048
+    }
+   ]
+  },
+  {
+   "name": "trio-qwen-lfm3vl-d1",
+   "servers": [
+    {
+     "alias": "qwen3-4b",
+     "gguf": "Qwen3-4B-Instruct-2507-Q4_K_M.gguf",
+     "ctx": 4096
+    },
+    {
+     "alias": "lfm3-vl",
+     "gguf": "LFM3-VL-2B-QAD-Q4_0.gguf",
+     "mmproj": "mmproj-LFM3-VL-2B-F16.gguf",
+     "ctx": 4096
+    },
+    {
+     "alias": "d1",
+     "gguf": "d1-2B-Q4_K_M.gguf",
+     "mmproj": "mmproj-d1-2B-F16.gguf",
+     "ctx": 4096
+    }
+   ],
+   "runs": [
+    {
+     "suite": "verify",
+     "model": "lfm3-vl",
+     "verifier": "d1",
+     "tag": "verify",
+     "protocol": "p2d",
+     "max_tokens": 512,
+     "reps": 1
+    }
+   ]
+  },
+  {
+   "name": "plan-bolt-e4b-rb0",
+   "servers": [
+    {
+     "alias": "bolt-e4b",
+     "gguf": "NVIDIA-Nemotron-3.5-Bolt-E4B-UD-IQ3_XXS.gguf",
+     "ctx": 4096,
+     "reasoning_budget": 0
+    }
+   ],
+   "runs": [
+    {
+     "suite": "trajectory",
+     "model": "bolt-e4b",
+     "tag": "traj-rb0",
+     "features": "dynschema,fewshot,plan",
+     "thinking": "off",
+     "reps": 3,
+     "max_tokens": 2048
+    },
+    {
+     "suite": "production",
+     "model": "bolt-e4b",
+     "tag": "prod-rb0",
+     "features": "dynschema,fewshot,plan",
+     "thinking": "off",
+     "reps": 3,
+     "max_tokens": 2048
+    }
+   ]
+  },
+  {
+   "name": "pair-P3-mmcpu",
+   "servers": [
+    {
+     "alias": "qwen3-4b",
+     "gguf": "Qwen3-4B-Instruct-2507-Q4_K_M.gguf",
+     "ctx": 4096
+    },
+    {
+     "alias": "lfm3-vl",
+     "gguf": "LFM3-VL-2B-QAD-Q4_0.gguf",
+     "mmproj": "mmproj-LFM3-VL-2B-F16.gguf",
+     "ctx": 4096,
+     "args": [
+      "--no-mmproj-offload"
+     ]
+    }
+   ],
+   "runs": [
+    {
+     "suite": "ground",
+     "model": "lfm3-vl",
+     "tag": "ground-p2d",
+     "features": "p2d",
+     "reps": 1,
+     "max_tokens": 512,
+     "thinking": "native"
+    },
+    {
+     "suite": "trajectory",
+     "model": "qwen3-4b",
+     "tag": "traj-native",
+     "features": "dynschema,fewshot,plan",
+     "thinking": "native",
+     "reps": 1,
+     "max_tokens": 2048
+    }
+   ]
+  },
+  {
+   "name": "pair-P1-mmcpu",
+   "servers": [
+    {
+     "alias": "qwen3-4b",
+     "gguf": "Qwen3-4B-Instruct-2507-Q4_K_M.gguf",
+     "ctx": 4096
+    },
+    {
+     "alias": "mai-ui",
+     "gguf": "MAI-UI-2B.Q4_K_M.gguf",
+     "mmproj": "MAI-UI-2B.mmproj-f16.gguf",
+     "ctx": 4096,
+     "args": [
+      "--no-mmproj-offload"
+     ]
+    }
+   ],
+   "runs": [
+    {
+     "suite": "ground",
+     "model": "mai-ui",
+     "tag": "ground-pyauto",
+     "features": "pyauto",
+     "reps": 1,
+     "max_tokens": 128,
+     "thinking": "native"
+    },
+    {
+     "suite": "trajectory",
+     "model": "qwen3-4b",
+     "tag": "traj-native",
+     "features": "dynschema,fewshot,plan",
+     "thinking": "native",
+     "reps": 1,
+     "max_tokens": 2048
+    }
+   ]
+  },
+  {
+   "name": "pair-bolt-lfm3vl",
+   "servers": [
+    {
+     "alias": "bolt-e4b",
+     "gguf": "NVIDIA-Nemotron-3.5-Bolt-E4B-UD-IQ3_XXS.gguf",
+     "ctx": 4096
+    },
+    {
+     "alias": "lfm3-vl",
+     "gguf": "LFM3-VL-2B-QAD-Q4_0.gguf",
+     "mmproj": "mmproj-LFM3-VL-2B-F16.gguf",
+     "ctx": 4096
+    }
+   ],
+   "runs": [
+    {
+     "suite": "ground",
+     "model": "lfm3-vl",
+     "tag": "ground-p2d",
+     "features": "p2d",
+     "reps": 1,
+     "max_tokens": 512,
+     "thinking": "native"
+    },
+    {
+     "suite": "trajectory",
+     "model": "bolt-e4b",
+     "tag": "traj-off",
+     "features": "dynschema,fewshot,plan",
+     "thinking": "off",
+     "reps": 1,
+     "max_tokens": 2048
+    }
+   ]
+  },
+  {
+   "name": "pair-bolt-lfm3vl-mmcpu",
+   "servers": [
+    {
+     "alias": "bolt-e4b",
+     "gguf": "NVIDIA-Nemotron-3.5-Bolt-E4B-UD-IQ3_XXS.gguf",
+     "ctx": 4096
+    },
+    {
+     "alias": "lfm3-vl",
+     "gguf": "LFM3-VL-2B-QAD-Q4_0.gguf",
+     "mmproj": "mmproj-LFM3-VL-2B-F16.gguf",
+     "ctx": 4096,
+     "args": [
+      "--no-mmproj-offload"
+     ]
+    }
+   ],
+   "runs": [
+    {
+     "suite": "ground",
+     "model": "lfm3-vl",
+     "tag": "ground-p2d",
+     "features": "p2d",
+     "reps": 1,
+     "max_tokens": 512,
+     "thinking": "native"
+    },
+    {
+     "suite": "trajectory",
+     "model": "bolt-e4b",
+     "tag": "traj-off",
+     "features": "dynschema,fewshot,plan",
+     "thinking": "off",
+     "reps": 1,
+     "max_tokens": 2048
+    }
+   ]
+  },
+  {
+   "name": "trio-qwen-lfm3vl-d1-mmcpu",
+   "servers": [
+    {
+     "alias": "qwen3-4b",
+     "gguf": "Qwen3-4B-Instruct-2507-Q4_K_M.gguf",
+     "ctx": 4096
+    },
+    {
+     "alias": "lfm3-vl",
+     "gguf": "LFM3-VL-2B-QAD-Q4_0.gguf",
+     "mmproj": "mmproj-LFM3-VL-2B-F16.gguf",
+     "ctx": 4096,
+     "args": [
+      "--no-mmproj-offload"
+     ]
+    },
+    {
+     "alias": "d1",
+     "gguf": "d1-2B-Q4_K_M.gguf",
+     "mmproj": "mmproj-d1-2B-F16.gguf",
+     "ctx": 4096,
+     "args": [
+      "--no-mmproj-offload"
+     ]
+    }
+   ],
+   "runs": [
+    {
+     "suite": "verify",
+     "model": "lfm3-vl",
+     "verifier": "d1",
+     "tag": "verify",
+     "protocol": "p2d",
+     "max_tokens": 512,
+     "reps": 1
+    },
+    {
+     "suite": "trajectory",
+     "model": "qwen3-4b",
+     "tag": "traj-native",
+     "features": "dynschema,fewshot,plan",
+     "thinking": "native",
+     "reps": 1,
+     "max_tokens": 2048
+    }
+   ]
+  },
+  {
+   "name": "trio-bolt-lfm3vl-d1-mmcpu",
+   "servers": [
+    {
+     "alias": "bolt-e4b",
+     "gguf": "NVIDIA-Nemotron-3.5-Bolt-E4B-UD-IQ3_XXS.gguf",
+     "ctx": 4096
+    },
+    {
+     "alias": "lfm3-vl",
+     "gguf": "LFM3-VL-2B-QAD-Q4_0.gguf",
+     "mmproj": "mmproj-LFM3-VL-2B-F16.gguf",
+     "ctx": 4096,
+     "args": [
+      "--no-mmproj-offload"
+     ]
+    },
+    {
+     "alias": "d1",
+     "gguf": "d1-2B-Q4_K_M.gguf",
+     "mmproj": "mmproj-d1-2B-F16.gguf",
+     "ctx": 4096,
+     "args": [
+      "--no-mmproj-offload"
+     ]
+    }
+   ],
+   "runs": [
+    {
+     "suite": "verify",
+     "model": "lfm3-vl",
+     "verifier": "d1",
+     "tag": "verify",
+     "protocol": "p2d",
+     "max_tokens": 512,
+     "reps": 1
+    },
+    {
+     "suite": "trajectory",
+     "model": "bolt-e4b",
+     "tag": "traj-off",
+     "features": "dynschema,fewshot,plan",
+     "thinking": "off",
+     "reps": 1,
+     "max_tokens": 2048
+    }
+   ]
+  },
+  {
+   "name": "trio-bolt-lfm3vl-d1cpu",
+   "servers": [
+    {
+     "alias": "bolt-e4b",
+     "gguf": "NVIDIA-Nemotron-3.5-Bolt-E4B-UD-IQ3_XXS.gguf",
+     "ctx": 4096
+    },
+    {
+     "alias": "lfm3-vl",
+     "gguf": "LFM3-VL-2B-QAD-Q4_0.gguf",
+     "mmproj": "mmproj-LFM3-VL-2B-F16.gguf",
+     "ctx": 4096,
+     "args": [
+      "--no-mmproj-offload"
+     ]
+    },
+    {
+     "alias": "d1",
+     "gguf": "d1-2B-Q4_K_M.gguf",
+     "mmproj": "mmproj-d1-2B-F16.gguf",
+     "ctx": 4096,
+     "args": [
+      "--no-mmproj-offload"
+     ],
+     "ngl": 0
+    }
+   ],
+   "runs": [
+    {
+     "suite": "verify",
+     "model": "lfm3-vl",
+     "verifier": "d1",
+     "tag": "verify",
+     "protocol": "p2d",
+     "max_tokens": 512,
+     "reps": 1
+    },
+    {
+     "suite": "trajectory",
+     "model": "bolt-e4b",
+     "tag": "traj-off",
+     "features": "dynschema,fewshot,plan",
+     "thinking": "off",
+     "reps": 1,
+     "max_tokens": 2048
+    }
+   ]
+  },
+  {
+   "name": "trio-qwen-lfm3vl-mmcpu-d1cpu",
+   "servers": [
+    {
+     "alias": "qwen3-4b",
+     "gguf": "Qwen3-4B-Instruct-2507-Q4_K_M.gguf",
+     "ctx": 4096
+    },
+    {
+     "alias": "lfm3-vl",
+     "gguf": "LFM3-VL-2B-QAD-Q4_0.gguf",
+     "mmproj": "mmproj-LFM3-VL-2B-F16.gguf",
+     "ctx": 4096,
+     "args": [
+      "--no-mmproj-offload"
+     ]
+    },
+    {
+     "alias": "d1",
+     "gguf": "d1-2B-Q4_K_M.gguf",
+     "mmproj": "mmproj-d1-2B-F16.gguf",
+     "ctx": 4096,
+     "args": [
+      "--no-mmproj-offload"
+     ],
+     "ngl": 0
+    }
+   ],
+   "runs": [
+    {
+     "suite": "verify",
+     "model": "lfm3-vl",
+     "verifier": "d1",
+     "tag": "verify",
+     "protocol": "p2d",
+     "max_tokens": 512,
+     "reps": 1
+    },
+    {
+     "suite": "trajectory",
+     "model": "qwen3-4b",
+     "tag": "traj-native",
+     "features": "dynschema,fewshot,plan",
+     "thinking": "native",
+     "reps": 1,
+     "max_tokens": 2048
+    }
+   ]
+  }
+ ]
+}
