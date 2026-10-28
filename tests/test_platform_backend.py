@@ -138,5 +138,55 @@ class CliPlatformTests(unittest.TestCase):
             enable.assert_not_called()
 
 
+class BridgeInitializationTests(unittest.TestCase):
+    def test_pipeline_uses_the_fakesink_handoff_property(self):
+        import runpy
+        from pathlib import Path
+
+        gst, gio, glib = mock.Mock(), mock.Mock(), mock.Mock()
+        repository = mock.Mock(Gst=gst, Gio=gio, GLib=glib)
+        with mock.patch.dict(sys.modules, {"gi": mock.Mock(), "gi.repository": repository}):
+            module = runpy.run_path(str(Path(wayland.__file__).with_name("wayland_bridge.py")))
+        bridge = module["Bridge"].__new__(module["Bridge"])
+        bridge.bus = mock.Mock()
+        reply, fds = mock.Mock(), mock.Mock()
+        reply.unpack.return_value = (0,)
+        fds.get.return_value = 7
+        bridge.bus.call_with_unix_fd_list_sync.return_value = (reply, fds)
+        bridge.session, bridge.node_id = "/session", 42
+        bridge._open_pipeline()
+        gst.init.assert_called_once_with(None)
+        description = gst.parse_launch.call_args.args[0]
+        self.assertIn("signal-handoffs=true", description)
+        self.assertNotIn("signal-handoff=", description)
+
+
+class PortalPermissionTests(unittest.TestCase):
+    def test_capture_only_permission_never_sends_input(self):
+        backend = mock.Mock(devices=0)
+        input_api = wayland._Input(backend)
+        for request in ({"cmd": "keysym", "sym": 97, "state": 1},
+                        {"cmd": "button", "code": 272, "state": 1}):
+            with self.assertRaisesRegex(RuntimeError, "Allow Remote Interaction"):
+                input_api._c(request)
+        backend._call.assert_not_called()
+
+    def test_keyboard_and_pointer_permissions_are_checked_separately(self):
+        for devices, allowed, denied in ((1, "keysym", "move"), (2, "move", "keysym")):
+            backend = mock.Mock(devices=devices)
+            input_api = wayland._Input(backend)
+            input_api._c({"cmd": allowed})
+            backend._call.assert_called_once_with({"cmd": allowed})
+            with self.assertRaises(RuntimeError):
+                input_api._c({"cmd": denied})
+
+    def test_full_permission_allows_both_devices(self):
+        backend = mock.Mock(devices=3)
+        input_api = wayland._Input(backend)
+        input_api._c({"cmd": "move"})
+        input_api._c({"cmd": "keysym"})
+        self.assertEqual(backend._call.call_count, 2)
+
+
 if __name__ == "__main__":
     unittest.main()

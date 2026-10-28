@@ -9,5 +9,6 @@
 - Resposta de localização truncada vira "alvo não visível", sem clique.
 
 ### Corrigido
+- Captura Wayland usa a propriedade correta do GStreamer e confere permissão de teclado/mouse antes de atuar.
 - `--self-test` e `--locate` respeitam o backend Wayland escolhido e encerram a sessão ao sair.
 - Verificador recusa probabilidades inválidas, inclusive NaN, antes de permitir um clique.

@@ -26,8 +26,10 @@ Estado: **protótipo opt-in**. Windows e default (B1) inalterados. Nada aqui apr
 | P1 com llama-server CUDA do LM Studio | sobe; **5340 MiB** de VRAM total (planner+visão) |
 | Testes | 486 OK (11 novos, só stubs/puros), ruff limpo |
 
-**Não verificado até aqui:** sessão do portal real (diálogo, frame PipeWire, input), loop completo
-com planner+visão no Linux. Tudo isso exige rodar o comando abaixo.
+**Atualização em 28/10:** diálogo do portal e frame PipeWire de 1280×800 confirmados em GNOME
+isolado após corrigir `signal-handoffs` no pipeline. Input pelo portal e loop completo com
+modelos continuam pendentes. O cliente recusa input sem a permissão correspondente e pede
+para ativar “Allow Remote Interaction” no diálogo. Ver [relatório](validacao-ubuntu-2026-10-28.md).
 
 ## Setup Ubuntu
 
