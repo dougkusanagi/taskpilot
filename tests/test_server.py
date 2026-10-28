@@ -403,7 +403,8 @@ class TestLinuxRuntime(unittest.TestCase):
                     info.size, info.mode = 4, 0o755
                     tf.addfile(info, io.BytesIO(b"test"))
             server._extract_tar(archive, root / "bin")
-            self.assertTrue((root / "bin/llama-server").stat().st_mode & 0o111)
+            if sys.platform != "win32":  # Windows não representa permissões POSIX de execução.
+                self.assertTrue((root / "bin/llama-server").stat().st_mode & 0o111)
             self.assertEqual((root / "bin/libggml.so").read_bytes(), b"test")
             self.assertFalse(archive.exists())
 

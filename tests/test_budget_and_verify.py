@@ -52,7 +52,7 @@ class BudgetBench(unittest.TestCase):
         joined = " ".join(cmd)
         self.assertIn("-ngl 99", joined)
         self.assertIn("--fit off", joined)
-        self.assertIn("--mmproj /m/p.gguf", joined)
+        self.assertEqual(cmd[cmd.index("--mmproj") + 1], str(Path("/m") / "p.gguf"))
         self.assertIn("--reasoning-budget 256", joined)
 
     def test_oom_reason_is_short_and_specific(self):
