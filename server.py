@@ -120,6 +120,12 @@ GGUF_REGISTRY: dict[str, dict] = {
 }
 
 
+VERIFIER_GGUF = {"file": "d1-2B-Q4_K_M.gguf", "url": _HF
+                 + "LiquidAI/d1-2B-GGUF/resolve/main/d1-2B-Q4_K_M.gguf"}
+VERIFIER_MMPROJ = {"file": "mmproj-d1-2B-F16.gguf", "url": _HF
+                   + "LiquidAI/d1-2B-GGUF/resolve/main/mmproj-d1-2B-F16.gguf"}
+
+
 def registry_entry(model: str) -> dict | None:
     """Entrada do GGUF_REGISTRY para o nome do modelo (puro)."""
     key = re.sub(r"[^a-z0-9.]+", "-", str(model or "").lower()).strip("-")
@@ -305,12 +311,8 @@ def planner_gguf_for(cfg: dict) -> dict:
     return PLANNER_GGUF
 
 
-def ensure_assets(progress=print, cfg: dict | None = None) -> dict:
-    """Baixa o que falta (llama.cpp + GGUFs) e extrai. Idempotente.
-
-    Retorna Paths {exe, planner_gguf, vision_gguf, mmproj}.
-    Erro honesto (RuntimeError) se download/extração falhar.
-    """
+def ensure_runtime(progress=print, cfg: dict | None = None) -> Path:
+    """Garante só o binário, sem baixar pesos de papéis que não serão usados."""
     # Valida plataforma/arquitetura antes de qualquer download.
     backend = str((cfg or {}).get("runtime", {}).get("backend", "cpu"))
     urls = llama_urls(backend)
@@ -341,6 +343,12 @@ def ensure_assets(progress=print, cfg: dict | None = None) -> dict:
         BACKEND_MARK.parent.mkdir(parents=True, exist_ok=True)
         BACKEND_MARK.write_text(want, encoding="utf-8")
 
+    return exe
+
+
+def ensure_assets(progress=print, cfg: dict | None = None) -> dict:
+    """Garante runtime e pesos do planner/localizador configurados."""
+    exe = ensure_runtime(progress=progress, cfg=cfg)
     cfg = cfg or {}
     reg_planner = registry_entry(cfg.get("planner", {}).get("model", ""))
     reg_vision = registry_entry(cfg.get("vision", {}).get("model", ""))
@@ -379,7 +387,9 @@ def _server_args(role: str, gguf: Path, mmproj: Path | None, port: int, cfg: dic
         threads = DEFAULT_THREADS
     ctx = int(rt.get("ctx", DEFAULT_CTX))
     backend = str(rt.get("backend", "cpu"))
-    if backend != "cpu" and ngl == 0:
+    if role == "verifier":
+        ngl, ctx, threads = 0, 1024, min(threads, 4)
+    if backend != "cpu" and ngl == 0 and role != "verifier":
         ngl = 99  # GPU: com ngl=0 o backend GPU rodaria tudo na CPU
     args = [
         str(runtime_exe()),
@@ -398,17 +408,19 @@ def _server_args(role: str, gguf: Path, mmproj: Path | None, port: int, cfg: dic
     ]
     if mmproj is not None:
         args += ["--mmproj", str(mmproj)]
-        if not bool(rt.get("mmproj_offload", True)):
+        if role == "verifier" or not bool(rt.get("mmproj_offload", True)):
             # encoder de imagem na CPU: libera ~0,8 GB e o buffer de computação na GPU
             args += ["--no-mmproj-offload"]
-    parallel = int(rt.get("parallel", 0) or 0)
+    parallel = 1 if role == "verifier" else int(rt.get("parallel", 0) or 0)
     if parallel > 0:
         args += ["-np", str(parallel)]  # 1 = uma geração por vez (sem slots extras de KV)
-    kv = str(rt.get("kv_cache", "f16"))
+    kv = "f16" if role == "verifier" else str(rt.get("kv_cache", "f16"))
     if kv != "f16":
         if kv not in ("q8_0", "q4_0"):
             raise ValueError(f"runtime.kv_cache inválido: {kv!r}; use f16, q8_0 ou q4_0")
         args += ["-fa", "on", "-ctk", kv, "-ctv", kv]  # KV quantizado exige flash attention
+    if role == "verifier":
+        args += ["--alias", "d1"]
     if role == "planner":
         # jinja: o template oficial do MiniCPM5 (planner.py conta com ele p/
         # chat_template_kwargs.enable_thinking).
@@ -477,8 +489,8 @@ def _wait_alive(
 def _spawn_one(
     role: str, base_url: str, port: int, assets: dict, cfg: dict, progress=print
 ) -> subprocess.Popen:
-    gguf = assets["planner_gguf" if role == "planner" else "vision_gguf"]
-    mmproj = assets.get("planner_mmproj") if role == "planner" else assets.get("mmproj")
+    gguf = assets[f"{role}_gguf"]
+    mmproj = assets.get(f"{role}_mmproj") if role != "vision" else assets.get("mmproj")
     args = _server_args(role, gguf, mmproj, port, cfg)
     log = MODELS_DIR / f"llama-server-{role}.log"
     host = str(cfg.get("runtime", {}).get("host", "127.0.0.1"))
@@ -534,12 +546,16 @@ def ensure_servers(base_urls: tuple[str, str], cfg: dict, progress=print) -> dic
     if needed:
         progress("modelos não estão no ar; garantindo runtime local...")
         assets = ensure_assets(progress=progress, cfg=cfg)
-        for role, (base_url, port) in needed.items():
-            out[role] = _spawn_one(role, base_url, port, assets, cfg, progress=progress)
+        try:
+            for role, (base_url, port) in needed.items():
+                out[role] = _spawn_one(role, base_url, port, assets, cfg, progress=progress)
+        except Exception:
+            stop_servers(out)
+            raise
     return out
 
 
-def ensure_servers_for_profile(
+def _ensure_profile_servers(
     base_urls: tuple[str, str], cfg: dict, profile: dict | None = None, progress=print
 ) -> dict:
     """F4: unificado com mesmo checkpoint sobe UM processo (alias lógico).
@@ -578,6 +594,49 @@ def ensure_servers_for_profile(
         progress(f"unified: serviço único em {url} (sem duplicar pesos)")
         return {"planner": proc, "vision": None}
     return ensure_servers(base_urls, cfg, progress=progress)
+
+
+def ensure_verifier(cfg: dict, progress=print):
+    """Inicia d1 na CPU somente com auto_start explícito e URL local; reusa externos."""
+    ver = cfg.get("vision", {}).get("verifier") or {}
+    if not ver.get("auto_start", False):
+        return None
+    url = str(ver.get("base_url") or "")
+    if not url:
+        raise ValueError("vision.verifier.auto_start requer vision.verifier.base_url")
+    if not needs_local_serve((url,)):
+        return None
+    alive = _endpoint_alive(url)
+    if alive:
+        if not (_models_match(alive, "d1-2b") or "d1" in alive.get("models", [])):
+            raise RuntimeError(f"endpoint do verificador {url} serve {alive['models']}, não d1")
+        progress(f"verificador: reusando {url}")
+        return None
+    host, port = _split_host_port(url)
+    if _port_in_use(host, port):
+        raise RuntimeError(f"porta {port} do verificador ocupada sem endpoint; escolha outra URL")
+    ensure_runtime(progress=progress, cfg=cfg)
+    assets = {}
+    for key, entry in (("verifier_gguf", VERIFIER_GGUF), ("verifier_mmproj", VERIFIER_MMPROJ)):
+        dest = MODELS_DIR / entry["file"]
+        if not dest.exists():
+            progress(f"baixando {entry['file']} (verificador opt-in)...")
+            _download(entry["url"], dest, min_bytes=100_000_000, progress=progress)
+        assets[key] = dest
+    return _spawn_one("verifier", url, port, assets, cfg, progress=progress)
+
+
+def ensure_servers_for_profile(
+    base_urls: tuple[str, str], cfg: dict, profile: dict | None = None, progress=print
+) -> dict:
+    out = _ensure_profile_servers(base_urls, cfg, profile, progress=progress)
+    try:
+        if (cfg.get("vision", {}).get("verifier") or {}).get("auto_start", False):
+            out["verifier"] = ensure_verifier(cfg, progress=progress)
+    except Exception:
+        stop_servers(out)
+        raise
+    return out
 
 
 def gpu_status(cfg: dict) -> dict:

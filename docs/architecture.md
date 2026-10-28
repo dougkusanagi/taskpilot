@@ -8,7 +8,7 @@ flowchart TD
     CLI[CLI main.py] --> Loop[Loop observe / decide / act / verify]
     Loop --> Planner[Planner textual ou unificado]
     Loop --> Vision[Localizador visual]
-    Vision --> Verifier[Verificador d1 opcional / servidor externo]
+    Vision --> Verifier[Verificador d1 opcional / CPU]
     Loop --> Guard[Vetos e executor Python]
     Guard --> Windows[Windows: UIA / PyAutoGUI / MSS]
     Guard --> Wayland[Ubuntu opt-in: cliente Wayland]
@@ -18,12 +18,14 @@ flowchart TD
     Runtime --> Servers[Processos llama-server]
     Servers --> Planner
     Servers --> Vision
+    Servers --> Verifier
 ```
 
 O runtime seleciona ZIP do Windows x64 ou tar.gz do Ubuntu x86_64, com backend CPU por padrão
 e CUDA/Vulkan opcionais. A seleção do runtime Linux não habilita controle de desktop: o backend
 Wayland continua explícito (`--platform wayland`). Nenhum teste unitário abre sessão de portal.
-O verificador d1 ainda depende de endpoint configurado e não é iniciado pelo runtime.
+O verificador d1 usa endpoint configurado. Com `vision.verifier.auto_start: true` e URL local,
+o runtime inicia um terceiro processo na CPU; sem esse opt-in, usa um servidor externo.
 
 As baterias em `evals/` consultam servidores locais e avaliam respostas sobre dados congelados ou
 simuladores. Não executam as ações de desktop e não demonstram sucesso end-to-end.
