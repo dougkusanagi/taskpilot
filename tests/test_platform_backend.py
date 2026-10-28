@@ -139,6 +139,17 @@ class CliPlatformTests(unittest.TestCase):
 
 
 class BridgeInitializationTests(unittest.TestCase):
+    def test_restore_token_respects_isolated_xdg_cache(self):
+        import runpy
+        import tempfile
+        from pathlib import Path
+
+        with tempfile.TemporaryDirectory() as tmp, \
+                mock.patch.dict("os.environ", {"XDG_CACHE_HOME": tmp}), \
+                mock.patch.dict(sys.modules, {"gi": mock.Mock(), "gi.repository": mock.Mock()}):
+            module = runpy.run_path(str(Path(wayland.__file__).with_name("wayland_bridge.py")))
+        self.assertEqual(module["TOKEN_FILE"], Path(tmp) / "taskpilot/wayland-restore-token")
+
     def test_pipeline_uses_the_fakesink_handoff_property(self):
         import runpy
         from pathlib import Path

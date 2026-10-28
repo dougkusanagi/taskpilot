@@ -43,6 +43,8 @@ O controle da interface continua opt-in via `--platform wayland`, usando portais
 veja [setup e limites](docs/prototipo-wayland-2026-10-02.md).
 Isso ainda não comprova tarefas completas no Ubuntu. O default B1 permanece.
 [Resultados locais e limites](docs/validacao-ubuntu-2026-10-28.md).
+[Teste real em desktop isolado](docs/teste-ubuntu-isolado-2026-10-28.md): a tarefa curta
+ainda falhou; localização visual separada funcionou.
 
 O d1 é experimental. Para iniciar o verificador automaticamente na CPU, configure
 `vision.verifier` com `base_url: "http://127.0.0.1:8083/v1"`, `auto_start: true` e
