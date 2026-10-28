@@ -1481,6 +1481,18 @@ def _key(a: Action, dec: Decision | None = None) -> str:
     return base
 
 
+def _intent_key(dec: Decision) -> str:
+    """Intenção da decisão, sem coordenadas (o grounding varia alguns pixels)."""
+    a = dec.action
+    return f"{dec.kind}:{_steps_label(list(dec.steps or []))}:{a.type}:{a.text}:{a.key}:{a.target}"
+
+
+def _satisfied_note(ts, nxt: int) -> str:
+    done = ", ".join(f"({i + 1})" for i in sorted(ts.requirement_evidence))
+    return (f"requirement {done} already confirmed; repeating that action does not advance. "
+            f"Do the NEXT requirement ({nxt + 1}): {ts.requirements[nxt][:120]}")
+
+
 def _verify_action(dec: Decision) -> Action:
     """Ação representativa p/ observe(): sequence usa as combinações.
 
@@ -1864,6 +1876,18 @@ def run(instruction: str, cfg: dict, dry_run: bool = False) -> dict:
                 else:  # uia
                     emit("PLANNER", f"uia: {dec.reason}", f"{tm.get('planner_ms', 0):.0f}ms")
 
+            # guard 2b: a ação que já cumpriu um requisito não avança o próximo.
+            # Repeti-la (run Ubuntu 28/10: "+" 4x, sem digitar) vira last_error
+            # com o requisito aberto; o modelo escolhe a ação seguinte.
+            ts = ctx.get("task_state")
+            nxt = statemod.next_requirement(ts) if ts is not None else None
+            if (nxt is not None and dec.kind in ("action", "sequence")
+                    and _intent_key(dec) in ctx.get("satisfied_intents", set())):
+                if fail_step("repeticao", _satisfied_note(ts, nxt)):
+                    continue
+                result = "stuck"
+                break
+
             # guard 3 (F3/R2): anti-loop por ação+estado+RESULTADO — preserva
             # tentativas malsucedidas e distingue repetição legítima
             # (scroll avançou: verify mudou) de ausência de progresso.
@@ -2066,7 +2090,11 @@ def run(instruction: str, cfg: dict, dry_run: bool = False) -> dict:
                 ctx["last_result"] += f"; {cnote}"
                 ctx["hist_labels"][-1] += f"; {cnote}"
                 if ok and confirmed:
-                    statemod.add_evidence(ctx.get("task_state"), f"{label} => {vnote}; {cnote}")
+                    ts = ctx.get("task_state")
+                    statemod.add_evidence(ts, f"{label} => {vnote}; {cnote}")
+                    if ts is not None and statemod.satisfy_next_requirement(ts) is not None:
+                        # a mesma intenção não volta a cumprir outro requisito (guard 2b)
+                        ctx.setdefault("satisfied_intents", set()).add(_intent_key(dec))
             except Exception:
                 cnote = ""
                 confirmed = False

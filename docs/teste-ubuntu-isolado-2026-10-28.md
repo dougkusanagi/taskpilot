@@ -173,3 +173,15 @@ Validação local: suíte oficial via uv, 538 testes, zero falhas e um skip; ruf
 Os testes novos são passivos, com mocks, sem abrir portais ou controlar desktop.
 Nenhum gate Windows/6 GB foi aprovado; default B1 permanece. A VRAM reportada pelo loop
 é a ocupação global do host, inclui processos preexistentes e não certifica orçamento.
+
+## Correção da repetição (após os runs acima)
+
+Causa no código: o Task state listava os requisitos sem status. A evidência confirmada
+(nova aba) não era ligada ao requisito (1), e o anti-loop aceitava a repetição porque cada
+clique tinha efeito novo. Agora uma evidência confirmada cumpre o primeiro requisito aberto
+(`state.satisfy_next_requirement`), o resumo mostra `[cumprido/done: E1]` e `[PRÓXIMO/NEXT]`,
+e repetir a mesma intenção (sem coordenadas) com requisito aberto vira `last_error` que
+indica o próximo requisito (guard 2b em `loop.py`). Vale só com checklist (`plan`).
+Limite: a ligação é posicional; uma ação preparatória confirmada pode cumprir o requisito
+errado. Suíte local: 542 testes, um skip; ruff verde. **A repetição real isolada ainda não
+foi feita**: o end-to-end continua sem aprovação.

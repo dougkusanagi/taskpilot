@@ -147,5 +147,27 @@ class TestRepeatNote(unittest.TestCase):
         self.assertIn("wait", note)
 
 
+class TestSatisfiedIntent(unittest.TestCase):
+    def test_intent_ignores_grounding_pixels(self):
+        from schemas import Action, Decision
+
+        a = Decision(action=Action(type="click", x=10, y=20, target="New Tab"), source="vocaela")
+        b = Decision(action=Action(type="click", x=12, y=21, target="New Tab"), source="vocaela")
+        c = Decision(action=Action(type="type", text="Olá"), source="planner")
+        self.assertEqual(loop._intent_key(a), loop._intent_key(b))
+        self.assertNotEqual(loop._intent_key(a), loop._intent_key(c))
+
+    def test_note_points_to_next_requirement(self):
+        import state as statemod
+
+        ts = statemod.init("g")
+        ts.requirements = ["clicar +", "digitar Olá, Ubuntu!"]
+        statemod.add_evidence(ts, "nova aba")
+        statemod.satisfy_next_requirement(ts)
+        note = loop._satisfied_note(ts, statemod.next_requirement(ts))
+        self.assertIn("(1) already confirmed", note)
+        self.assertIn("NEXT requirement (2): digitar Olá, Ubuntu!", note)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

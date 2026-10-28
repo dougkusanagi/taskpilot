@@ -72,6 +72,27 @@ def add_evidence(state: TaskState, evidence: str) -> None:
         del state.evidences[:-MAX_EVIDENCES]
 
 
+def next_requirement(state: TaskState) -> int | None:
+    """Índice do primeiro requisito ainda sem evidência (None = todos ou nenhum)."""
+    for i in range(len(state.requirements)):
+        if i not in state.requirement_evidence:
+            return i
+    return None
+
+
+def satisfy_next_requirement(state: TaskState) -> int | None:
+    """Liga a última evidência confirmada ao primeiro requisito aberto (puro).
+
+    O prompt manda agir no primeiro requisito ainda aberto; um efeito
+    confirmado dessa ação o cumpre. Devolve o índice marcado ou None.
+    """
+    i = next_requirement(state)
+    if i is None or not state.evidences:
+        return None
+    state.requirement_evidence[i] = f"E{len(state.evidences)}"
+    return i
+
+
 def add_failure(state: TaskState, failure: str) -> None:
     f = (failure or "").strip()[:300]
     if f:
@@ -85,8 +106,19 @@ def compact(state: TaskState) -> str:
     if state.subgoal and state.subgoal != state.objective:
         parts.append(f"subobjetivo: {state.subgoal[:150]}")
     if state.requirements:
+        nxt = next_requirement(state)
+
+        def _req(i: int, r: str) -> str:
+            if i in state.requirement_evidence:
+                tag = f" [cumprido/done: {state.requirement_evidence[i]}]"
+            elif i == nxt:
+                tag = " [PRÓXIMO/NEXT]"
+            else:
+                tag = ""
+            return f"({i + 1}) {r[:80]}{tag}"
+
         parts.append("requisitos do pedido: " + "; ".join(
-            f"({i}) {r[:80]}" for i, r in enumerate(state.requirements[:6], 1)))
+            _req(i, r) for i, r in enumerate(state.requirements[:6])))
     if state.done_items:
         parts.append("concluídas: " + "; ".join(state.done_items[-5:]))
     if state.pending:
