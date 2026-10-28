@@ -105,36 +105,37 @@ def evaluate_response(case: dict, data: dict, elapsed_ms: float, coords: str = "
         row.update(finish_reason=choice.get("finish_reason"), usage=data.get("usage", {}),
                    response_model=data.get("model"))
         if choice.get("finish_reason") == "length":
-            row["error_kind"] = "truncated"
-            row["errors"] = ["saída truncada"]
-            return row
-        content = choice["message"].get("content") or ""
-        try:
-            json.loads(content)
-            row["pure_json"] = True
-        except json.JSONDecodeError:
-            pass
-        try:
-            if coords == "unit":
-                action = parse_qwen_grounding(content)
-            else:
-                with Image.open(GROUND / case["image"]) as im:
-                    sent = _prep_image(im)[1]  # tamanho da imagem que o modelo realmente viu
-                action = parse_point_any(content, sent, coords)
-            point = (action.x, action.y)
-            row["decision"] = {"x": point[0], "y": point[1]}
-            row["format_valid"] = True
-        except ValueError as exc:
-            if "não visível" not in str(exc):
-                raw = raw_point(content)
-                if raw and case["bbox"] and max(raw) > 1:
-                    row["hit_if_scale_1000"] = inside((raw[0] / 1000, raw[1] / 1000),
-                                                      case["bbox"])
-                row["error_kind"] = "format"
-                row["errors"] = [str(exc)[:300]]
-                return row
-            row["format_valid"] = row["said_absent"] = True
+            # Mesma regra da produção (vocaela.grounding_content): truncou = sem clique.
+            row.update(truncated=True, format_valid=True, said_absent=True)
             point = None
+        else:
+            content = choice["message"].get("content") or ""
+            try:
+                json.loads(content)
+                row["pure_json"] = True
+            except json.JSONDecodeError:
+                pass
+            try:
+                if coords == "unit":
+                    action = parse_qwen_grounding(content)
+                else:
+                    with Image.open(GROUND / case["image"]) as im:
+                        sent = _prep_image(im)[1]  # tamanho da imagem que o modelo realmente viu
+                    action = parse_point_any(content, sent, coords)
+                point = (action.x, action.y)
+                row["decision"] = {"x": point[0], "y": point[1]}
+                row["format_valid"] = True
+            except ValueError as exc:
+                if "não visível" not in str(exc):
+                    raw = raw_point(content)
+                    if raw and case["bbox"] and max(raw) > 1:
+                        row["hit_if_scale_1000"] = inside((raw[0] / 1000, raw[1] / 1000),
+                                                          case["bbox"])
+                    row["error_kind"] = "format"
+                    row["errors"] = [str(exc)[:300]]
+                    return row
+                row["format_valid"] = row["said_absent"] = True
+                point = None
         if case["bbox"] is None:
             if point is None:
                 row["passed"] = True
@@ -164,8 +165,14 @@ def extra_summary(rows: list[dict]) -> dict:
         out["Alvos ausentes tratados como ausentes"] = (
             f"{sum(r['passed'] for r in absent)}/{len(absent)}")
         out["Cliques falsos (alvo inexistente)"] = sum(r.get("false_click", False) for r in absent)
+        trunc = sum(r.get("truncated", False) for r in absent)
+        if trunc:
+            out["Ausentes resolvidos por truncamento (sem clique)"] = f"{trunc}/{len(absent)}"
     if present:
         out["Alvos existentes localizados"] = f"{sum(r['passed'] for r in present)}/{len(present)}"
+        lost = sum(r.get("truncated", False) for r in present)
+        if lost:
+            out["Alvos existentes perdidos por truncamento"] = f"{lost}/{len(present)}"
     scaled = [r for r in rows if r.get("hit_if_scale_1000") is not None]
     if scaled:
         out["Respostas em escala 0..1000 (rejeitadas; acertariam se aceitas)"] = (

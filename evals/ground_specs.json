@@ -1,6 +1,6 @@
 {
-  "version": "ground-v1",
-  "note": "Páginas + alvos. A caixa de cada alvo vem da DOM/JS NA CAPTURA e nunca é enviada ao modelo. Alvo com absent=true não existe na página: a resposta correta é null.",
+  "version": "ground-v2",
+  "note": "Páginas + alvos. A caixa de cada alvo vem da DOM/JS NA CAPTURA e nunca é enviada ao modelo. Alvo com absent=true não existe na página: a resposta correta é null. v2: +33 alvos ausentes 'quase certos' (near_miss) para medir cliques falsos; v1 tinha só 6 ausentes.",
   "pages": [
     {
       "id": "canvas",
@@ -34,6 +34,26 @@
         {
           "instruction": "Click the 'Checkout' button",
           "absent": true
+        },
+        {
+          "instruction": "Click the 'Importar mídia' button",
+          "absent": true,
+          "near_miss": true
+        },
+        {
+          "instruction": "Click the red 'Gravar' button",
+          "absent": true,
+          "near_miss": true
+        },
+        {
+          "instruction": "Clique no botão Dividir clipe",
+          "absent": true,
+          "near_miss": true
+        },
+        {
+          "instruction": "Click the 'Publicar no YouTube' button",
+          "absent": true,
+          "near_miss": true
         }
       ]
     },
@@ -65,6 +85,26 @@
         {
           "instruction": "Click the shopping cart icon",
           "absent": true
+        },
+        {
+          "instruction": "Click the printer icon",
+          "absent": true,
+          "near_miss": true
+        },
+        {
+          "instruction": "Click the home (house) icon",
+          "absent": true,
+          "near_miss": true
+        },
+        {
+          "instruction": "Click the user profile avatar icon",
+          "absent": true,
+          "near_miss": true
+        },
+        {
+          "instruction": "Click the download (arrow down) icon",
+          "absent": true,
+          "near_miss": true
         }
       ]
     },
@@ -91,6 +131,21 @@
           "instruction": "Click the privacy policy link",
           "selector": "#policy",
           "label": "política de privacidade"
+        },
+        {
+          "instruction": "Click the 'Fechar' (X) button of the cookie dialog",
+          "absent": true,
+          "near_miss": true
+        },
+        {
+          "instruction": "Click 'Aceitar somente essenciais'",
+          "absent": true,
+          "near_miss": true
+        },
+        {
+          "instruction": "Click the 'Finalizar compra' button",
+          "absent": true,
+          "near_miss": true
         }
       ]
     },
@@ -118,6 +173,26 @@
         {
           "instruction": "Click the Editar button in Ana Ribeiro's row",
           "selector": "#e1"
+        },
+        {
+          "instruction": "Click the Editar button in Fernanda Alves's row",
+          "absent": true,
+          "near_miss": true
+        },
+        {
+          "instruction": "Click the Excluir button in Bruno Costa's row",
+          "absent": true,
+          "near_miss": true
+        },
+        {
+          "instruction": "Click the 'Adicionar usuário' button",
+          "absent": true,
+          "near_miss": true
+        },
+        {
+          "instruction": "Click the next page arrow of the table",
+          "absent": true,
+          "near_miss": true
         }
       ]
     },
@@ -147,6 +222,21 @@
         {
           "instruction": "Check the 'Notificações no navegador' checkbox",
           "selector": "#n4"
+        },
+        {
+          "instruction": "Check the 'Modo escuro' checkbox",
+          "absent": true,
+          "near_miss": true
+        },
+        {
+          "instruction": "Click the 'Cancelar' button",
+          "absent": true,
+          "near_miss": true
+        },
+        {
+          "instruction": "Check the 'Alertas por SMS' checkbox",
+          "absent": true,
+          "near_miss": true
         }
       ]
     },
@@ -163,6 +253,16 @@
           "instruction": "Click the 'Learn more' link",
           "selector": "a",
           "label": "Learn more"
+        },
+        {
+          "instruction": "Click the 'Sign in' button",
+          "absent": true,
+          "near_miss": true
+        },
+        {
+          "instruction": "Click the search field",
+          "absent": true,
+          "near_miss": true
         }
       ]
     },
@@ -183,6 +283,16 @@
           "instruction": "Click the 'Log in' link",
           "selector": "#pt-login-2",
           "label": "Log in"
+        },
+        {
+          "instruction": "Click the 'Add to cart' button",
+          "absent": true,
+          "near_miss": true
+        },
+        {
+          "instruction": "Click the 'Subscribe to newsletter' button",
+          "absent": true,
+          "near_miss": true
         }
       ]
     },
@@ -208,6 +318,16 @@
           "instruction": "Click the Documentation menu item",
           "selector": "#documentation > a",
           "label": "Documentation"
+        },
+        {
+          "instruction": "Click the shopping cart icon",
+          "absent": true,
+          "near_miss": true
+        },
+        {
+          "instruction": "Click the 'Log out' link",
+          "absent": true,
+          "near_miss": true
         }
       ]
     },
@@ -233,6 +353,16 @@
           "instruction": "Click the 'new' link in the header",
           "selector": "a[href='newest']",
           "label": "new"
+        },
+        {
+          "instruction": "Click the 'Sign up with Google' button",
+          "absent": true,
+          "near_miss": true
+        },
+        {
+          "instruction": "Click the dark mode toggle",
+          "absent": true,
+          "near_miss": true
         }
       ]
     },
@@ -258,6 +388,16 @@
           "instruction": "Click the 'Forgot password?' link",
           "selector": "a[href*='password_reset']",
           "label": "Forgot password?"
+        },
+        {
+          "instruction": "Click the 'Continue with Facebook' button",
+          "absent": true,
+          "near_miss": true
+        },
+        {
+          "instruction": "Click the 'Remember me' checkbox",
+          "absent": true,
+          "near_miss": true
         }
       ]
     },
@@ -282,6 +422,16 @@
           "instruction": "Click the 'Submit order' button",
           "selector": "button",
           "label": "Submit order"
+        },
+        {
+          "instruction": "Click the 'Cancel order' button",
+          "absent": true,
+          "near_miss": true
+        },
+        {
+          "instruction": "Select the 'Extra large' pizza size radio button",
+          "absent": true,
+          "near_miss": true
         }
       ]
     },
@@ -298,6 +448,11 @@
           "instruction": "Click the 'Tutorial' link",
           "selector": "a[href='tutorial/index.html']",
           "label": "Tutorial"
+        },
+        {
+          "instruction": "Click the 'Buy now' button",
+          "absent": true,
+          "near_miss": true
         }
       ]
     }

@@ -103,6 +103,11 @@ GGUF_REGISTRY: dict[str, dict] = {
         "mmproj": {"file": "GUI-Owl-1.5-2B-Instruct.mmproj-f16.gguf", "url": _HF
                    + "mradermacher/GUI-Owl-1.5-2B-Instruct-GGUF/resolve/main/"
                    "GUI-Owl-1.5-2B-Instruct.mmproj-f16.gguf"}},
+    "lfm3-vl-2b": {  # localizador (28/10): 96/96 alvos existentes; precisa de raciocínio
+        "gguf": {"file": "LFM3-VL-2B-QAD-Q4_0.gguf", "url": _HF
+                 + "LiquidAI/LFM3-VL-2B-GGUF/resolve/main/LFM3-VL-2B-QAD-Q4_0.gguf"},
+        "mmproj": {"file": "mmproj-LFM3-VL-2B-F16.gguf", "url": _HF
+                   + "LiquidAI/LFM3-VL-2B-GGUF/resolve/main/mmproj-LFM3-VL-2B-F16.gguf"}},
     "qwen3-vl-4b-instruct": {  # unificado: planeja (25/25) e localiza (81%) num processo só
         "gguf": {"file": "Qwen3-VL-4B-Instruct-Q4_K_M.gguf", "url": _HF
                  + "unsloth/Qwen3-VL-4B-Instruct-GGUF/resolve/main/"
@@ -121,13 +126,13 @@ def registry_entry(model: str) -> dict | None:
 # Release fixa do llama.cpp (binários Windows x64 CPU); atualize o tag de vez
 # em quando. CPU-only de propósito: roda em qualquer PC; quem quiser GPU pode
 # subir llama-server externo — o reuso por porta cobre isso.
-LLAMA_TAG = "b11053"
+LLAMA_TAG = "b11954"  # >= b11935: suporte a LFM3 (VL e d1)
 LLAMA_ZIP_URL = (
     "https://github.com/ggml-org/llama.cpp/releases/download/"
     f"{LLAMA_TAG}/llama-{LLAMA_TAG}-bin-win-cpu-x64.zip"
 )
 LLAMA_EXE = BIN_DIR / "llama-server.exe"
-BACKEND_MARK = BIN_DIR / ".backend"  # backend do llama-server extraído (cpu|vulkan|cuda)
+BACKEND_MARK = BIN_DIR / ".backend"  # "<backend>@<tag>" do llama-server extraído
 
 # Backends do llama.cpp (assets da release LLAMA_TAG, conferidos na API do GitHub):
 #  cpu    18 MB  roda em qualquer PC (padrão histórico; ngl não tem efeito)
@@ -284,9 +289,11 @@ def ensure_assets(progress=print, cfg: dict | None = None) -> dict:
 
     backend = str((cfg or {}).get("runtime", {}).get("backend", "cpu"))
     urls = llama_urls(backend)
+    want = f"{backend}@{LLAMA_TAG}"
     have = BACKEND_MARK.read_text(encoding="utf-8").strip() if BACKEND_MARK.exists() else "cpu"
-    if LLAMA_EXE.exists() and have != backend:
-        progress(f"runtime.backend mudou ({have} -> {backend}): baixando outro llama.cpp...")
+    if LLAMA_EXE.exists() and have != want:
+        # Marca antiga sem "@tag" = release anterior: modelos novos (LFM3) não carregariam nela.
+        progress(f"llama.cpp instalado ({have}) difere do pedido ({want}): baixando de novo...")
         shutil.rmtree(BIN_DIR, ignore_errors=True)
     if not LLAMA_EXE.exists():
         progress(f"baixando llama.cpp {LLAMA_TAG} ({backend}, 1ª vez)...")
@@ -299,7 +306,7 @@ def ensure_assets(progress=print, cfg: dict | None = None) -> dict:
                 f"llama-server.exe não apareceu em {BIN_DIR} após extrair {urls}"
             )
         BACKEND_MARK.parent.mkdir(parents=True, exist_ok=True)
-        BACKEND_MARK.write_text(backend, encoding="utf-8")
+        BACKEND_MARK.write_text(want, encoding="utf-8")
 
     cfg = cfg or {}
     reg_planner = registry_entry(cfg.get("planner", {}).get("model", ""))

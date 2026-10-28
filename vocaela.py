@@ -349,19 +349,20 @@ PROTOCOLS = tuple(GROUNDING_PROMPTS)
 def default_protocol(model: str) -> str:
     """Protocolo de grounding do modelo (puro): especialistas GUI -> pyauto, Qwen3-VL -> p2d,
     o resto -> json (histórico). Medido em 01/10: Qwen3-VL-2B 39%->77%, MAI-UI 0%->82%,
-    GUI-Owl 11%->77%. Qwen3.5 não melhora com p2d, por isso continua em json."""
+    GUI-Owl 11%->77%. Qwen3.5 não melhora com p2d, por isso continua em json.
+    LFM3-VL (27/10): p2d 94,6% contra 86,5% em json e 80,2% em pyauto."""
     name = str(model or "").lower().replace("_", "-")
     if "mai-ui" in name or "gui-owl" in name:
         return "pyauto"
-    if "qwen3-vl" in name:
+    if "qwen3-vl" in name or "lfm3-vl" in name:
         return "p2d"
     return "json"
 
 
 def is_grounding_family(model: str) -> bool:
-    """Modelos que falam o JSON/point de grounding próprio (Qwen*, GUI-Owl, MAI-UI)."""
+    """Modelos que falam o JSON/point de grounding próprio (Qwen*, GUI-Owl, MAI-UI, LFM3-VL)."""
     name = str(model or "").lower()
-    return any(k in name for k in ("qwen", "gui-owl", "mai-ui"))
+    return any(k in name for k in ("qwen", "gui-owl", "mai-ui", "lfm3-vl"))
 
 
 # --- grounding tolerante a formato/escala + zoom em duas etapas ---------------------------------
@@ -483,8 +484,13 @@ class QwenGroundingAdapter:
                  model: str = "Qwen3-VL-2B-Instruct",
                  timeout_s: float = 180.0, max_long_edge: int = 1024,
                  zoom: bool = False, coords: str | None = None, zoom_frac: float = 0.35,
-                 protocol: str | None = None):
+                 protocol: str | None = None, max_tokens: int = 64,
+                 verifier: "TargetVerifier | None" = None):
         self.base_url = base_url.rstrip("/")
+        # Opcional: modelo de decisão que confere o ponto antes do clique (ver TargetVerifier).
+        self.verifier = verifier
+        # Modelos que raciocinam antes do ponto (LFM3-VL: ~80 tokens) precisam de teto maior.
+        self.max_tokens = int(max_tokens)
         self.model = model
         self.timeout_s = timeout_s
         self.max_long_edge = max_long_edge
@@ -532,8 +538,12 @@ class QwenGroundingAdapter:
             b64, size = str(screenshot), None
         content = self._ask(b64, instruction, history)
         if self.coords == "unit":
-            return parse_qwen_grounding(content), (time.perf_counter() - t0) * 1000
-        return parse_point_any(content, size, self.coords), (time.perf_counter() - t0) * 1000
+            va = parse_qwen_grounding(content)
+        else:
+            va = parse_point_any(content, size, self.coords)
+        if self.verifier is not None and isinstance(screenshot, Image.Image):
+            self.verifier.confirm(screenshot, va.x, va.y, instruction)
+        return va, (time.perf_counter() - t0) * 1000
 
     def _ask(self, b64: str, instruction: str, history: list[str] | None) -> str:
         system, template = GROUNDING_PROMPTS[self.protocol]
@@ -552,7 +562,7 @@ class QwenGroundingAdapter:
                 ]},
             ],
             "temperature": 0.0,
-            "max_tokens": 64,
+            "max_tokens": self.max_tokens,
         }
         try:
             import http_pool as _pool
@@ -561,4 +571,89 @@ class QwenGroundingAdapter:
                                         payload, self.timeout_s, retries=2)
         except RuntimeError as e:
             raise RuntimeError(f"qwen grounding HTTP falhou: {e}")
-        return data["choices"][0]["message"]["content"]
+        return grounding_content(data)
+
+
+VERIFY_CROP_HALF = 96  # meia largura do recorte em px da captura (medido com 1280 px)
+
+
+def target_text(instruction: str) -> str:
+    """Instrução sem o verbo de ação: 'Click the X' -> 'the X' (puro)."""
+    for verb in ("Click on ", "Click ", "Check ", "Select ", "Clique em ", "Clique no ",
+                 "Clique na "):
+        if instruction.startswith(verb):
+            return instruction[len(verb):]
+    return instruction
+
+
+def verify_question(instruction: str) -> str:
+    return (f"Is the element at the center of this image {target_text(instruction)}? "
+            "Answer yes only if it is exactly that element.")
+
+
+def verify_crop(image: Image.Image, x: float, y: float,
+                half: int = VERIFY_CROP_HALF) -> Image.Image:
+    """Recorte quadrado centrado no ponto 0..1, ampliado para 384 px (puro)."""
+    w, h = image.size
+    cx, cy = x * w, y * h
+    box = (int(max(0, cx - half)), int(max(0, cy - half)),
+           int(min(w, cx + half)), int(min(h, cy + half)))
+    return image.crop(box).resize((384, 384))
+
+
+class TargetVerifier:
+    """Confere o ponto do localizador com um modelo de decisão (d1, `/v1/systemone`).
+
+    Motivo (28/10): o LFM3-VL acha todos os alvos existentes, mas aponta algo também quando o
+    alvo não existe (45 cliques errados em 189). O d1 recebe um recorte em volta do ponto e dá
+    P(sim) de o elemento ser o pedido; abaixo do limite, o clique vira "alvo não visível"
+    (last_error para o planner). Limite 0,20 na bateria: 45 -> 9 cliques errados, 96 -> 93
+    acertos. Falha do verificador também não clica: erro honesto, nunca clique sem conferir.
+    """
+
+    def __init__(self, base_url: str, threshold: float = 0.2, timeout_s: float = 30.0):
+        if not 0.0 <= float(threshold) <= 1.0:
+            raise ValueError("vision.verifier.threshold deve estar entre 0 e 1")
+        self.base_url = base_url.rstrip("/")
+        self.threshold = float(threshold)
+        self.timeout_s = float(timeout_s)
+        self.last_p: float | None = None
+
+    def probability(self, image: Image.Image, x: float, y: float, instruction: str) -> float:
+        import base64
+        import io
+
+        buf = io.BytesIO()
+        verify_crop(image, x, y).convert("RGB").save(buf, "JPEG", quality=80)
+        body = {"model": "d1", "state": "Region of a computer screen around a candidate click.",
+                "images": ["data:image/jpeg;base64," + base64.b64encode(buf.getvalue()).decode()],
+                "questions": {"q": {"type": "noul",
+                                    "instructions": verify_question(instruction)}}}
+        r = httpx.post(f"{self.base_url}/systemone", json=body, timeout=self.timeout_s)
+        r.raise_for_status()
+        return float(r.json()["answers"]["q"]["noul"])
+
+    def confirm(self, image: Image.Image, x: float, y: float, instruction: str) -> float:
+        try:
+            p = self.probability(image, x, y, instruction)
+        except Exception as exc:
+            raise ValueError(f"alvo não visível p/ o grounding: verificador falhou ({exc})")
+        self.last_p = p
+        if p < self.threshold:
+            raise ValueError(f"alvo não visível p/ o grounding: verificador não confirmou "
+                             f"(p={p:.2f} < {self.threshold:.2f})")
+        return p
+
+
+def grounding_content(data: dict) -> str:
+    """Texto da resposta de grounding (puro). Resposta truncada = alvo não visível, sem clique.
+
+    Medido em 27/10: com alvo inexistente o LFM3-VL especula até o teto de tokens; um ponto
+    extraído dessa saída cortada seria um clique no escuro. Vira o mesmo erro honesto de alvo
+    ausente (last_error para o planner), nunca um retry.
+    """
+    choice = data["choices"][0]
+    content = choice["message"].get("content") or ""
+    if choice.get("finish_reason") == "length":
+        raise ValueError("alvo não visível p/ o grounding: resposta truncada no teto de tokens")
+    return content

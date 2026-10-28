@@ -287,11 +287,35 @@ class TestRegistryAndProfiles(unittest.TestCase):
 
     def downloads(self, cfg):
         got = []
+        mark = f"{cfg.get('runtime', {}).get('backend', 'cpu')}@{server.LLAMA_TAG}"
         with patch.object(server.sys, "platform", "win32"), \
                 patch.object(server, "_download", lambda url, dest, **k: got.append(dest.name)), \
-                patch.object(Path, "exists", lambda self: self.name == "llama-server.exe"):
+                patch.object(server.shutil, "rmtree", lambda *a, **k: None), \
+                patch.object(Path, "read_text", lambda self, **k: mark), \
+                patch.object(Path, "exists", lambda self: self.name in ("llama-server.exe",
+                                                                         ".backend")):
             server.ensure_assets(progress=lambda *_: None, cfg=cfg)
         return got
+
+    def test_old_llama_release_is_replaced_by_the_pinned_one(self):
+        # Marca antiga ("cpu", sem @tag) = binário anterior ao suporte a LFM3: baixa de novo.
+        got, removed = [], []
+
+        def exists(self):  # binário some no rmtree; o .backend existe antes dele
+            if self.name == "llama-server.exe":
+                return not removed or any(server.LLAMA_TAG in u for u in got)
+            return self.name == ".backend" and not removed
+        with patch.object(server.sys, "platform", "win32"), \
+                patch.object(server, "_download", lambda url, dest, **k: got.append(url)), \
+                patch.object(server, "_extract_zip", lambda *a: None), \
+                patch.object(server.shutil, "rmtree", lambda path, **k: removed.append(path)), \
+                patch.object(Path, "read_text", lambda self, **k: "cpu"), \
+                patch.object(Path, "write_text", lambda self, *a, **k: None), \
+                patch.object(Path, "mkdir", lambda self, *a, **k: None), \
+                patch.object(Path, "exists", exists):
+            server.ensure_assets(progress=lambda *_: None, cfg={"runtime": {}})
+        self.assertEqual(removed, [server.BIN_DIR])
+        self.assertTrue(any(server.LLAMA_TAG in u for u in got))
 
     def test_dual_profile_downloads_planner_and_vision_with_projector(self):
         cfg = cfgmod.apply_profile({"runtime": {}}, "P1")
