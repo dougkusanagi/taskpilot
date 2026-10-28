@@ -631,7 +631,10 @@ class TargetVerifier:
                                     "instructions": verify_question(instruction)}}}
         r = httpx.post(f"{self.base_url}/systemone", json=body, timeout=self.timeout_s)
         r.raise_for_status()
-        return float(r.json()["answers"]["q"]["noul"])
+        p = r.json()["answers"]["q"]["noul"]
+        if isinstance(p, bool) or not isinstance(p, (int, float)) or not 0.0 <= p <= 1.0:
+            raise ValueError("probabilidade do verificador deve ser um número entre 0 e 1")
+        return float(p)
 
     def confirm(self, image: Image.Image, x: float, y: float, instruction: str) -> float:
         try:

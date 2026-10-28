@@ -101,6 +101,13 @@ class TargetVerifierGate(unittest.TestCase):
                 return {"answers": {"q": {"noul": p}}}
         return lambda url, **k: R()
 
+    def test_invalid_probability_blocks_click(self):
+        for probability in (float("nan"), float("inf"), -0.1, 1.1, True, "0.9", None):
+            with self.subTest(probability=probability):
+                with patch.object(v.httpx, "post", self.post(probability)):
+                    with self.assertRaisesRegex(ValueError, "verificador falhou"):
+                        v.TargetVerifier("http://x/v1").confirm(self.img, .5, .5, "Click OK")
+
     def test_low_probability_is_not_visible(self):
         with patch.object(v.httpx, "post", self.post(0.1)):
             with self.assertRaisesRegex(ValueError, "não visível"):
