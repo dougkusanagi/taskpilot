@@ -194,7 +194,7 @@ class TestVerification(unittest.TestCase):
         import verification as vf
 
         ok, _ = vf.confirm_effect("hotkey:ctrl+t", after="window 'A' -> 'Nova guia'")
-        self.assertTrue(ok)
+        self.assertFalse(ok)
         ok, _ = vf.confirm_effect("hotkey:ctrl+t", after="window 'A'")
         self.assertFalse(ok)
 

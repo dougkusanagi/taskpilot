@@ -172,3 +172,11 @@ Config em `config.json` → seções `ui` e `stt` (modelo `tiny|base|small`,
   (`ctrl+l`, digitar, `enter`, cliques), como um humano.
   Nada que o planner emite passa por shell.
 - Log de cada passo em `run.jsonl` + screenshot em `last.png`.
+
+No protótipo opt-in `--platform wayland`, a observação textual usa AT-SPI pelo
+Python do sistema (`/usr/bin/python3`, GI/Atspi), no `DBUS_SESSION_BUS_ADDRESS`
+explícito. A leitura tem timeout e não envia input. Elementos sem bounds
+continuam informando estado, mas cliques precisam de localização visual.
+Nova aba exige aumento observado de `TabItem`; título sozinho não confirma.
+Indisponibilidade de AT-SPI mantém o efeito inconclusivo; d1 valida o alvo,
+não o resultado. Veja [o teste isolado](docs/teste-ubuntu-isolado-2026-10-28.md).

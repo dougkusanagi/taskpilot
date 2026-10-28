@@ -52,6 +52,11 @@ def focused_value(max_len: int = 80) -> str:
 
     Serve p/ o planner saber se `type_text` chegou onde devia. "" se não der.
     """
+    import platform_backend
+
+    if platform_backend.active() is not None:
+        from platform_backend.accessibility import snapshot
+        return str(snapshot().get("focused", ""))[:max_len]
     try:
         from pywinauto.controls.uiawrapper import UIAWrapper
         from pywinauto.uia_defines import IUIA
@@ -205,10 +210,15 @@ def active_window_snapshot(timeout: float = 5.0,
     import platform_backend
 
     if platform_backend.active() is not None:
-        # backend visual (Wayland): sem árvore de acessibilidade; honesto, não "vazio por acaso"
-        _set_diag(status="error", error="sem UIA neste backend (modo visual: visual_action/OCR)",
-                  count=0, max_elements=max_elements, elapsed_ms=_elapsed_ms())
-        return [], "", None
+        from platform_backend.accessibility import snapshot
+        data = snapshot(timeout)
+        items = data.get("items", [])[:max_elements]
+        _set_diag(status=("error" if data.get("error") else "truncated"
+                          if data.get("truncated") or len(data.get("items", [])) > max_elements
+                          else "ok"),
+                  error=data.get("error", ""), count=len(items),
+                  max_elements=max_elements, elapsed_ms=_elapsed_ms())
+        return items, data.get("title", ""), None
 
     try:
         active = _active_window()

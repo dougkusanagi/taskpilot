@@ -12,6 +12,8 @@ flowchart TD
     Loop --> Guard[Vetos e executor Python]
     Guard --> Windows[Windows: UIA / PyAutoGUI / MSS]
     Guard --> Wayland[Ubuntu opt-in: cliente Wayland]
+    Loop --> ATSPIC[Leitura AT-SPI passiva / timeout]
+    ATSPIC --> ATSPIR[Python do sistema / bus de sessão explícito]
     Wayland --> Bridge[Ponte Python do sistema / GI]
     Bridge --> Portal[Portais RemoteDesktop e ScreenCast / PipeWire]
     Runtime[Runtime próprio server.py] --> Assets[Binários e GGUFs locais]

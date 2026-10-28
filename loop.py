@@ -103,7 +103,7 @@ def format_ui_names(items: list[dict], limit: int = 40) -> list[str]:
 
     def label(it: dict) -> str | None:
         name = (it.get("name") or "").strip()
-        if not name:
+        if not name and not it.get("value") and it.get("type") != "Edit":
             return None
         ctype = (it.get("type") or "").strip() or "?"
         base = f"{ctype}:{name[:60]}"
@@ -164,6 +164,12 @@ def _app_bootstrap(
     fixos existem e rodam ANTES do planner: ele já recebe a janela certa no
     estado, e a partir daí tudo é IA. Só abrir app + confirmar foco.
     """
+    import platform_backend
+
+    # A visual-only backend cannot establish that the requested app is absent.
+    # Let the model request grounding rather than opening duplicate windows.
+    if platform_backend.active() is not None:
+        return None
     low = instruction.lower()
     browser = _browser_want(low)
     if browser is not None:
@@ -287,6 +293,8 @@ def _resolve_uia_exact(
         )
     hit = next(iter(seen.values()))
     b = hit.get("bounds") or [0, 0, 0, 0]
+    if b[2] <= b[0] or b[3] <= b[1]:
+        return None, "bounds indisponíveis; use visual_action"
     cx, cy = (b[0] + b[2]) // 2, (b[1] + b[3]) // 2
     if wrect is not None and not (wrect[0] <= cx <= wrect[2] and wrect[1] <= cy <= wrect[3]):
         return None, ""  # rect fantasma fora da janela -> trata como miss
@@ -1305,7 +1313,7 @@ def observe(action: Action, before_title: str, after_title: str, value: str = ""
             "same URL, go back to the site homepage or search"
         )
     if action.type == "type" and action.text:
-        if value and action.text.strip()[:40] in value:
+        if value and action.text in value:
             parts.append("text visible in focused field")
         elif value:
             parts.append(f"focused field now: {value[:60]!r}")
@@ -1841,7 +1849,8 @@ def run(instruction: str, cfg: dict, dry_run: bool = False) -> dict:
                     )
                 if src == "vocaela":
                     va = tm.get("visual", {})
-                    vinstr = tm.get("planner_decision", {}).get("instruction", "")
+                    vinstr = (tm.get("planner_decision", {}).get("instruction") or
+                                tm.get("planner_decision", {}).get("target") or dec.reason)
                     emit("PLANNER", f"visual: {vinstr}", f"{tm.get('planner_ms', 0):.0f}ms")
                     if tm.get("screenshot_ms"):
                         emit("SHOT", "active-window capture", f"{tm.get('screenshot_ms', 0):.0f}ms")
@@ -2002,7 +2011,8 @@ def run(instruction: str, cfg: dict, dry_run: bool = False) -> dict:
             if src == "vocaela" and tm.get("visual"):
                 va = tm["visual"]
                 label = (
-                    f'visual "{tm.get("planner_decision", {}).get("instruction", "")}"'
+                    f'visual "{(tm.get("planner_decision", {}).get("instruction") or
+                                tm.get("planner_decision", {}).get("target") or dec.reason)}"'
                     f" -> {va.get('type')}"
                 )
             if dec.action.type == "answer":
@@ -2046,15 +2056,17 @@ def run(instruction: str, cfg: dict, dry_run: bool = False) -> dict:
                 # (modal dispensado, conteúdo visível/novo). Título sozinho
                 # continua sem confirmar — as listas vêm do snapshot real.
                 ui_kwargs: dict = {}
-                if effect_type in ("click", "scroll"):
+                if effect_type in ("click", "scroll", "hotkey:ctrl+t"):
                     ui_kwargs = {"ui_before": list(tm.get("ui_names", []) or []),
                                  "ui_after": list(ui_after or [])}
                 confirmed, cnote = verif.confirm_effect(
                     effect_type, dec.action.text or "", tm.get("uia_title", ""), vnote, vnote,
                     **ui_kwargs,
                 )
+                ctx["last_result"] += f"; {cnote}"
+                ctx["hist_labels"][-1] += f"; {cnote}"
                 if ok and confirmed:
-                    statemod.add_evidence(ctx.get("task_state"), f"{label} => {vnote}")
+                    statemod.add_evidence(ctx.get("task_state"), f"{label} => {vnote}; {cnote}")
             except Exception:
                 cnote = ""
                 confirmed = False
@@ -2067,7 +2079,7 @@ def run(instruction: str, cfg: dict, dry_run: bool = False) -> dict:
                     from schemas import ActionResult as _AR
                     from schemas import new_id as _nid
 
-                    ev_label = f"{label} => {vnote}"
+                    ev_label = f"{label} => {vnote}; {cnote}"
                     ar = _AR(
                         action_id=_nid("act"),
                         sent=("not_sent" if dry_run else "sent"),

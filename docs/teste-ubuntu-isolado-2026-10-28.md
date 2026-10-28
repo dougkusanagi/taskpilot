@@ -86,3 +86,90 @@ Melhorar a observação real do Ubuntu (título/foco/AT-SPI ou OCR) e o uso de p
 quando a árvore não estiver disponível; então repetir a mesma tarefa isolada. Validar mouse,
 foco e digitação com efeito visível antes de ampliar a bateria. Não trocar o default B1 nem
 aprovar gates R3–R6 com este resultado.
+
+## Correção após o teste
+
+O bootstrap agora deixa de presumir ausência de aplicativo no backend visual. O prompt
+explica que uma árvore vazia não prova que o app está fechado, solicita localização visual
+antes de digitar e alerta para não transferir atalhos do navegador para outros apps.
+Regressão do prompt e suíte local verificadas; a repetição real isolada continua pendente.
+
+## Repetição após correção do prompt
+
+Execução `runs/ubuntu-e2e-20261028-172116`, loop `run-20261028-142142`.
+O limite inotify por usuário foi elevado de 128 para 512 via sysctl (sem persistência).
+A captura voltou a funcionar. O planner solicitou localização visual e o loop abriu
+novas abas pelo botão +, mas repetiu o clique e não digitou a frase em quatro passos.
+A captura final confirma abas novas e documentos vazios. Tarefa continua reprovada:
+falta confirmação de efeito no backend visual para avançar à digitação.
+Os processos isolados foram encerrados; o desktop de trabalho não recebeu input.
+
+## Integração AT-SPI e novas repetições — 28/10
+
+Foi integrado um leitor AT-SPI passivo, em subprocesso do Python do sistema com timeout,
+no barramento explícito da sessão opt-in. `AT_SPI_BUS_ADDRESS` herdado é removido para
+que a descoberta use esse barramento. A árvore informa janela ativa, abas e texto/foco;
+janela ativa ausente/ambígua, timeout e erro continuam diagnósticos, sem evidência inventada.
+A travessia inicial de 20 níveis não alcançava o campo do GTK; a versão final tem limite
+80/5000 nós e informa truncamento. Nenhum bound AT-SPI é usado para clicar nesta entrega.
+Elementos com bounds ausentes continuam no contexto textual; cliques usam grounding visual.
+
+A confirmação de nova aba exige aumento de elementos `TabItem` antes/depois, e não título
+ou pixels. A verificação de texto passa a exigir a frase inteira na leitura do foco, em vez
+somente dos primeiros 40 caracteres. O histórico e a memória agora recebem a confirmação.
+Foi corrigido também o alvo perdido na escalada `uia_click` → visão: o histórico registrava
+`visual "None"`, mesmo quando o alvo conhecido era `New Tab`. Campos de texto sem nome são
+preservados no prompt. Observação simples não vira evidência de conclusão.
+
+### Resultados reais
+
+Sessão dedicada: `runs/ubuntu-e2e-20261028-173237/`.
+
+- `run-20261028-143300`: falhou (`stuck`), após reabertura do editor e grounding truncado.
+  O portal devolveu a sessão à visão geral; essa execução não prova falha do clique no app.
+- Após dispensar a visão geral no preparo, `run-20261028-143408`: quatro cliques, `max_steps`.
+  Novas abas confirmadas por AT-SPI, mas nenhuma digitação. Histórico ainda perdia o alvo.
+- Com alvo preservado e orientação genérica sobre avançar após efeitos confirmados,
+  `run-20261028-143521`: quatro cliques, `max_steps`, nenhuma digitação.
+- Com confirmação também descrita em inglês e orientação junto à decisão seguinte,
+  `run-20261028-143631`: quatro cliques, `max_steps`, nenhuma digitação.
+
+**Resultado end-to-end: falha.** O efeito de abrir novas abas foi comprovado; a frase não
+foi digitada. A leitura independente final (`final-atspi.json`) contou dez abas e texto
+vazio. `final.png`, inspecionada visualmente, mostra abas e documento vazio. Não houve
+conclusão falsa do loop. Não foi feita a segunda tarefa de variação porque a primeira não
+passou. As repetições posteriores reutilizaram a mesma sessão/modelos e acumularam abas;
+não são trials independentes de ambiente limpo. A etapa de input do portal foi autorizada
+somente pelo PID do portal no barramento privado; nenhuma ação da tarefa foi feita à mão.
+
+O prompt efetivo em `runs/run-20261028-143631/sft.jsonl` contém o alvo, os `TabItem`, a
+confirmação e a memória; ainda assim o planner escolhe `uia_click New Tab` novamente.
+A integração corrige a falta de observação, mas **não resolve a repetição desse planner**.
+Não foi introduzida uma estratégia Python específica para o editor para mascarar a falha.
+O d1 continua validando alvo, sem contrato de confirmação visual antes/depois; esse fallback
+não foi inventado. Sem AT-SPI, o efeito segue inconclusivo.
+
+### Reprodução e segurança
+
+Os scripts exatos usados estão em `runs/ubuntu-e2e-20261028-173237/harness/`: launcher,
+controller, modelos, autorização por PID e retry privado. O launcher inicia bus/Wayland/
+PipeWire/XDG privados, nice 10, dois CPUs e watchdog de oito minutos/2 GiB disponíveis.
+O retry valida os identificadores privados e tem timeout de 150 s, grupo próprio e cleanup.
+A afinidade e prioridade são herdadas pelos modelos. Não houve download de pesos nem
+encerramento de modelos alheios. O limite inotify já estava em 512 e não foi alterado.
+A primeira tentativa do launcher sem terminal (`173224`) recebeu EOF e foi limpa antes
+iniciar avaliação/modelos; a sessão de avaliação usou terminal para manter o controlador.
+
+Use o launcher em terminal, aguarde `ready`, envie `models` e espere `config.json`;
+inspecione `isolation.json`, dispense a visão geral apenas no preparo e capture `before`.
+Envie `agent`, autorize pelo script restrito ao portal privado se houver diálogo. As linhas
+para o controlador são JSON, por exemplo `{"cmd":"models"}`, `{"cmd":"agent"}`,
+`{"cmd":"capture","name":"final"}` e `{"cmd":"quit"}`. O retry exige que essa sessão
+continue viva e reutiliza sua configuração. Os scripts usam caminhos locais e arquivos
+em `/tmp`; copie-os de volta para esses caminhos antes de reproduzir. O launcher/controller
+fazem cleanup em `finally`, e `cleanup.json` registra os PIDs próprios encerrados.
+
+Validação local: suíte oficial via uv, 538 testes, zero falhas e um skip; ruff verde.
+Os testes novos são passivos, com mocks, sem abrir portais ou controlar desktop.
+Nenhum gate Windows/6 GB foi aprovado; default B1 permanece. A VRAM reportada pelo loop
+é a ocupação global do host, inclui processos preexistentes e não certifica orçamento.
