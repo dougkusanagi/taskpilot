@@ -1,6 +1,6 @@
 [project]
 name = "copilot-road-runner"
-version = "0.1.0"
+version = "0.2.0"
 description = "MVP ultraleve de Computer Use 100% local para Windows"
 requires-python = ">=3.12"
 dependencies = [
