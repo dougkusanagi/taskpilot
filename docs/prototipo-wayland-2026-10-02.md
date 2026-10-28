@@ -36,10 +36,11 @@ sudo apt install python3-gi gir1.2-gst-plugins-base-1.0 gstreamer1.0-pipewire gs
 uv sync --extra ocr
 ```
 
-Runtime (o `server.py` ainda recusa fora do Windows): suba os dois `llama-server` à mão (P1:
-Qwen3-4B 8091 + MAI-UI-2B 8082, ctx 4096, `-ngl 99 -np 1 -fa on -ctk q8_0 -ctv q8_0`, visão com
-`--no-mmproj-offload`) e use `--no-runtime`. Binários Linux existem no release b11053 do llama.cpp
-(`ubuntu-x64`, `ubuntu-vulkan-x64`, `ubuntu-cuda-12.8-x64`) ou use o do LM Studio.
+Runtime (atualizado em 28/10): `server.py` seleciona binários Ubuntu x86_64, com CPU por
+padrão e `runtime.backend: cuda|vulkan` opcionais. `uv run python -m server` inicia os modelos;
+`--no-runtime` continua disponível para usar endpoints já iniciados. A extração e execução do
+binário oficial CPU b11954 foram verificadas no Ubuntu. Isso não valida o controle do desktop.
+CUDA usa o pacote oficial 12.8; suporte depende do driver instalado. GGUFs são os mesmos do Windows.
 
 ## Rodar
 

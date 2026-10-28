@@ -87,5 +87,56 @@ class SeamTests(unittest.TestCase):
                 actions._check_coords(100, 10)  # fora do monitor compartilhado
 
 
+class CliPlatformTests(unittest.TestCase):
+    def test_locate_uses_platform_and_always_closes_it(self):
+        import main
+
+        calls = []
+        with mock.patch.object(sys, "argv", ["main.py", "--platform", "wayland", "--locate", "OK"]), \
+                mock.patch.object(main.cfgmod, "load", return_value={}), \
+                mock.patch.object(platform_backend, "enable", side_effect=lambda p: calls.append(p)), \
+                mock.patch.object(platform_backend, "disable", side_effect=lambda: calls.append("close")), \
+                mock.patch.object(main, "locate_only", side_effect=lambda *a: calls.append("locate")):
+            main.main()
+        self.assertEqual(calls, ["wayland", "locate", "close"])
+
+    def test_platform_closes_after_locate_error(self):
+        import main
+
+        with mock.patch.object(sys, "argv", ["main.py", "--platform", "wayland", "--locate", "OK"]), \
+                mock.patch.object(main.cfgmod, "load", return_value={}), \
+                mock.patch.object(platform_backend, "enable"), \
+                mock.patch.object(platform_backend, "disable") as close, \
+                mock.patch.object(main, "locate_only", side_effect=RuntimeError("captura falhou")):
+            with self.assertRaisesRegex(RuntimeError, "captura falhou"):
+                main.main()
+            close.assert_called_once()
+
+    def test_self_test_captures_with_selected_backend_and_closes(self):
+        import main
+        import obs
+        import safety
+
+        calls = []
+        with mock.patch.object(sys, "argv", ["main.py", "--self-test", "--platform", "wayland"]), \
+                mock.patch.object(main.cfgmod, "load", return_value={}), \
+                mock.patch.object(platform_backend, "enable", side_effect=lambda p: calls.append(p)), \
+                mock.patch.object(platform_backend, "disable", side_effect=lambda: calls.append("close")), \
+                mock.patch.object(obs, "take_screenshot", side_effect=lambda: (calls.append("capture") or ("frame.png", (100, 80)))), \
+                mock.patch.object(safety, "start"), mock.patch("builtins.print"):
+            main.main()
+        self.assertEqual(calls, ["wayland", "capture", "close"])
+
+    def test_dry_run_does_not_enable_platform(self):
+        import main
+
+        with mock.patch.object(sys, "argv", ["main.py", "--dry-run", "--platform", "wayland", "--locate", "OK"]), \
+                mock.patch.object(main.cfgmod, "load", return_value={}), \
+                mock.patch.object(platform_backend, "enable") as enable, \
+                mock.patch.object(platform_backend, "disable"), mock.patch.object(main, "locate_only"):
+            main.main()
+            enable.assert_not_called()
+
+
 if __name__ == "__main__":
     unittest.main()

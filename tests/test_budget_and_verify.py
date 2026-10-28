@@ -74,6 +74,30 @@ class VerifyBench(unittest.TestCase):
         return [dict(hit, p_verify=.9), dict(hit, p_verify=.2), dict(miss, p_verify=.3),
                 dict(absent, p_verify=.1), said_absent]
 
+    def test_independent_cases_are_used_instead_of_calibration_set(self):
+        import json
+        import tempfile
+        from types import SimpleNamespace
+        from unittest.mock import MagicMock
+
+        with tempfile.TemporaryDirectory() as tmp:
+            image = Path(tmp) / "new-screen.png"
+            Image.new("RGB", (100, 100)).save(image)
+            cases = Path(tmp) / "cases.json"
+            cases.write_text(json.dumps({"cases": [{"id": "held-out", "image": str(image),
+                "instruction": "Click OK", "bbox": [.4, .4, .6, .6]}]}))
+            args = SimpleNamespace(cases=cases, timeout=1, reps=1, grounder_model="test",
+                                   max_tokens=512, protocol="p2d", grounder_url="http://g/v1",
+                                   verifier_url="http://d/v1")
+            response = MagicMock()
+            response.json.return_value = reply('{"point_2d": [500, 500]}')
+            with patch.object(vb.httpx, "Client") as client, \
+                    patch.object(vb, "ask_verifier", return_value=.8):
+                client.return_value.__enter__.return_value.post.return_value = response
+                result = vb.run(args)
+            self.assertEqual([r["case_id"] for r in result["rows"]], ["held-out"])
+            self.assertEqual(result["gates"][0]["hits"], 1)
+
     def test_gate_counts_wrong_clicks_on_absent_and_off_target(self):
         g0 = vb.gate(self.rows(), 0.0)
         self.assertEqual((g0["hits"], g0["wrong_clicks"], g0["hits_blocked"]), (2, 2, 0))

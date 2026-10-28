@@ -232,6 +232,7 @@ class TestBackendsAndMemoryFlags(unittest.TestCase):
     def cfg(self, **runtime):
         return {"runtime": runtime}
 
+    @patch.object(server.sys, "platform", "win32")
     def test_urls_per_backend(self):
         cpu = server.llama_urls("cpu")
         self.assertEqual(len(cpu), 1)
@@ -359,10 +360,85 @@ class TestRegistryAndProfiles(unittest.TestCase):
 
 
 class TestPlatformGuard(unittest.TestCase):
-    def test_non_windows_fails_before_downloading_anything(self):
+    def test_unsupported_platform_fails_before_downloading_anything(self):
         calls = []
-        with patch.object(server.sys, "platform", "linux"), \
+        with patch.object(server.sys, "platform", "darwin"), \
                 patch.object(server, "_download", lambda *a, **k: calls.append(a)):
-            with self.assertRaisesRegex(RuntimeError, "só funcionam no Windows"):
+            with self.assertRaisesRegex(RuntimeError, "Windows e Linux"):
                 server.ensure_assets(progress=lambda *_: None, cfg={})
         self.assertEqual(calls, [])
+
+
+class TestLinuxRuntime(unittest.TestCase):
+    @patch.object(server.sys, "platform", "linux")
+    @patch.object(server.platform, "machine", return_value="x86_64")
+    def test_linux_urls_and_executable(self, _machine):
+        self.assertTrue(server.llama_urls()[0].endswith("bin-ubuntu-x64.tar.gz"))
+        self.assertIn("ubuntu-vulkan-x64", server.llama_urls("vulkan")[0])
+        cuda = server.llama_urls("cuda")
+        self.assertEqual(len(cuda), 2)
+        self.assertIn("cudart-llama-" + server.LLAMA_TAG, cuda[1])
+        args = server._server_args("planner", Path("m.gguf"), None, 8091, {})
+        self.assertEqual(Path(args[0]).name, "llama-server")
+
+    @patch.object(server.sys, "platform", "linux")
+    @patch.object(server.platform, "machine", return_value="aarch64")
+    def test_unsupported_architecture_does_not_download(self, _machine):
+        with patch.object(server, "_download") as download:
+            with self.assertRaisesRegex(RuntimeError, "x86_64"):
+                server.ensure_assets()
+            download.assert_not_called()
+
+    def test_tar_extracts_nested_binary_with_libraries_and_permissions(self):
+        import io
+        import tarfile
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            archive = root / "runtime.tar.gz"
+            with tarfile.open(archive, "w:gz") as tf:
+                for name in ("llama-server", "libggml.so"):
+                    info = tarfile.TarInfo("release/" + name)
+                    info.size, info.mode = 4, 0o755
+                    tf.addfile(info, io.BytesIO(b"test"))
+            server._extract_tar(archive, root / "bin")
+            self.assertTrue((root / "bin/llama-server").stat().st_mode & 0o111)
+            self.assertEqual((root / "bin/libggml.so").read_bytes(), b"test")
+            self.assertFalse(archive.exists())
+
+    def test_tar_rejects_path_traversal(self):
+        import io
+        import tarfile
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            archive = root / "unsafe.tar.gz"
+            with tarfile.open(archive, "w:gz") as tf:
+                info = tarfile.TarInfo("../escaped")
+                info.size = 1
+                tf.addfile(info, io.BytesIO(b"x"))
+            with self.assertRaises(tarfile.FilterError):
+                server._extract_tar(archive, root / "bin")
+            self.assertFalse((root / "escaped").exists())
+
+
+    def test_cudart_is_placed_beside_an_existing_server(self):
+        import io
+        import tarfile
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            dest = root / "bin"
+            dest.mkdir()
+            (dest / "llama-server").write_bytes(b"server")
+            archive = root / "cudart.tar.gz"
+            with tarfile.open(archive, "w:gz") as tf:
+                info = tarfile.TarInfo("cuda/libcudart.so.12")
+                info.size = 3
+                tf.addfile(info, io.BytesIO(b"lib"))
+            server._extract_tar(archive, dest)
+            self.assertEqual((dest / "libcudart.so.12").read_bytes(), b"lib")
+            self.assertEqual((dest / "llama-server").read_bytes(), b"server")

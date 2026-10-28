@@ -1,4 +1,4 @@
-# copilot-road-runner — Computer Use local MVP (Windows)
+# copilot-road-runner — Computer Use local MVP
 
 > MVP experimental: confiabilidade em tarefas genéricas ainda não validada.
 > Default **B1** (MiniCPM5-2B); rollback explícito `--profile B0`.
@@ -35,6 +35,21 @@ erro honesto. Desligue com `runtime.auto_start: false` ou `--no-runtime`;
 `uv run python -m server` sobe os dois e fica no ar (`--host 0.0.0.0`
 expõe ao Sandbox, só p/ testes).
 Detalhes do ambiente isolado em `docs/sandbox-test-env.md`.
+
+## Ubuntu (experimental)
+
+O runtime próprio também seleciona binários Ubuntu x86_64 (CPU, Vulkan ou CUDA).
+O controle da interface continua opt-in via `--platform wayland`, usando portais do GNOME;
+veja [setup e limites](docs/prototipo-wayland-2026-10-02.md).
+Isso ainda não comprova tarefas completas no Ubuntu. O default B1 permanece.
+
+Testes locais, sem controlar o desktop:
+
+```bash
+uv run python -m unittest discover -s tests
+uv run ruff check
+uv run python main.py --self-test
+```
 
 ## Modelos (manual)
 

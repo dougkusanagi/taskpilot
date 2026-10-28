@@ -118,74 +118,74 @@ def main() -> None:
     if args.record:
         cfg["record"] = True
 
-    if args.self_test:
-        import safety
-        from obs import take_screenshot
-
-        safety.start(cfg.get("stop_hotkey"))
-        t0 = time.perf_counter()
-        path, (w, h) = take_screenshot()
-        dt = (time.perf_counter() - t0) * 1000
-        try:
-            import config as _cfgmod
-            import skills as _sk
-
-            prof = _cfgmod.profile_of(cfg)
-            nskills = len(_sk.list_skills())
-        except Exception:
-            prof, nskills = {"name": "B0"}, 0
-        print(json.dumps({
-            "ok": True,
-            "screenshot": path,
-            "size": [w, h],
-            "ms": round(dt, 1),
-            "cpu_pct": psutil.cpu_percent(interval=0.2),
-            "mem_pct": psutil.virtual_memory().percent,
-            "safety": safety.status(),
-            "profile": prof,
-            "skills": nskills,
-            "config": cfg,
-            "note": f"{safety.HOTKEY} aborta; dry-run sem cliques",
-        }, indent=2))
-        return
-
-    if args.locate:
-        locate_only(args.locate, cfg)
-        return
-
-    if args.ui:
-        try:
-            import webview  # noqa: F401
-        except ImportError:
-            print("UI indisponível: instale o extra `ui` (uv sync --extra ui).")
-            raise SystemExit(2)
-        from app import App
-
-        App(cfg).run()
-        return
-
-    instruction = args.instruction.strip()
-    if not instruction:
-        try:
-            instruction = input("> ").strip()
-        except (EOFError, KeyboardInterrupt):
-            print()
-            return
-    if not instruction:
-        print("instrução vazia.")
-        raise SystemExit(2)
-
     import platform_backend
 
     plat = args.platform or cfg.get("platform", {}).get("backend", "")
-    if plat and not cfg.get("dry_run"):
-        platform_backend.enable(plat)
-    from loop import run
     try:
+        if plat and not cfg.get("dry_run"):
+            platform_backend.enable(plat)
+        if args.self_test:
+            import safety
+            from obs import take_screenshot
+
+            safety.start(cfg.get("stop_hotkey"))
+            t0 = time.perf_counter()
+            path, (w, h) = take_screenshot()
+            dt = (time.perf_counter() - t0) * 1000
+            try:
+                import config as _cfgmod
+                import skills as _sk
+
+                prof = _cfgmod.profile_of(cfg)
+                nskills = len(_sk.list_skills())
+            except Exception:
+                prof, nskills = {"name": "B0"}, 0
+            print(json.dumps({
+                "ok": True,
+                "screenshot": path,
+                "size": [w, h],
+                "ms": round(dt, 1),
+                "cpu_pct": psutil.cpu_percent(interval=0.2),
+                "mem_pct": psutil.virtual_memory().percent,
+                "safety": safety.status(),
+                "profile": prof,
+                "skills": nskills,
+                "config": cfg,
+                "note": f"{safety.HOTKEY} aborta; dry-run sem cliques",
+            }, indent=2))
+            return
+
+        if args.locate:
+            locate_only(args.locate, cfg)
+            return
+
+        if args.ui:
+            try:
+                import webview  # noqa: F401
+            except ImportError:
+                print("UI indisponível: instale o extra `ui` (uv sync --extra ui).")
+                raise SystemExit(2)
+            from app import App
+
+            App(cfg).run()
+            return
+
+        instruction = args.instruction.strip()
+        if not instruction:
+            try:
+                instruction = input("> ").strip()
+            except (EOFError, KeyboardInterrupt):
+                print()
+                return
+        if not instruction:
+            print("instrução vazia.")
+            raise SystemExit(2)
+
+        from loop import run
         summary = run(instruction, cfg, dry_run=bool(cfg.get("dry_run", False)))
+        print(json.dumps(summary, indent=2, ensure_ascii=False))
     finally:
         platform_backend.disable()
-    print(json.dumps(summary, indent=2, ensure_ascii=False))
 
 
 if __name__ == "__main__":

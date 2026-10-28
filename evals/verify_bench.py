@@ -55,7 +55,7 @@ def gate(rows: list[dict], threshold: float) -> dict:
 
 
 def run(args) -> dict:
-    cases = load_cases()
+    cases = load_cases(args.cases) if args.cases else load_cases()
     rows = []
     with httpx.Client(timeout=args.timeout, trust_env=False) as client:
         for rep in range(args.reps):
@@ -121,6 +121,8 @@ def main(argv=None) -> int:
     ap.add_argument("--reps", type=int, default=1)
     ap.add_argument("--timeout", type=float, default=180)
     ap.add_argument("--out", type=Path, required=True)
+    ap.add_argument("--cases", type=Path,
+                    help="bateria independente; imagens relativas a evals/ground ou absolutas")
     args = ap.parse_args(argv)
     args.out.mkdir(parents=True, exist_ok=False)
     result = run(args)

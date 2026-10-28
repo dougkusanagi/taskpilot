@@ -2,7 +2,7 @@
 
 Meta: `uv run python main.py "..."` funciona SEM subir nada externo. O projeto
 tem seu próprio runtime: na 1ª execução baixa o binário do `llama-server`
-(llama.cpp, release Windows x64 CPU) e os GGUFs para `models/` (gitignored);
+(llama.cpp, release Windows ou Ubuntu x64) e os GGUFs para `models/` (gitignored);
 nas seguintes, só reusa. O "erro honesto" (loop.py) passa a valer só quando
 algo de verdade falha (download, porta ocupada por servidor de outro modelo,
 runtime ausente) — não quando ninguém subiu servidor externo.
@@ -16,11 +16,14 @@ vivo (ou com outro modelo) = erro honesto, nunca matamos processo alheio.
 from __future__ import annotations
 
 import os
+import platform
 import re
 import shutil
 import socket
 import subprocess
 import sys
+import tarfile
+import tempfile
 import time
 import urllib.parse
 import urllib.request
@@ -123,9 +126,8 @@ def registry_entry(model: str) -> dict | None:
     return GGUF_REGISTRY.get(key)
 
 
-# Release fixa do llama.cpp (binários Windows x64 CPU); atualize o tag de vez
-# em quando. CPU-only de propósito: roda em qualquer PC; quem quiser GPU pode
-# subir llama-server externo — o reuso por porta cobre isso.
+# Release fixa do llama.cpp; CPU por padrão, CUDA/Vulkan opt-in.
+# Ubuntu x86_64 usa tar.gz; Windows x64 usa ZIP.
 LLAMA_TAG = "b11954"  # >= b11935: suporte a LFM3 (VL e d1)
 LLAMA_ZIP_URL = (
     "https://github.com/ggml-org/llama.cpp/releases/download/"
@@ -141,11 +143,25 @@ BACKEND_MARK = BIN_DIR / ".backend"  # "<backend>@<tag>" do llama-server extraí
 BACKENDS = ("cpu", "vulkan", "cuda")
 
 
+def runtime_exe() -> Path:
+    return BIN_DIR / "llama-server" if sys.platform == "linux" else LLAMA_EXE
+
+
 def llama_urls(backend: str = "cpu") -> list[str]:
-    """URLs do(s) zip(s) do llama.cpp para o backend (puro, testável)."""
+    """URLs dos arquivos do llama.cpp por backend e plataforma."""
     if backend not in BACKENDS:
         raise ValueError(f"runtime.backend inválido: {backend!r}; use {BACKENDS}")
     base = f"https://github.com/ggml-org/llama.cpp/releases/download/{LLAMA_TAG}/"
+    if sys.platform == "linux":
+        if platform.machine().lower() not in ("x86_64", "amd64"):
+            raise RuntimeError("runtime Linux requer arquitetura x86_64")
+        suffix = {"cpu": "x64", "vulkan": "vulkan-x64", "cuda": "cuda-12.8-x64"}[backend]
+        urls = [base + f"llama-{LLAMA_TAG}-bin-ubuntu-{suffix}.tar.gz"]
+        if backend == "cuda":
+            urls.append(base + f"cudart-llama-{LLAMA_TAG}-bin-ubuntu-{suffix}.tar.gz")
+        return urls
+    if sys.platform != "win32":
+        raise RuntimeError("runtime próprio disponível para Windows e Linux x86_64")
     if backend == "cuda":
         return [base + f"llama-{LLAMA_TAG}-bin-win-cuda-12.4-x64.zip",
                 base + "cudart-llama-bin-win-cuda-12.4-x64.zip"]
@@ -228,6 +244,24 @@ def _extract_zip(zip_path: Path, dest: Path) -> None:
             break
 
 
+def _extract_tar(archive: Path, dest: Path) -> None:
+    """Extrai release Linux com filtro de caminhos; mantém libs ao lado do executável."""
+    dest.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory(prefix="llama-extract-") as tmp:
+        unpacked = Path(tmp)
+        with tarfile.open(archive) as tf:
+            tf.extractall(unpacked, filter="data")
+        candidates = list(unpacked.rglob("llama-server")) or list(unpacked.rglob("libcudart.so*"))
+        if not candidates:
+            raise RuntimeError(f"arquivo de runtime sem executável ou biblioteca CUDA: {archive}")
+        for item in candidates[0].parent.iterdir():
+            target = dest / item.name
+            # As bibliotecas do cudart ficam junto ao executável, mesmo quando este já existe.
+            if not target.exists() and not target.is_symlink():
+                shutil.move(str(item), str(target))
+    archive.unlink(missing_ok=True)
+
+
 def _endpoint_alive(base_url: str, timeout_s: float = 5.0) -> dict | None:
     """/v1/models vivo? Retorna {"models": [...]} ou None."""
     import httpx
@@ -277,33 +311,32 @@ def ensure_assets(progress=print, cfg: dict | None = None) -> dict:
     Retorna Paths {exe, planner_gguf, vision_gguf, mmproj}.
     Erro honesto (RuntimeError) se download/extração falhar.
     """
-    if sys.platform != "win32":
-        # Os binários baixados são do Windows e o agente (UIA/pyautogui) só roda lá: falhar ANTES
-        # de baixar gigabytes que nunca vão executar.
-        raise RuntimeError(
-            "o runtime próprio e o agente só funcionam no Windows (baixa llama-server.exe). "
-            "Neste sistema, suba um llama-server/LM Studio e use --no-runtime "
-            "(só serve para as baterias de avaliação, não para controlar o desktop)."
-        )
-    MODELS_DIR.mkdir(parents=True, exist_ok=True)
-
+    # Valida plataforma/arquitetura antes de qualquer download.
     backend = str((cfg or {}).get("runtime", {}).get("backend", "cpu"))
     urls = llama_urls(backend)
+    exe = runtime_exe()
+    MODELS_DIR.mkdir(parents=True, exist_ok=True)
+
     want = f"{backend}@{LLAMA_TAG}"
+    if sys.platform == "linux":
+        want += "@linux-x64"
     have = BACKEND_MARK.read_text(encoding="utf-8").strip() if BACKEND_MARK.exists() else "cpu"
-    if LLAMA_EXE.exists() and have != want:
+    if exe.exists() and have != want:
         # Marca antiga sem "@tag" = release anterior: modelos novos (LFM3) não carregariam nela.
         progress(f"llama.cpp instalado ({have}) difere do pedido ({want}): baixando de novo...")
         shutil.rmtree(BIN_DIR, ignore_errors=True)
-    if not LLAMA_EXE.exists():
+    if not exe.exists():
         progress(f"baixando llama.cpp {LLAMA_TAG} ({backend}, 1ª vez)...")
         for n, url in enumerate(urls):
-            zp = MODELS_DIR / f"llama{n}.zip"
+            zp = MODELS_DIR / (f"llama{n}.tar.gz" if sys.platform == "linux" else f"llama{n}.zip")
             _download(url, zp, min_bytes=10_000_000, progress=progress)
-            _extract_zip(zp, BIN_DIR)
-        if not LLAMA_EXE.exists():
+            if sys.platform == "linux":
+                _extract_tar(zp, BIN_DIR)
+            else:
+                _extract_zip(zp, BIN_DIR)
+        if not exe.exists():
             raise RuntimeError(
-                f"llama-server.exe não apareceu em {BIN_DIR} após extrair {urls}"
+                f"llama-server não apareceu em {BIN_DIR} após extrair {urls}"
             )
         BACKEND_MARK.parent.mkdir(parents=True, exist_ok=True)
         BACKEND_MARK.write_text(want, encoding="utf-8")
@@ -327,7 +360,7 @@ def ensure_assets(progress=print, cfg: dict | None = None) -> dict:
     else:
         inv["vision_gguf"] = (MODELS_DIR / VISION_GGUF["file"], VISION_GGUF, 100_000_000)
         inv["mmproj"] = (MODELS_DIR / VISION_MMPROJ["file"], VISION_MMPROJ, 10_000_000)
-    assets: dict[str, Path] = {"exe": LLAMA_EXE}
+    assets: dict[str, Path] = {"exe": exe}
     for key, (dest, src, min_bytes) in inv.items():
         if not dest.exists():
             progress(f"baixando {src['file']} (1ª vez)...")
@@ -349,7 +382,7 @@ def _server_args(role: str, gguf: Path, mmproj: Path | None, port: int, cfg: dic
     if backend != "cpu" and ngl == 0:
         ngl = 99  # GPU: com ngl=0 o backend GPU rodaria tudo na CPU
     args = [
-        str(LLAMA_EXE),
+        str(runtime_exe()),
         "-m",
         str(gguf),
         "--host",
@@ -560,7 +593,7 @@ def gpu_status(cfg: dict) -> dict:
     except Exception:
         gpu = {}
     ngl = int(cfg.get("runtime", {}).get("ngl", DEFAULT_NGL))
-    exe = str(LLAMA_EXE)
+    exe = str(runtime_exe())
     cpu_only = "cpu" in exe.lower() or "bin" in exe.lower()
     warn = ""
     if ngl > 0 and cpu_only:
