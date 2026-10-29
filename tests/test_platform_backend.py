@@ -54,6 +54,56 @@ class WhitelistTests(unittest.TestCase):
         self.assertFalse(wayland.WaylandBackend().focus_window("qualquer"))
 
 
+class FocusRestoreTests(unittest.TestCase):
+    """Foco após o diálogo do portal: só teclas, confirmado por AT-SPI (mocks, sem portal)."""
+
+    def _backend(self, titles, devices=3):
+        be = wayland.WaylandBackend()
+        be.devices = devices
+        sent = []
+        be._call = lambda req, timeout=15.0: sent.append(req) or {"ok": True}
+        seq = iter(titles)
+        be._active_title = lambda: next(seq)
+        return be, sent
+
+    def test_sem_janela_ativa_restaura_com_super_esc_sem_clique(self):
+        be, sent = self._backend(["", "Doc - Editor"])
+        with mock.patch.object(wayland.time, "sleep"):
+            note = be._restore_focus("Doc - Editor")
+        self.assertIn("restaurado", note)
+        self.assertNotIn("não", note)
+        self.assertEqual([r["cmd"] for r in sent], ["keysym"] * 4)
+        self.assertEqual([r["sym"] for r in sent[::2]], [0xFFEB, 0xFF1B])
+        self.assertFalse(any(r["cmd"] in ("button", "move") for r in sent))
+
+    def test_janela_ainda_ativa_nao_envia_nada(self):
+        be, sent = self._backend(["Doc - Editor"])
+        self.assertEqual(be._restore_focus("Doc - Editor"), "")
+        self.assertEqual(sent, [])
+
+    def test_sem_janela_antes_ou_sem_teclado_nao_age(self):
+        be, sent = self._backend([])
+        self.assertEqual(be._restore_focus(""), "")
+        be, sent = self._backend([""], devices=2)
+        self.assertEqual(be._restore_focus("Doc"), "")
+        self.assertEqual(sent, [])
+
+    def test_outra_janela_ativa_e_informada_como_falha(self):
+        be, _ = self._backend(["", "Outra"])
+        with mock.patch.object(wayland.time, "sleep"):
+            note = be._restore_focus("Doc - Editor")
+        self.assertIn("não restaurado", note)
+        self.assertIn("Outra", note)
+
+    def test_titulo_ativo_vem_do_atspi_e_erro_vira_vazio(self):
+        with mock.patch("platform_backend.accessibility.snapshot",
+                        return_value={"title": "Doc", "items": []}):
+            self.assertEqual(wayland.WaylandBackend._active_title(), "Doc")
+        with mock.patch("platform_backend.accessibility.snapshot",
+                        return_value={"error": "janela ativa ausente"}):
+            self.assertEqual(wayland.WaylandBackend._active_title(), "")
+
+
 class SeamTests(unittest.TestCase):
     def tearDown(self):
         platform_backend.disable()

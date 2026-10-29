@@ -19,8 +19,10 @@ def read():
         for window in children(app):
             if window.get_state_set().contains(Atspi.StateType.ACTIVE):
                 windows.append(window)
-    if len(windows) != 1:
-        raise RuntimeError('janela ativa ausente ou ambígua')
+    if not windows:
+        raise RuntimeError('janela ativa ausente')
+    if len(windows) > 1:
+        raise RuntimeError('janela ativa ambígua')
     items = []
     focused = ''
     focused_type = ''
