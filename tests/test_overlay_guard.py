@@ -159,6 +159,17 @@ class TestEscalationInstruction(unittest.TestCase):
         self.assertEqual(loop._escalation_instruction("y", []), "Click y")
 
 
+class TestObserveFocus(unittest.TestCase):
+    def test_typing_into_a_tab_is_reported(self):
+        from schemas import Action
+
+        a = Action(type="type", text="Olá")
+        note = loop.observe(a, "Ed", "Ed", "", "TabItem")
+        self.assertIn("focus is on a TabItem", note)
+        self.assertIn("focused field unreadable", loop.observe(a, "Ed", "Ed", "", ""))
+        self.assertIn("focused field unreadable", loop.observe(a, "Ed", "Ed", "", "Edit"))
+
+
 class TestSatisfiedIntent(unittest.TestCase):
     def test_intent_ignores_grounding_pixels(self):
         from schemas import Action, Decision
@@ -168,6 +179,13 @@ class TestSatisfiedIntent(unittest.TestCase):
         c = Decision(action=Action(type="type", text="Olá"), source="planner")
         self.assertEqual(loop._intent_key(a), loop._intent_key(b))
         self.assertNotEqual(loop._intent_key(a), loop._intent_key(c))
+
+    def test_visual_clicks_differ_by_planned_target(self):
+        from schemas import Action, Decision
+
+        a = Decision(action=Action(type="click", x=10, y=20), source="vocaela")
+        self.assertNotEqual(loop._intent_key(a, {"target": "Nova aba"}),
+                            loop._intent_key(a, {"target": "Novo documento"}))
 
     def test_note_points_to_next_requirement(self):
         import state as statemod

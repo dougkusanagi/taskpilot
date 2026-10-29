@@ -1296,7 +1296,8 @@ _ERROR_TITLE_HINTS = (
 )
 
 
-def observe(action: Action, before_title: str, after_title: str, value: str = "") -> str:
+def observe(action: Action, before_title: str, after_title: str, value: str = "",
+            focus_type: str = "") -> str:
     """Resultado da ação em texto curto p/ o planner (puro, testável).
 
     Só fatos observados: janela antes/depois, e p/ `type` se o texto
@@ -1318,6 +1319,9 @@ def observe(action: Action, before_title: str, after_title: str, value: str = ""
             parts.append("text visible in focused field")
         elif value:
             parts.append(f"focused field now: {value[:60]!r}")
+        elif focus_type and focus_type not in ("Edit", "Document"):
+            parts.append(f"keyboard focus is on a {focus_type}, not a text field: the text "
+                         "did not appear; click inside the text area, then type again")
         else:
             parts.append("focused field unreadable")
     elif action.type in ("open", "focus") and after_title == before_title:
@@ -1379,7 +1383,9 @@ def verify(
         return False, "aborted", []
     items, title, _ = active_window_snapshot()
     value = focused_value() if action.type == "type" else ""
-    return bool(title), observe(action, before_title, title, value), format_ui_names(items)
+    ftype = uia.focused_control_type() if action.type == "type" and not value else ""
+    return (bool(title), observe(action, before_title, title, value, ftype),
+            format_ui_names(items))
 
 
 def _progress_made(prev_note: str, cur_note: str) -> bool:
@@ -1505,10 +1511,17 @@ def _escalation_instruction(target: str, items: list[dict]) -> str:
     return f"Click {target}"
 
 
-def _intent_key(dec: Decision) -> str:
-    """Intenção da decisão, sem coordenadas (o grounding varia alguns pixels)."""
+def _intent_key(dec: Decision, planned: dict | None = None) -> str:
+    """Intenção da decisão, sem coordenadas (o grounding varia alguns pixels).
+
+    Clique visual não tem `target` na ação física: o alvo vem da decisão do planner
+    (29/10: sem isso, clicar em "Novo documento" contava como repetir "Nova aba").
+    """
     a = dec.action
-    return f"{dec.kind}:{_steps_label(list(dec.steps or []))}:{a.type}:{a.text}:{a.key}:{a.target}"
+    p = planned or {}
+    want = p.get("target") or p.get("instruction") or ""
+    return (f"{dec.kind}:{_steps_label(list(dec.steps or []))}:{a.type}:{a.text}:{a.key}:"
+            f"{a.target}:{want}")
 
 
 def _satisfied_note(ts, nxt: int) -> str:
@@ -1905,8 +1918,9 @@ def run(instruction: str, cfg: dict, dry_run: bool = False) -> dict:
             # com o requisito aberto; o modelo escolhe a ação seguinte.
             ts = ctx.get("task_state")
             nxt = statemod.next_requirement(ts) if ts is not None else None
+            intent = _intent_key(dec, tm.get("planner_decision"))
             if (nxt is not None and dec.kind in ("action", "sequence")
-                    and _intent_key(dec) in ctx.get("satisfied_intents", set())):
+                    and intent in ctx.get("satisfied_intents", set())):
                 if fail_step("repeticao", _satisfied_note(ts, nxt)):
                     continue
                 result = "stuck"
@@ -2118,7 +2132,8 @@ def run(instruction: str, cfg: dict, dry_run: bool = False) -> dict:
                     statemod.add_evidence(ts, f"{label} => {vnote}; {cnote}")
                     if ts is not None and statemod.satisfy_next_requirement(ts) is not None:
                         # a mesma intenção não volta a cumprir outro requisito (guard 2b)
-                        ctx.setdefault("satisfied_intents", set()).add(_intent_key(dec))
+                        ctx.setdefault("satisfied_intents", set()).add(
+                            _intent_key(dec, tm.get("planner_decision")))
             except Exception:
                 cnote = ""
                 confirmed = False

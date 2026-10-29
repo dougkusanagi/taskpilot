@@ -85,6 +85,11 @@ def focused_value(max_len: int = 80) -> str:
 
 def focused_control_type() -> str:
     """Tipo UIA do elemento com foco de teclado (`Edit`, `Document`...), "" se não der."""
+    import platform_backend
+
+    if platform_backend.active() is not None:
+        from platform_backend.accessibility import snapshot
+        return str(snapshot().get("focused_type", ""))
     try:
         from pywinauto.controls.uiawrapper import UIAWrapper
         from pywinauto.uia_defines import IUIA

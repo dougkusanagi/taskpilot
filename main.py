@@ -123,7 +123,12 @@ def main() -> None:
     plat = args.platform or cfg.get("platform", {}).get("backend", "")
     try:
         if plat and not cfg.get("dry_run"):
-            platform_backend.enable(plat)
+            be = platform_backend.enable(plat)
+            # Pede a aprovação do portal ANTES da 1ª observação: aberta no meio do passo 0,
+            # o diálogo roubava o foco do app e os dois primeiros cliques eram perdidos
+            # (Ubuntu isolado 29/10).
+            if be is not None and hasattr(be, "screen_rect"):
+                be.screen_rect()
         if args.self_test:
             import safety
             from obs import take_screenshot

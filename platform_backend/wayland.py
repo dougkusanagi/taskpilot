@@ -59,6 +59,11 @@ def keysym_for_char(ch: str) -> int:
     return 0x01000000 + cp
 
 
+POINTER_SETTLE_S = 0.08  # entre movimento/press/release do ponteiro
+POINTER_WARMUP_S = 0.5  # após o movimento inicial da sessão (medido no GNOME isolado)
+UNICODE_COMMIT_S = 0.12  # IBus confirma Ctrl+Shift+U de forma assíncrona ("Olá" virou "Oál")
+
+
 def key_events_for_char(ch: str) -> list[tuple[int, int]]:
     """Eventos (keysym, 1=press/0=release) que digitam `ch` (puro).
 
@@ -113,6 +118,12 @@ class WaylandBackend:
         self.size = tuple(r.get("frame_size") or (0, 0))
         got = self._call({"cmd": "frame", "path": str(self._tmp / "probe.png")}, timeout=20)
         self.size = tuple(got["size"])
+        if self.devices & 2 and self.size[0] and self.size[1]:
+            # O 1º botão de cada sessão se perdia mesmo com pausas (29/10); um movimento
+            # inicial, sem clique, posiciona o ponteiro virtual. Centro, não um canto:
+            # o canto superior esquerdo abre a visão geral do GNOME.
+            self._call({"cmd": "move", "x": self.size[0] // 2, "y": self.size[1] // 2})
+            time.sleep(POINTER_WARMUP_S)
 
     def _call(self, req: dict, timeout: float = 15.0) -> dict:
         assert self._proc and self._proc.stdin and self._proc.stdout
@@ -199,11 +210,14 @@ class _Input:
 
     def moveTo(self, x, y, duration=0.0):  # noqa: N802 (nome da API pyautogui)
         self._c({"cmd": "move", "x": x, "y": y})
-        time.sleep(max(duration, 0.0) * 0.3)
+        # Sem pausa o botão chega antes do compositor entregar o "enter" do ponteiro à
+        # janela: o 1º clique de cada sessão do portal se perdia (Ubuntu isolado 29/10).
+        time.sleep(max(max(duration, 0.0) * 0.3, POINTER_SETTLE_S))
 
     def _press(self, button: str, clicks: int = 1):
         for _ in range(clicks):
             self._c({"cmd": "button", "code": BTN[button], "state": 1})
+            time.sleep(POINTER_SETTLE_S)
             self._c({"cmd": "button", "code": BTN[button], "state": 0})
             time.sleep(0.05)
 
@@ -254,6 +268,7 @@ class _Input:
 
     def type_text(self, text: str) -> None:
         for ch in text:
-            for s, state in key_events_for_char(ch):
+            events = key_events_for_char(ch)
+            for s, state in events:
                 self._c({"cmd": "keysym", "sym": s, "state": state})
-            time.sleep(0.015)
+            time.sleep(UNICODE_COMMIT_S if len(events) > 2 else 0.015)

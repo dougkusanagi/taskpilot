@@ -97,9 +97,14 @@ class ObservationTests(unittest.TestCase):
             def get_name(self):
                 return self.name
 
-            def get_text_iface(self):
-                return SimpleNamespace(get_text=lambda start, end: self.value[start:end],
-                                       get_character_count=lambda: len(self.value))
+            def get_interfaces(self):
+                return ['Accessible', 'Text'] if self.role == 'text' else ['Accessible']
+
+            def get_text_iface(self):  # PyGObject real: devolve o próprio Accessible
+                return self
+
+            def get_text(self):  # Accessible.get_text descontinuado: 1 argumento
+                raise TypeError('get_text() takes exactly 1 argument (3 given)')
 
         child = Node('text', value='Olá, Ubuntu!', states=('focused',))
         for _ in range(30):
@@ -107,12 +112,16 @@ class ObservationTests(unittest.TestCase):
         window = Node('frame', 'Editor', children=(child,), states=('active',))
         desktop = Node('desktop', children=(Node('app', children=(window,)),))
         atspi = SimpleNamespace(get_desktop=lambda _: desktop,
-                                StateType=SimpleNamespace(ACTIVE='active', FOCUSED='focused'))
+                                StateType=SimpleNamespace(ACTIVE='active', FOCUSED='focused'),
+                                Text=SimpleNamespace(
+                                    get_character_count=lambda n: len(n.value),
+                                    get_text=lambda n, a, b: n.value[a:b]))
         with patch.dict(sys.modules, {'gi': SimpleNamespace(require_version=lambda *_: None),
                                      'gi.repository': SimpleNamespace(Atspi=atspi)}), \
                 patch.dict('os.environ', {'DBUS_SESSION_BUS_ADDRESS': 'unix:path=/private'}):
             result = read()
         self.assertEqual(result['focused'], 'Olá, Ubuntu!')
+        self.assertEqual(result['focused_type'], 'Edit')
         self.assertEqual(result['items'][-1]['value'], 'Olá, Ubuntu!')
         self.assertIsNone(result['items'][-1]['bounds'])
         self.assertFalse(result['truncated'])

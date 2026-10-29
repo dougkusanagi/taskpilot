@@ -227,3 +227,45 @@ input chegou ao desktop de trabalho.
 Próximos passos: ler o texto do GtkSourceView via AT-SPI (interface Text) para
 confirmar a digitação; não gastar passo durante o diálogo do portal; medir
 `why` em mais cenas antes de considerá-lo como padrão.
+
+## Leitura do texto e novas repetições — 29/10
+
+Defeitos reproduzidos no GNOME isolado e corrigidos:
+
+1. **Texto do editor sempre vazio:** no PyGObject atual, `get_text_iface()` devolve o
+   próprio `Accessible`, cujo `get_text()` descontinuado aceita 1 argumento. O
+   `TypeError` era engolido. O leitor agora usa `Atspi.Text.get_text(node, 0, n)`, que leu
+   o texto digitado. O mock do teste reproduzia a API errada; agora reproduz a real.
+2. **Primeiro clique de cada sessão do portal perdido:** reproduzido sem modelos
+   (`probe-*.png`, `tp-click-probe.py`); pausas entre movimento/press/release não
+   bastaram. Um movimento inicial do ponteiro até o centro, sem clique, mais 0,5 s
+   resolveu. A sessão do portal agora abre ao ligar o backend, antes da 1ª observação.
+3. **"Olá" virou "Oál":** o IBus confirma a entrada Unicode de forma assíncrona; pausa
+   de 0,12 s após cada caractere fora do ASCII.
+4. **Guard 2b amplo demais:** clique visual não tem `target` na ação física, então
+   clicar em "Novo documento" contava como repetir "Nova aba". A chave agora usa o alvo
+   da decisão do planner.
+5. **Digitação com foco numa aba:** antes aparecia "focused field unreadable". Agora o
+   leitor informa o papel do elemento focado, e o resultado diz que o foco está num
+   TabItem e que é preciso clicar na área de texto.
+
+Runs (`runs/ubuntu-e2e-20261029-*`, limite de 4 passos, `why` ligado só no teste):
+
+- `101607`: aba nova confirmada; digitação confirmada pela leitura ("text visible in
+  focused field"); acabou em `max_steps` sem passo para `done`. Os dois primeiros
+  passos foram perdidos (defeito 2).
+- `101748`: igual, mas digitou "Oál" (defeito 3).
+- `102257` e `102450`: depois das correções, o 1º passo sempre clica na barra de título,
+  porque após a aprovação do portal não há janela ativa. Depois o planner clicou na aba
+  e tentou `focus_window` ou digitou com foco na aba. Em `102450` o guard 2b ainda
+  estava amplo (defeito 4).
+- `102748`: aba confirmada, clique na aba e `focus_window`; `max_steps`.
+- Retry com 6 passos na mesma sessão: a visão truncou a resposta 4× (teto de 512 tokens)
+  e o run parou no passo 0.
+- `102637`: a captura inicial travou antes dos modelos; interrompido com cleanup.
+
+**Resultado: o E2E continua reprovado.** Nenhum run terminou com `done`. Os defeitos
+de código encontrados foram corrigidos; as falhas restantes vêm da variação das decisões
+do Qwen3-4B (clicar na aba, `focus_window`), do grounding (barra de título, truncamento)
+e do limite de 4 passos, que não absorve o passo fixo de reativar a janela após o
+portal. Cleanup confirmado em todas as sessões; nenhum input chegou ao desktop de trabalho.

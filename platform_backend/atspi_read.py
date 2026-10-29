@@ -23,11 +23,12 @@ def read():
         raise RuntimeError('janela ativa ausente ou ambígua')
     items = []
     focused = ''
+    focused_type = ''
     visited = 0
     truncated = False
 
     def walk(node, depth=0):
-        nonlocal focused, visited, truncated
+        nonlocal focused, focused_type, visited, truncated
         visited += 1
         if depth > 80 or visited > 5000:
             truncated = True
@@ -37,13 +38,18 @@ def read():
                     node.get_role_name(), node.get_role_name())
         name = node.get_name() or ''
         value = ''
-        try:
-            text = node.get_text_iface()
-            value = text.get_text(0, min(text.get_character_count(), 8192))
-        except Exception:
-            pass
+        if 'Text' in node.get_interfaces():
+            # Chamada pela classe: em PyGObject atual get_text_iface() devolve o
+            # Accessible, cujo get_text() descontinuado tem 1 argumento (28/10:
+            # todo campo vinha vazio e a digitação nunca era confirmada).
+            try:
+                n = Atspi.Text.get_character_count(node)
+                value = Atspi.Text.get_text(node, 0, min(n, 8192)) or ''
+            except Exception:
+                pass
         if node.get_state_set().contains(Atspi.StateType.FOCUSED):
             focused = value
+            focused_type = role
         if name or value or role in ('Edit', 'TabItem'):
             items.append(dict(id=len(items), name=name, type=role, value=value,
                               bounds=None, context='AT-SPI'))
@@ -52,7 +58,7 @@ def read():
 
     walk(windows[0])
     return dict(items=items, title=windows[0].get_name(), focused=focused,
-                truncated=truncated)
+                focused_type=focused_type, truncated=truncated)
 
 
 if __name__ == '__main__':
