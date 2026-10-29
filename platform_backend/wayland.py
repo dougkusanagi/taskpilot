@@ -65,7 +65,7 @@ FOCUS_SETTLE_S = 0.6  # Esc da visão geral até a janela aparecer ativa no AT-S
 # IBus confirma Ctrl+Shift+U de forma assíncrona ("Olá" virou "Oál"). Só a 1ª entrada
 # Unicode da sessão demora: com 0,35 s ela ainda saiu fora de ordem e as seguintes não
 # (reproduzido sem modelos no GNOME isolado, 29/10).
-UNICODE_COMMIT_S = 0.12
+UNICODE_COMMIT_S = 0.3
 FIRST_UNICODE_COMMIT_S = 1.0
 
 
@@ -313,6 +313,10 @@ class _Input:
     def type_text(self, text: str) -> None:
         for ch in text:
             events = key_events_for_char(ch)
+            if len(events) > 2:
+                # Antes também: nos runs do agente o "l" anterior saiu depois do "á" ("Oál"),
+                # mesmo com espera após a entrada Unicode (29/10).
+                time.sleep(UNICODE_COMMIT_S)
             for s, state in events:
                 self._c({"cmd": "keysym", "sym": s, "state": state})
             if len(events) <= 2:
