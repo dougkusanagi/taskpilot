@@ -105,6 +105,19 @@ class FocusRestoreTests(unittest.TestCase):
 
 
 class UnicodeWarmupTests(unittest.TestCase):
+    def test_pausa_antes_da_sequencia_unicode(self):
+        be = wayland.WaylandBackend()
+        be.devices = 3
+        be._ensure = lambda: None
+        calls = []
+        be._call = lambda req, timeout=15.0: calls.append(req)
+        with mock.patch.object(wayland.time, "sleep", side_effect=lambda s: calls.append(s)):
+            be.input.type_text("lá")
+        unicode_events = wayland.key_events_for_char("á")
+        start = calls.index({"cmd": "keysym", "sym": unicode_events[0][0],
+                             "state": unicode_events[0][1]})
+        self.assertEqual(calls[start - 1], wayland.UNICODE_COMMIT_S)
+
     def test_so_a_primeira_entrada_unicode_espera_mais(self):
         be = wayland.WaylandBackend()
         be.devices = 3

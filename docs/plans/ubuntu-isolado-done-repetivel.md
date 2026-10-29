@@ -103,4 +103,7 @@ entrada Unicode (`UNICODE_COMMIT_S = 0.3`). Ainda não foi medida (o lote `t3072
 
 ## Próximo passo
 
-Rodar o passo 2b (`--tag t3072b`) com o working tree atual e ler `results.md` + os `agent.log`.
+Lote 2b iniciado em `runs/ubuntu-iso-t3072c-20261029-171212` (N=10, teto 3072).
+Ler `results.md` + os `agent.log` ao terminar; não concluir a medição antes disso.
+A pausa já está commitada em `c044b86`; regressão passiva adicionada verifica a ordem
+da espera antes de Ctrl+Shift+U. Suíte anterior: 560 testes, 1 skip; teste afetado: 28 verdes.
