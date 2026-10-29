@@ -59,6 +59,33 @@ def keysym_for_char(ch: str) -> int:
     return 0x01000000 + cp
 
 
+POINTER_SETTLE_S = 0.08  # entre movimento/press/release do ponteiro
+POINTER_WARMUP_S = 0.5  # após o movimento inicial da sessão (medido no GNOME isolado)
+FOCUS_SETTLE_S = 0.6  # Esc da visão geral até a janela aparecer ativa no AT-SPI
+# IBus confirma Ctrl+Shift+U de forma assíncrona ("Olá" virou "Oál"). Só a 1ª entrada
+# Unicode da sessão demora: com 0,35 s ela ainda saiu fora de ordem e as seguintes não
+# (reproduzido sem modelos no GNOME isolado, 29/10).
+UNICODE_COMMIT_S = 0.3
+FIRST_UNICODE_COMMIT_S = 1.0
+
+
+def key_events_for_char(ch: str) -> list[tuple[int, int]]:
+    """Eventos (keysym, 1=press/0=release) que digitam `ch` (puro).
+
+    Mutter descarta keysyms fora do layout ativo: no teste isolado de 28/10,
+    "Olá" virou "Ol" (nem 0xE1 nem 0x010000E1 chegaram). Fora do ASCII usa a
+    entrada Unicode do IBus/GTK, padrão no GNOME: Ctrl+Shift+U, hex, espaço.
+    """
+    s = keysym_for_char(ch)
+    if s == ord(ch) and 0x20 <= s <= 0x7E or s in (0xFF0D, 0xFF09):
+        return [(s, 1), (s, 0)]
+    ctrl, shift, u = 0xFFE3, 0xFFE1, ord("u")
+    ev = [(ctrl, 1), (shift, 1), (u, 1), (u, 0), (shift, 0), (ctrl, 0)]
+    for d in f"{ord(ch):x}":
+        ev += [(ord(d), 1), (ord(d), 0)]
+    return ev + [(0x20, 1), (0x20, 0)]
+
+
 def keysym_for_key(name: str) -> int:
     n = name.strip().lower()
     if n in _NAMED:
@@ -74,6 +101,7 @@ class WaylandBackend:
         self._lock = threading.Lock()
         self.size = (0, 0)
         self.devices = 0
+        self.focus_note = ""
         self._tmp = Path(tempfile.mkdtemp(prefix="taskpilot-wl-"))
         self.input = _Input(self)
 
@@ -88,6 +116,7 @@ class WaylandBackend:
     def _ensure(self) -> None:
         if self._proc is not None and self._proc.poll() is None:
             return
+        before = self._active_title()  # antes do diálogo do portal tomar o foco
         self._proc = subprocess.Popen(
             [self._python(), "-u", str(BRIDGE)], stdin=subprocess.PIPE, stdout=subprocess.PIPE,
             stderr=sys.stderr, text=True, bufsize=1)
@@ -96,6 +125,48 @@ class WaylandBackend:
         self.size = tuple(r.get("frame_size") or (0, 0))
         got = self._call({"cmd": "frame", "path": str(self._tmp / "probe.png")}, timeout=20)
         self.size = tuple(got["size"])
+        if self.devices & 2 and self.size[0] and self.size[1]:
+            # O 1º botão de cada sessão se perdia mesmo com pausas (29/10); um movimento
+            # inicial, sem clique, posiciona o ponteiro virtual. Centro, não um canto:
+            # o canto superior esquerdo abre a visão geral do GNOME.
+            self._call({"cmd": "move", "x": self.size[0] // 2, "y": self.size[1] // 2})
+            time.sleep(POINTER_WARMUP_S)
+        self.focus_note = self._restore_focus(before)
+        if self.focus_note:
+            print(f"foco após o portal: {self.focus_note}", file=sys.stderr, flush=True)
+
+    @staticmethod
+    def _active_title() -> str:
+        """Título da janela ativa por AT-SPI ('' = nenhuma ou sem leitura)."""
+        from .accessibility import snapshot
+
+        snap = snapshot()
+        return "" if snap.get("error") else str(snap.get("title") or "")
+
+    def _tap(self, key: str) -> None:
+        sym = keysym_for_key(key)
+        for state in (1, 0):
+            self._call({"cmd": "keysym", "sym": sym, "state": state})
+            time.sleep(0.15)
+        time.sleep(0.4)
+
+    def _restore_focus(self, before: str) -> str:
+        """Devolve o foco à janela ativa antes do diálogo do portal.
+
+        Ao fechar o diálogo, o Mutter não reativa nenhuma janela (Ubuntu isolado 29/10): o
+        passo 0 só reativava o app. Abrir e fechar a visão geral (Super, Esc) faz o GNOME
+        ativar a janela do topo, sem clicar em nada; Alt+Tab não funcionou sem janela
+        ativa. O resultado é confirmado por AT-SPI e informado, nunca presumido.
+        """
+        if not before or not self.devices & 1 or self._active_title():
+            return ""
+        for key in ("super", "esc"):  # abre e fecha a visão geral
+            self._tap(key)
+        time.sleep(FOCUS_SETTLE_S)
+        now = self._active_title()
+        if now == before:
+            return f"restaurado para {before!r}"
+        return f"não restaurado (antes {before!r}, agora {now or 'nenhuma janela ativa'!r})"
 
     def _call(self, req: dict, timeout: float = 15.0) -> dict:
         assert self._proc and self._proc.stdin and self._proc.stdout
@@ -170,6 +241,7 @@ class _Input:
 
     def __init__(self, be: WaylandBackend) -> None:
         self._be = be
+        self._unicode_warm = False
 
     def _c(self, req: dict) -> None:
         self._be._ensure()
@@ -182,11 +254,14 @@ class _Input:
 
     def moveTo(self, x, y, duration=0.0):  # noqa: N802 (nome da API pyautogui)
         self._c({"cmd": "move", "x": x, "y": y})
-        time.sleep(max(duration, 0.0) * 0.3)
+        # Sem pausa o botão chega antes do compositor entregar o "enter" do ponteiro à
+        # janela: o 1º clique de cada sessão do portal se perdia (Ubuntu isolado 29/10).
+        time.sleep(max(max(duration, 0.0) * 0.3, POINTER_SETTLE_S))
 
     def _press(self, button: str, clicks: int = 1):
         for _ in range(clicks):
             self._c({"cmd": "button", "code": BTN[button], "state": 1})
+            time.sleep(POINTER_SETTLE_S)
             self._c({"cmd": "button", "code": BTN[button], "state": 0})
             time.sleep(0.05)
 
@@ -237,7 +312,17 @@ class _Input:
 
     def type_text(self, text: str) -> None:
         for ch in text:
-            s = keysym_for_char(ch)
-            self._c({"cmd": "keysym", "sym": s, "state": 1})
-            self._c({"cmd": "keysym", "sym": s, "state": 0})
-            time.sleep(0.015)
+            events = key_events_for_char(ch)
+            if len(events) > 2:
+                # Antes também: nos runs do agente o "l" anterior saiu depois do "á" ("Oál"),
+                # mesmo com espera após a entrada Unicode (29/10).
+                time.sleep(UNICODE_COMMIT_S)
+            for s, state in events:
+                self._c({"cmd": "keysym", "sym": s, "state": state})
+            if len(events) <= 2:
+                time.sleep(0.015)
+            elif not self._unicode_warm:
+                self._unicode_warm = True
+                time.sleep(FIRST_UNICODE_COMMIT_S)
+            else:
+                time.sleep(UNICODE_COMMIT_S)

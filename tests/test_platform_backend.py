@@ -21,6 +21,14 @@ class KeysymTests(unittest.TestCase):
         self.assertEqual(wayland.keysym_for_char("\n"), 0xFF0D)
         self.assertEqual(wayland.keysym_for_char("\t"), 0xFF09)
 
+    def test_non_ascii_uses_unicode_entry(self):
+        # Mutter descarta keysym fora do layout (28/10: "Olá" virou "Ol")
+        self.assertEqual(wayland.key_events_for_char("a"), [(0x61, 1), (0x61, 0)])
+        ev = wayland.key_events_for_char("á")
+        self.assertEqual(ev[:3], [(0xFFE3, 1), (0xFFE1, 1), (ord("u"), 1)])
+        typed = [chr(s) for s, st in ev[6:] if st == 1]
+        self.assertEqual(typed, ["e", "1", " "])
+
     def test_teclas_nomeadas_e_erro_honesto(self):
         self.assertEqual(wayland.keysym_for_key("Ctrl"), 0xFFE3)
         self.assertEqual(wayland.keysym_for_key("f5"), 0xFFC2)
@@ -44,6 +52,83 @@ class WhitelistTests(unittest.TestCase):
 
     def test_foco_programatico_e_honestamente_false(self):
         self.assertFalse(wayland.WaylandBackend().focus_window("qualquer"))
+
+
+class FocusRestoreTests(unittest.TestCase):
+    """Foco após o diálogo do portal: só teclas, confirmado por AT-SPI (mocks, sem portal)."""
+
+    def _backend(self, titles, devices=3):
+        be = wayland.WaylandBackend()
+        be.devices = devices
+        sent = []
+        be._call = lambda req, timeout=15.0: sent.append(req) or {"ok": True}
+        seq = iter(titles)
+        be._active_title = lambda: next(seq)
+        return be, sent
+
+    def test_sem_janela_ativa_restaura_com_super_esc_sem_clique(self):
+        be, sent = self._backend(["", "Doc - Editor"])
+        with mock.patch.object(wayland.time, "sleep"):
+            note = be._restore_focus("Doc - Editor")
+        self.assertIn("restaurado", note)
+        self.assertNotIn("não", note)
+        self.assertEqual([r["cmd"] for r in sent], ["keysym"] * 4)
+        self.assertEqual([r["sym"] for r in sent[::2]], [0xFFEB, 0xFF1B])
+        self.assertFalse(any(r["cmd"] in ("button", "move") for r in sent))
+
+    def test_janela_ainda_ativa_nao_envia_nada(self):
+        be, sent = self._backend(["Doc - Editor"])
+        self.assertEqual(be._restore_focus("Doc - Editor"), "")
+        self.assertEqual(sent, [])
+
+    def test_sem_janela_antes_ou_sem_teclado_nao_age(self):
+        be, sent = self._backend([])
+        self.assertEqual(be._restore_focus(""), "")
+        be, sent = self._backend([""], devices=2)
+        self.assertEqual(be._restore_focus("Doc"), "")
+        self.assertEqual(sent, [])
+
+    def test_outra_janela_ativa_e_informada_como_falha(self):
+        be, _ = self._backend(["", "Outra"])
+        with mock.patch.object(wayland.time, "sleep"):
+            note = be._restore_focus("Doc - Editor")
+        self.assertIn("não restaurado", note)
+        self.assertIn("Outra", note)
+
+    def test_titulo_ativo_vem_do_atspi_e_erro_vira_vazio(self):
+        with mock.patch("platform_backend.accessibility.snapshot",
+                        return_value={"title": "Doc", "items": []}):
+            self.assertEqual(wayland.WaylandBackend._active_title(), "Doc")
+        with mock.patch("platform_backend.accessibility.snapshot",
+                        return_value={"error": "janela ativa ausente"}):
+            self.assertEqual(wayland.WaylandBackend._active_title(), "")
+
+
+class UnicodeWarmupTests(unittest.TestCase):
+    def test_pausa_antes_da_sequencia_unicode(self):
+        be = wayland.WaylandBackend()
+        be.devices = 3
+        be._ensure = lambda: None
+        calls = []
+        be._call = lambda req, timeout=15.0: calls.append(req)
+        with mock.patch.object(wayland.time, "sleep", side_effect=lambda s: calls.append(s)):
+            be.input.type_text("lá")
+        unicode_events = wayland.key_events_for_char("á")
+        start = calls.index({"cmd": "keysym", "sym": unicode_events[0][0],
+                             "state": unicode_events[0][1]})
+        self.assertEqual(calls[start - 1], wayland.UNICODE_COMMIT_S)
+
+    def test_so_a_primeira_entrada_unicode_espera_mais(self):
+        be = wayland.WaylandBackend()
+        be.devices = 3
+        be._ensure = lambda: None
+        be._call = lambda req, timeout=15.0: {"ok": True}
+        with mock.patch.object(wayland.time, "sleep") as sleep:
+            be.input.type_text("áá")
+        waits = [c.args[0] for c in sleep.call_args_list]
+        self.assertIn(wayland.FIRST_UNICODE_COMMIT_S, waits)
+        self.assertEqual(waits.count(wayland.FIRST_UNICODE_COMMIT_S), 1)
+        self.assertIn(wayland.UNICODE_COMMIT_S, waits)
 
 
 class SeamTests(unittest.TestCase):
@@ -139,6 +224,17 @@ class CliPlatformTests(unittest.TestCase):
 
 
 class BridgeInitializationTests(unittest.TestCase):
+    def test_restore_token_respects_isolated_xdg_cache(self):
+        import runpy
+        import tempfile
+        from pathlib import Path
+
+        with tempfile.TemporaryDirectory() as tmp, \
+                mock.patch.dict("os.environ", {"XDG_CACHE_HOME": tmp}), \
+                mock.patch.dict(sys.modules, {"gi": mock.Mock(), "gi.repository": mock.Mock()}):
+            module = runpy.run_path(str(Path(wayland.__file__).with_name("wayland_bridge.py")))
+        self.assertEqual(module["TOKEN_FILE"], Path(tmp) / "taskpilot/wayland-restore-token")
+
     def test_pipeline_uses_the_fakesink_handoff_property(self):
         import runpy
         from pathlib import Path

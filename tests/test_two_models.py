@@ -73,6 +73,12 @@ class TestPlannerPrompt(unittest.TestCase):
         for banned in ("base64", "image_url", "data:image"):
             self.assertNotIn(banned, p)
 
+    def test_empty_accessibility_requests_visual_grounding(self):
+        prompt = planner.build_prompt("Click + in the open editor", "", [], [])
+        self.assertIn("visual_action", prompt)
+        self.assertIn("does NOT mean the app is closed", prompt)
+        self.assertIn("Do not guess app shortcuts", prompt)
+
     def test_historico_limitado_a_5(self):
         p = planner.build_prompt("g", "w", ["a"], [f"a{i}" for i in range(10)])
         self.assertNotIn("a0", p.split("Recent actions:")[1])

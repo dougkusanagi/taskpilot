@@ -107,6 +107,8 @@ class TaskState(BaseModel):
     # Checklist do pedido, gerado UMA vez no início (planner.plan_requirements) e guardado pelo
     # Python: o modelo não precisa lembrar o que falta; o done exige evidência p/ cada item.
     requirements: list[str] = Field(default_factory=list)
+    # Requisito (índice 0..) -> ID "E<n>" da evidência confirmada que o cumpriu.
+    requirement_evidence: dict[int, str] = Field(default_factory=dict)
     pending: list[str] = Field(default_factory=list)
     done_items: list[str] = Field(default_factory=list)
     evidences: list[str] = Field(default_factory=list)

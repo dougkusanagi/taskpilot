@@ -145,8 +145,30 @@ class TestRequirementsInState(unittest.TestCase):
         s.requirements = ["digitar o texto", "salvar como nota.txt"]
         statemod.add_evidence(s, "texto digitado")
         text = statemod.compact(s)
-        self.assertIn("requisitos do pedido: (1) digitar o texto; (2) salvar como nota.txt", text)
+        self.assertIn("requisitos do pedido: (1) digitar o texto [PRÓXIMO/NEXT]; "
+                      "(2) salvar como nota.txt", text)
         self.assertLess(text.index("requisitos"), text.index("evidências"))
+
+    def test_confirmed_effect_satisfies_the_first_open_requirement(self):
+        # run Ubuntu 28/10: sem status por requisito o planner clicou "+" 4x e nunca digitou
+        s = statemod.init("clique + e digite")
+        s.requirements = ["clicar no botão +", "digitar Olá"]
+        statemod.add_evidence(s, "nova aba confirmada")
+        self.assertEqual(statemod.satisfy_next_requirement(s), 0)
+        text = statemod.compact(s)
+        self.assertIn("(1) clicar no botão + [cumprido/done: E1]", text)
+        self.assertIn("(2) digitar Olá [PRÓXIMO/NEXT]", text)
+        self.assertEqual(statemod.next_requirement(s), 1)
+        statemod.add_evidence(s, "texto digitado")
+        self.assertEqual(statemod.satisfy_next_requirement(s), 1)
+        self.assertIsNone(statemod.next_requirement(s))
+        self.assertIsNone(statemod.satisfy_next_requirement(s))
+
+    def test_without_evidence_nothing_is_satisfied(self):
+        s = statemod.init("g")
+        s.requirements = ["a"]
+        self.assertIsNone(statemod.satisfy_next_requirement(s))
+        self.assertEqual(s.requirement_evidence, {})
 
     def test_without_requirements_the_summary_is_unchanged(self):
         self.assertNotIn("requisitos", statemod.compact(statemod.init("g")))

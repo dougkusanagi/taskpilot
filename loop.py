@@ -103,7 +103,7 @@ def format_ui_names(items: list[dict], limit: int = 40) -> list[str]:
 
     def label(it: dict) -> str | None:
         name = (it.get("name") or "").strip()
-        if not name:
+        if not name and not it.get("value") and it.get("type") != "Edit":
             return None
         ctype = (it.get("type") or "").strip() or "?"
         base = f"{ctype}:{name[:60]}"
@@ -164,6 +164,12 @@ def _app_bootstrap(
     fixos existem e rodam ANTES do planner: ele já recebe a janela certa no
     estado, e a partir daí tudo é IA. Só abrir app + confirmar foco.
     """
+    import platform_backend
+
+    # A visual-only backend cannot establish that the requested app is absent.
+    # Let the model request grounding rather than opening duplicate windows.
+    if platform_backend.active() is not None:
+        return None
     low = instruction.lower()
     browser = _browser_want(low)
     if browser is not None:
@@ -287,6 +293,8 @@ def _resolve_uia_exact(
         )
     hit = next(iter(seen.values()))
     b = hit.get("bounds") or [0, 0, 0, 0]
+    if b[2] <= b[0] or b[3] <= b[1]:
+        return None, "bounds indisponíveis; use visual_action"
     cx, cy = (b[0] + b[2]) // 2, (b[1] + b[3]) // 2
     if wrect is not None and not (wrect[0] <= cx <= wrect[2] and wrect[1] <= cy <= wrect[3]):
         return None, ""  # rect fantasma fora da janela -> trata como miss
@@ -1093,7 +1101,8 @@ def _decide_planner(
                 "accessibility tree e a visão está desabilitada."
             )
         # miss acessível -> escala p/ visão com a mesma intenção
-        dec = PlannerDecision(type="visual_action", instruction=f"Click {dec.target}")
+        dec = PlannerDecision(type="visual_action",
+                              instruction=_escalation_instruction(dec.target or "", items))
         t["escalated"] = "uia_miss->vision"
 
     # visual_action: screenshot SÓ agora -> Vocaela -> coords 0..1 -> físico
@@ -1287,7 +1296,8 @@ _ERROR_TITLE_HINTS = (
 )
 
 
-def observe(action: Action, before_title: str, after_title: str, value: str = "") -> str:
+def observe(action: Action, before_title: str, after_title: str, value: str = "",
+            focus_type: str = "") -> str:
     """Resultado da ação em texto curto p/ o planner (puro, testável).
 
     Só fatos observados: janela antes/depois, e p/ `type` se o texto
@@ -1305,10 +1315,13 @@ def observe(action: Action, before_title: str, after_title: str, value: str = ""
             "same URL, go back to the site homepage or search"
         )
     if action.type == "type" and action.text:
-        if value and action.text.strip()[:40] in value:
+        if value and action.text in value:
             parts.append("text visible in focused field")
         elif value:
             parts.append(f"focused field now: {value[:60]!r}")
+        elif focus_type and focus_type not in ("Edit", "Document"):
+            parts.append(f"keyboard focus is on a {focus_type}, not a text field: the text "
+                         "did not appear; click inside the text area, then type again")
         else:
             parts.append("focused field unreadable")
     elif action.type in ("open", "focus") and after_title == before_title:
@@ -1370,7 +1383,9 @@ def verify(
         return False, "aborted", []
     items, title, _ = active_window_snapshot()
     value = focused_value() if action.type == "type" else ""
-    return bool(title), observe(action, before_title, title, value), format_ui_names(items)
+    ftype = uia.focused_control_type() if action.type == "type" and not value else ""
+    return (bool(title), observe(action, before_title, title, value, ftype),
+            format_ui_names(items))
 
 
 def _progress_made(prev_note: str, cur_note: str) -> bool:
@@ -1471,6 +1486,59 @@ def _key(a: Action, dec: Decision | None = None) -> str:
     if dec is not None:
         return f"{dec.kind}:{dec.skill}:{_steps_label(list(dec.steps or []))}:{base}"
     return base
+
+
+_ROLE_WORDS = {"button": "button", "push button": "button", "toggle button": "button",
+               "tabitem": "tab", "page tab": "tab", "edit": "text field", "text": "text field",
+               "hyperlink": "link", "link": "link", "checkbox": "checkbox", "check box": "checkbox",
+               "menuitem": "menu item", "menu item": "menu item", "listitem": "list item"}
+
+
+def _escalation_instruction(target: str, items: list[dict]) -> str:
+    """Instrução de visão p/ um alvo acessível sem bounds (puro).
+
+    Nome acessível cru (ex. "Nova aba" de um botão só com ícone "+") deixa o
+    verificador d1 no limite (Ubuntu 28/10: p=0,19 < 0,20, 4 recusas). O papel do
+    elemento, já conhecido pela árvore, dá contexto: 'Click the "Nova aba" button'.
+    """
+    name = strip_type_prefix(target).strip()
+    for it in items:
+        if (it.get("name") or "").strip() == name:
+            role = _ROLE_WORDS.get((it.get("type") or "").strip().lower())
+            if role:
+                return f'Click the "{name}" {role}'
+            break
+    return f"Click {target}"
+
+
+def _intent_key(dec: Decision, planned: dict | None = None) -> str:
+    """Intenção da decisão, sem coordenadas (o grounding varia alguns pixels).
+
+    Clique visual não tem `target` na ação física: o alvo vem da decisão do planner
+    (29/10: sem isso, clicar em "Novo documento" contava como repetir "Nova aba").
+    """
+    a = dec.action
+    p = planned or {}
+    want = p.get("target") or p.get("instruction") or ""
+    return (f"{dec.kind}:{_steps_label(list(dec.steps or []))}:{a.type}:{a.text}:{a.key}:"
+            f"{a.target}:{want}")
+
+
+def _already_active_note(action: Action, active_title: str) -> str:
+    """Nota quando `focus` pede a janela que já está ativa; '' caso contrário (puro)."""
+    if action.type != "focus" or not active_title:
+        return ""
+    want = (action.target or "").strip().lower().replace(".exe", "")
+    if len(want) < 3 or want.split("||")[0] not in active_title.lower():
+        return ""
+    return (f"{active_title!r} is already active; focus does nothing. Act INSIDE the window "
+            "(click, type, keys) for the next requirement")
+
+
+def _satisfied_note(ts, nxt: int) -> str:
+    done = ", ".join(f"({i + 1})" for i in sorted(ts.requirement_evidence))
+    return (f"requirement {done} already confirmed; repeating that action does not advance. "
+            f"Do the NEXT requirement ({nxt + 1}): {ts.requirements[nxt][:120]}")
 
 
 def _verify_action(dec: Decision) -> Action:
@@ -1841,7 +1909,8 @@ def run(instruction: str, cfg: dict, dry_run: bool = False) -> dict:
                     )
                 if src == "vocaela":
                     va = tm.get("visual", {})
-                    vinstr = tm.get("planner_decision", {}).get("instruction", "")
+                    vinstr = (tm.get("planner_decision", {}).get("instruction") or
+                                tm.get("planner_decision", {}).get("target") or dec.reason)
                     emit("PLANNER", f"visual: {vinstr}", f"{tm.get('planner_ms', 0):.0f}ms")
                     if tm.get("screenshot_ms"):
                         emit("SHOT", "active-window capture", f"{tm.get('screenshot_ms', 0):.0f}ms")
@@ -1854,6 +1923,29 @@ def run(instruction: str, cfg: dict, dry_run: bool = False) -> dict:
                     )
                 else:  # uia
                     emit("PLANNER", f"uia: {dec.reason}", f"{tm.get('planner_ms', 0):.0f}ms")
+
+            # guard 2b: a ação que já cumpriu um requisito não avança o próximo.
+            # Repeti-la (run Ubuntu 28/10: "+" 4x, sem digitar) vira last_error
+            # com o requisito aberto; o modelo escolhe a ação seguinte.
+            ts = ctx.get("task_state")
+            nxt = statemod.next_requirement(ts) if ts is not None else None
+            intent = _intent_key(dec, tm.get("planner_decision"))
+            if (nxt is not None and dec.kind in ("action", "sequence")
+                    and intent in ctx.get("satisfied_intents", set())):
+                if fail_step("repeticao", _satisfied_note(ts, nxt)):
+                    continue
+                result = "stuck"
+                break
+
+            # guard 2c: focar a janela que JÁ está ativa não muda nada (Ubuntu isolado
+            # 29/10: focus("Novo documento") gastou 1 passo em 10/10 runs, e 6 em um
+            # deles). Vira last_error sem consumir passo; o modelo age dentro da janela.
+            note = _already_active_note(dec.action, tm.get("uia_title", ""))
+            if dec.kind == "action" and note:
+                if fail_step("repeticao", note):
+                    continue
+                result = "stuck"
+                break
 
             # guard 3 (F3/R2): anti-loop por ação+estado+RESULTADO — preserva
             # tentativas malsucedidas e distingue repetição legítima
@@ -2002,7 +2094,8 @@ def run(instruction: str, cfg: dict, dry_run: bool = False) -> dict:
             if src == "vocaela" and tm.get("visual"):
                 va = tm["visual"]
                 label = (
-                    f'visual "{tm.get("planner_decision", {}).get("instruction", "")}"'
+                    f'visual "{(tm.get("planner_decision", {}).get("instruction") or
+                                tm.get("planner_decision", {}).get("target") or dec.reason)}"'
                     f" -> {va.get('type')}"
                 )
             if dec.action.type == "answer":
@@ -2046,15 +2139,22 @@ def run(instruction: str, cfg: dict, dry_run: bool = False) -> dict:
                 # (modal dispensado, conteúdo visível/novo). Título sozinho
                 # continua sem confirmar — as listas vêm do snapshot real.
                 ui_kwargs: dict = {}
-                if effect_type in ("click", "scroll"):
+                if effect_type in ("click", "scroll", "hotkey:ctrl+t"):
                     ui_kwargs = {"ui_before": list(tm.get("ui_names", []) or []),
                                  "ui_after": list(ui_after or [])}
                 confirmed, cnote = verif.confirm_effect(
                     effect_type, dec.action.text or "", tm.get("uia_title", ""), vnote, vnote,
                     **ui_kwargs,
                 )
+                ctx["last_result"] += f"; {cnote}"
+                ctx["hist_labels"][-1] += f"; {cnote}"
                 if ok and confirmed:
-                    statemod.add_evidence(ctx.get("task_state"), f"{label} => {vnote}")
+                    ts = ctx.get("task_state")
+                    statemod.add_evidence(ts, f"{label} => {vnote}; {cnote}")
+                    if ts is not None and statemod.satisfy_next_requirement(ts) is not None:
+                        # a mesma intenção não volta a cumprir outro requisito (guard 2b)
+                        ctx.setdefault("satisfied_intents", set()).add(
+                            _intent_key(dec, tm.get("planner_decision")))
             except Exception:
                 cnote = ""
                 confirmed = False
@@ -2067,7 +2167,7 @@ def run(instruction: str, cfg: dict, dry_run: bool = False) -> dict:
                     from schemas import ActionResult as _AR
                     from schemas import new_id as _nid
 
-                    ev_label = f"{label} => {vnote}"
+                    ev_label = f"{label} => {vnote}; {cnote}"
                     ar = _AR(
                         action_id=_nid("act"),
                         sent=("not_sent" if dry_run else "sent"),

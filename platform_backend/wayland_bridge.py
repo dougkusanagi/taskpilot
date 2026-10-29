@@ -30,7 +30,8 @@ from gi.repository import Gio, GLib, Gst  # noqa: E402
 
 PORTAL = "org.freedesktop.portal.Desktop"
 PORTAL_PATH = "/org/freedesktop/portal/desktop"
-TOKEN_FILE = Path.home() / ".cache" / "taskpilot" / "wayland-restore-token"
+TOKEN_FILE = (Path(os.environ.get("XDG_CACHE_HOME") or Path.home() / ".cache")
+              / "taskpilot" / "wayland-restore-token")
 CONSENT_TIMEOUT_S = 120.0
 
 

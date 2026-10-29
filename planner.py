@@ -120,6 +120,8 @@ Rules:
   subpaths are reached by clicking/searching, not by typing.
 - Use answer ONLY to report a fact you OBSERVED after navigating (e.g. the
   price on the page); then say done.
+- Confirmed effects in Task state and Last action result are completed parts of the goal.
+  Move to the next unmet requirement; do not repeat an already confirmed effect.
 - NEVER repeat the same action twice in a row; if it did not advance, do something else.
 - Prefer uia_click when the target name appears in UI elements.
 - Use visual_action ONLY when the element is missing from UI elements.
@@ -492,6 +494,13 @@ def build_prompt(
     # Nova guia/Window/Pane — conteúdo web fora da árvore. Sem o aviso o 2B
     # digitava URL de novo em vez de usar a visão no intersticial.
     hint = ""
+    if not ui_names:
+        hint = (
+            "\nAccessibility is unavailable: an empty list does NOT mean the app is closed. "
+            "Use visual_action to locate and click the requested visible target before "
+            "typing. Do not reopen an app merely because its title or elements are missing. "
+            "Do not guess app shortcuts from browser shortcuts."
+        )
     if ui_names and len(ui_names) <= 10:
         low = " ".join(ui_names).lower()
         page_tokens = (
@@ -520,7 +529,8 @@ def build_prompt(
     return (
         f"Goal:\n{goal}\n{state}\nCurrent window:\n{window or '(desconhecida)'}\n\n"
         f"Current UI elements:\n{names}{hint}\n\nRecent actions:\n{hist}\n{err}\n"
-        f"{result}{notes}\nChoose the next action."
+        f"{result}{notes}\nChoose the next action for the FIRST remaining unmet part of the goal.\n"
+        "A confirmed effect is already accomplished; continue after it, do not restart the goal."
     )
 
 

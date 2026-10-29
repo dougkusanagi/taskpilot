@@ -82,7 +82,7 @@ def confirm_effect(
     Sem as listas, vale o comportamento anterior (só type/ctrl+t confirmam).
     """
     if action_type == "type" and expected:
-        if value and (expected.strip()[:40] in value or "text visible in focused field" in value):
+        if value and (expected in value or "text visible in focused field" in value):
             return True, "efeito confirmado: valor digitado visível"
         return False, "não confirmado: texto esperado ausente no campo focado"
     if action_type in ("open", "focus"):
@@ -97,10 +97,11 @@ def confirm_effect(
         )
     if action_type == "done":
         return False, "done exige evidências (verificar à parte)"
-    if action_type == "hotkey:ctrl+t":
-        if "window " in after and " -> " in after:
-            return True, "efeito confirmado: nova aba observada"
-        return False, "não confirmado: nova aba não observada"
+    if action_type in ("click", "hotkey:ctrl+t") and ui_before and ui_after:
+        def tabs(items):
+            return sum(item.startswith("TabItem:") for item in items)
+        if tabs(ui_after) > tabs(ui_before):
+            return True, "effect confirmed: new tab observed in accessibility (nova aba confirmada)"
     if action_type == "click" and modal_dismissed(ui_before, ui_after):
         return True, "efeito confirmado: diálogo/modal dispensado (indicadores sumiram da UIA)"
     if action_type in ("click", "scroll") and expected and ui_after is not None:

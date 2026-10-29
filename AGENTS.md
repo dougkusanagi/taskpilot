@@ -5,6 +5,11 @@
 
 ## Direção vigente e ordem de leitura
 
+- **ANTES de qualquer outra implementação:** concluir
+  [docs/plans/ubuntu-isolado-done-repetivel.md](docs/plans/ubuntu-isolado-done-repetivel.md)
+  (E2E isolado do Ubuntu com `done` repetível, branch `test/ubuntu-isolated-e2e`). O plano diz
+  como, por quê e o próximo passo. Remova este aviso quando o plano for concluído e apagado.
+
 - **Único plano vigente:** [docs/plano-agente-generico-2026-09-20.md](docs/plano-agente-generico-2026-09-20.md).
   Etapas **R0–R6 propostas, ainda não aprovadas**. Começar por R0; não continuar
   as antigas fases F0–F7. O plano de 19/09 foi removido: os status de conclusão
