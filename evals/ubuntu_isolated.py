@@ -534,7 +534,7 @@ def main(argv: list[str] | None = None) -> int:  # pragma: no cover
         cfg = agent_config(urls, feats, args.vision_max_tokens, args.max_steps)
         n, infra = 0, 0
         while n < args.runs and infra <= args.runs:
-            row = run_session(top / f"s{n + 1:02d}" + (f"-infra{infra}" if infra else ""),
+            row = run_session(top / (f"s{n + 1:02d}" + (f"-infra{infra}" if infra else "")),
                               cfg, args.max_steps)
             if row["result"] in ("infra", "watchdog_deadline") and not row["decisions"]:
                 infra += 1  # sessão quebrou antes do agente decidir: repete, conta à parte
