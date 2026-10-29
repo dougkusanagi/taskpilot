@@ -59,6 +59,23 @@ def keysym_for_char(ch: str) -> int:
     return 0x01000000 + cp
 
 
+def key_events_for_char(ch: str) -> list[tuple[int, int]]:
+    """Eventos (keysym, 1=press/0=release) que digitam `ch` (puro).
+
+    Mutter descarta keysyms fora do layout ativo: no teste isolado de 28/10,
+    "Olá" virou "Ol" (nem 0xE1 nem 0x010000E1 chegaram). Fora do ASCII usa a
+    entrada Unicode do IBus/GTK, padrão no GNOME: Ctrl+Shift+U, hex, espaço.
+    """
+    s = keysym_for_char(ch)
+    if s == ord(ch) and 0x20 <= s <= 0x7E or s in (0xFF0D, 0xFF09):
+        return [(s, 1), (s, 0)]
+    ctrl, shift, u = 0xFFE3, 0xFFE1, ord("u")
+    ev = [(ctrl, 1), (shift, 1), (u, 1), (u, 0), (shift, 0), (ctrl, 0)]
+    for d in f"{ord(ch):x}":
+        ev += [(ord(d), 1), (ord(d), 0)]
+    return ev + [(0x20, 1), (0x20, 0)]
+
+
 def keysym_for_key(name: str) -> int:
     n = name.strip().lower()
     if n in _NAMED:
@@ -237,7 +254,6 @@ class _Input:
 
     def type_text(self, text: str) -> None:
         for ch in text:
-            s = keysym_for_char(ch)
-            self._c({"cmd": "keysym", "sym": s, "state": 1})
-            self._c({"cmd": "keysym", "sym": s, "state": 0})
+            for s, state in key_events_for_char(ch):
+                self._c({"cmd": "keysym", "sym": s, "state": state})
             time.sleep(0.015)

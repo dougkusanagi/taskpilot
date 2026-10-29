@@ -21,6 +21,14 @@ class KeysymTests(unittest.TestCase):
         self.assertEqual(wayland.keysym_for_char("\n"), 0xFF0D)
         self.assertEqual(wayland.keysym_for_char("\t"), 0xFF09)
 
+    def test_non_ascii_uses_unicode_entry(self):
+        # Mutter descarta keysym fora do layout (28/10: "Olá" virou "Ol")
+        self.assertEqual(wayland.key_events_for_char("a"), [(0x61, 1), (0x61, 0)])
+        ev = wayland.key_events_for_char("á")
+        self.assertEqual(ev[:3], [(0xFFE3, 1), (0xFFE1, 1), (ord("u"), 1)])
+        typed = [chr(s) for s, st in ev[6:] if st == 1]
+        self.assertEqual(typed, ["e", "1", " "])
+
     def test_teclas_nomeadas_e_erro_honesto(self):
         self.assertEqual(wayland.keysym_for_key("Ctrl"), 0xFFE3)
         self.assertEqual(wayland.keysym_for_key("f5"), 0xFFC2)

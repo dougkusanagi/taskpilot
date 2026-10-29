@@ -147,6 +147,18 @@ class TestRepeatNote(unittest.TestCase):
         self.assertIn("wait", note)
 
 
+class TestEscalationInstruction(unittest.TestCase):
+    def test_role_from_accessibility_tree(self):
+        items = [{"name": "Nova aba", "type": "Button"}, {"name": "x", "type": "panel"}]
+        self.assertEqual(loop._escalation_instruction("Nova aba", items),
+                         'Click the "Nova aba" button')
+
+    def test_unknown_role_or_name_keeps_plain_instruction(self):
+        self.assertEqual(loop._escalation_instruction("x", [{"name": "x", "type": "panel"}]),
+                         "Click x")
+        self.assertEqual(loop._escalation_instruction("y", []), "Click y")
+
+
 class TestSatisfiedIntent(unittest.TestCase):
     def test_intent_ignores_grounding_pixels(self):
         from schemas import Action, Decision

@@ -1101,7 +1101,8 @@ def _decide_planner(
                 "accessibility tree e a visão está desabilitada."
             )
         # miss acessível -> escala p/ visão com a mesma intenção
-        dec = PlannerDecision(type="visual_action", instruction=f"Click {dec.target}")
+        dec = PlannerDecision(type="visual_action",
+                              instruction=_escalation_instruction(dec.target or "", items))
         t["escalated"] = "uia_miss->vision"
 
     # visual_action: screenshot SÓ agora -> Vocaela -> coords 0..1 -> físico
@@ -1479,6 +1480,29 @@ def _key(a: Action, dec: Decision | None = None) -> str:
     if dec is not None:
         return f"{dec.kind}:{dec.skill}:{_steps_label(list(dec.steps or []))}:{base}"
     return base
+
+
+_ROLE_WORDS = {"button": "button", "push button": "button", "toggle button": "button",
+               "tabitem": "tab", "page tab": "tab", "edit": "text field", "text": "text field",
+               "hyperlink": "link", "link": "link", "checkbox": "checkbox", "check box": "checkbox",
+               "menuitem": "menu item", "menu item": "menu item", "listitem": "list item"}
+
+
+def _escalation_instruction(target: str, items: list[dict]) -> str:
+    """Instrução de visão p/ um alvo acessível sem bounds (puro).
+
+    Nome acessível cru (ex. "Nova aba" de um botão só com ícone "+") deixa o
+    verificador d1 no limite (Ubuntu 28/10: p=0,19 < 0,20, 4 recusas). O papel do
+    elemento, já conhecido pela árvore, dá contexto: 'Click the "Nova aba" button'.
+    """
+    name = strip_type_prefix(target).strip()
+    for it in items:
+        if (it.get("name") or "").strip() == name:
+            role = _ROLE_WORDS.get((it.get("type") or "").strip().lower())
+            if role:
+                return f'Click the "{name}" {role}'
+            break
+    return f"Click {target}"
 
 
 def _intent_key(dec: Decision) -> str:

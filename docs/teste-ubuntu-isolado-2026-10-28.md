@@ -185,3 +185,45 @@ indica o próximo requisito (guard 2b em `loop.py`). Vale só com checklist (`pl
 Limite: a ligação é posicional; uma ação preparatória confirmada pode cumprir o requisito
 errado. Suíte local: 542 testes, um skip; ruff verde. **A repetição real isolada ainda não
 foi feita**: o end-to-end continua sem aprovação.
+
+## Repetição real após as correções — 28–29/10
+
+Três falhas encontradas em runs reais e corrigidas no código compartilhado:
+
+1. **Repetição do clique:** o guard 2b bloqueou os cliques repetidos
+   (`run-20261028-145200`, parada honesta `stuck`). Mesmo assim, o Qwen3-4B
+   insistiu no clique. Ablação offline com o mesmo prompt: só o campo `why`
+   (feature já existente, opt-in) fez o modelo escolher `type_text` depois da
+   confirmação (3 de 4 prompts; 1 escolheu `focus_window`). Nos passos
+   anteriores, ele continua clicando no "+". Ligado só na configuração do teste;
+   o default do repositório não mudou.
+2. **Escalada `uia_click` → visão** enviava o nome cru (`Click Nova aba`). O d1
+   dava p=0,19–0,21 (corte 0,20) e recusou 4×. Agora a instrução usa o papel do
+   elemento da árvore (`Click the "Nova aba" button`), e o d1 dá p=0,51 no mesmo frame.
+3. **Acentos no Wayland:** o Mutter descarta keysyms fora do layout ativo, e
+   "Olá" virou "Ol". Fora do ASCII, `type_text` agora usa a entrada Unicode do
+   IBus/GTK (Ctrl+Shift+U, hex, espaço).
+
+Sessão `runs/ubuntu-e2e-20261029-100531/` (scripts usados em `harness/`):
+
+- Run principal: aba nova confirmada; depois `focus_window` sem efeito; `max_steps`.
+- Retry na mesma sessão: aba nova, `focus_window` desperdiçado, depois
+  `type_text`. `final-retry.png` mostra uma aba nova com **exatamente "Olá, Ubuntu!"**.
+
+**Resultado do loop: ainda não aprovado.** Terminou em `max_steps` (limite 4),
+sem `done`: a leitura AT-SPI do campo voltou "focused field unreadable", então a
+digitação não virou evidência confirmada. O efeito na tela está correto (inspeção
+visual), mas o loop não consegue provar isso sozinho. O passo 0 também gasta
+um clique enquanto o diálogo do portal está aberto. Não foi verificado se esse
+clique teve efeito.
+
+Notas de execução: depois do reboot, o limite inotify voltou a 128 e a captura
+funcionou mesmo assim. Uma tentativa (`20261028-181217`) foi parada pelo watchdog
+por memória, porque duas sessões antigas ainda estavam vivas. Use um arquivo de
+comandos por sessão. O diálogo do portal pode vir em português; o script de
+aprovação aceita os dois idiomas. Cleanup confirmado em todas as sessões; nenhum
+input chegou ao desktop de trabalho.
+
+Próximos passos: ler o texto do GtkSourceView via AT-SPI (interface Text) para
+confirmar a digitação; não gastar passo durante o diálogo do portal; medir
+`why` em mais cenas antes de considerá-lo como padrão.
