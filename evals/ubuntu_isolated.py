@@ -44,6 +44,7 @@ SHARE_LABELS = ("Share", "Compartilhar")
 PORTAL_IMPL = "org.freedesktop.impl.portal.desktop.gnome"
 LLAMA = Path.home() / "llm-bench/rt/llama-b11954/llama-server"
 MODELS = Path.home() / "llm-bench/models"
+FIXTURE = Path(tempfile.gettempdir()) / "taskpilot-fixture" / "documento-inicial.txt"
 
 
 # --- análise do log do agente (puro, testado) -------------------------------------------
@@ -91,11 +92,7 @@ def markdown_table(rows: list[dict]) -> str:
 def controller() -> None:  # pragma: no cover - exige GNOME/portal reais
     import threading
 
-    import gi
-
-    gi.require_version("Gst", "1.0")
-    gi.require_version("Atspi", "2.0")
-    from gi.repository import Atspi, Gio, GLib, Gst
+    from gi.repository import Gio, GLib
 
     out = Path(os.environ[TAG_VAR])
     assert os.environ["XDG_RUNTIME_DIR"].startswith(tempfile.gettempdir() + "/taskpilot-e2e-")
@@ -156,7 +153,6 @@ def controller() -> None:  # pragma: no cover - exige GNOME/portal reais
                              Gio.DBusSignalFlags.NONE, on_node)
         call(sc_name, sc, sc_name + ".Session", "Start")
         assert ready.wait(5), "nenhum nó PipeWire"
-        Gst.init(None)
         (out / "isolation.json").write_text(json.dumps({
             "bus": os.environ["DBUS_SESSION_BUS_ADDRESS"], "runtime": os.environ["XDG_RUNTIME_DIR"],
             "wayland": os.environ["WAYLAND_DISPLAY"], "monitor": props,
@@ -172,63 +168,55 @@ def controller() -> None:  # pragma: no cover - exige GNOME/portal reais
                     time.sleep(2)
 
         def capture_once(name):
+            # gst-launch em processo próprio com timeout: no mesmo processo, um
+            # set_state(NULL) travou a sessão até o watchdog (29/10).
             dest = out / f"{name}.png"
-            pipe = Gst.parse_launch(f"pipewiresrc path={node[0]} num-buffers=1 ! videoconvert ! "
-                                    f"pngenc ! filesink location={dest}")
-            pipe.set_state(Gst.State.PLAYING)
-            msg = pipe.get_bus().timed_pop_filtered(8 * Gst.SECOND,
-                                                    Gst.MessageType.EOS | Gst.MessageType.ERROR)
-            pipe.set_state(Gst.State.NULL)
-            if msg is None or msg.type == Gst.MessageType.ERROR:
-                raise RuntimeError("captura falhou")
+            try:
+                subprocess.run(["gst-launch-1.0", "-q", "pipewiresrc", f"path={node[0]}",
+                                "num-buffers=1", "!", "videoconvert", "!", "pngenc", "!",
+                                "filesink", f"location={dest}"], timeout=12, check=True,
+                               capture_output=True)
+            except (subprocess.SubprocessError, OSError) as e:
+                raise RuntimeError(f"captura falhou: {type(e).__name__}") from e
+            if not dest.exists() or not dest.stat().st_size:
+                raise RuntimeError("captura falhou: arquivo vazio")
             return str(dest)
 
-        def kids(n):
-            return [n.get_child_at_index(i) for i in range(n.get_child_count())]
-
         def approve() -> dict:
-            # Processo separado: o walk AT-SPI num diálogo que ainda está nascendo
-            # derrubou o controlador com segfault (29/10).
-            r = subprocess.run(["/usr/bin/python3", str(Path(__file__)), "approve"],
-                               capture_output=True, text=True, timeout=20)
+            return sub("approve")
+
+        def sub(mode: str) -> dict:
+            # AT-SPI em processo próprio: em processo, deu segfault no controlador (29/10).
             try:
+                r = subprocess.run(["/usr/bin/python3", str(Path(__file__)), mode],
+                                   capture_output=True, text=True, timeout=20)
                 return json.loads(r.stdout.strip().splitlines()[-1])
-            except (ValueError, IndexError):
-                return {"diag": {"exit": r.returncode, "stderr": r.stderr[-200:]}}
+            except (subprocess.SubprocessError, ValueError, IndexError) as e:
+                return {"error": f"{mode}: {type(e).__name__}"}
 
         def editor_texts() -> dict:
-            texts, tabs, active = [], 0, ""
-            for app in kids(Atspi.get_desktop(0)):
-                if "text-editor" not in (app.get_name() or "").lower() and \
-                        "editor" not in (app.get_name() or "").lower():
-                    continue
+            return sub("read")
 
-                def walk(n, depth=0):
-                    nonlocal tabs
-                    if depth > 80:
-                        return
-                    if n.get_role_name() == "page tab":
-                        tabs += 1
-                    if n.get_role_name() == "text" and "Text" in n.get_interfaces():
-                        c = Atspi.Text.get_character_count(n)
-                        texts.append(Atspi.Text.get_text(n, 0, min(c, 8192)) or "")
-                    for c in kids(n):
-                        walk(c, depth + 1)
-
-                for w in kids(app):
-                    if w.get_state_set().contains(Atspi.StateType.ACTIVE):
-                        active = w.get_name() or ""
-                    walk(w)
-            return {"texts": texts, "tabs": tabs, "active": active}
-
-        fixture = out / "documento-inicial.txt"
+        # Caminho fixo: o título da janela mostra a pasta, e o Qwen3-4B mudou de decisão
+        # só porque o nome da pasta da sessão mudou (29/10). Sessões rodam uma por vez.
+        fixture = FIXTURE
+        fixture.parent.mkdir(exist_ok=True)
         fixture.write_text("")
         start(["gnome-text-editor", "--standalone", str(fixture)], "editor")
         time.sleep(2)
-        capture("initial")
+        def snap(name):  # screenshot do harness é diagnóstico: falhar não aborta a sessão
+            try:
+                return capture(name)
+            except RuntimeError as e:
+                log({"capture_error": name, "error": str(e)})
+                return ""
+
+        if not snap("initial"):  # sem frame do PipeWire: o agente também não teria
+            log({"infra": "sem frame inicial do PipeWire"})
+            return
         key(0xFF1B)  # preparo: o shell nasce na visão geral; Esc ativa a janela do editor
         time.sleep(1)
-        capture("before")
+        snap("before")
         log({"ready": True, "before": editor_texts()})
         agent = None
         for line in (out / "commands.jsonl").read_text().splitlines():
@@ -237,9 +225,11 @@ def controller() -> None:  # pragma: no cover - exige GNOME/portal reais
             try:
                 if cmd == "agent":
                     goal = GOAL_PREFIX + req.get("text", EXPECTED)
-                    agent = start(["uv", "run", "--no-sync", "python", "main.py", goal, "--config",
-                                   str(out / "config.json"), "--platform", "wayland",
-                                   "--max-steps", str(req["max_steps"]), "--record"], "agent")
+                    argv = req.get("argv") or [
+                        "uv", "run", "--no-sync", "python", "main.py", goal, "--config",
+                        str(out / "config.json"), "--platform", "wayland",
+                        "--max-steps", str(req["max_steps"]), "--record"]
+                    agent = start(argv, "agent")
                     approved, t0, last_diag = {}, time.monotonic(), 0.0
                     while agent.poll() is None and time.monotonic() - t0 < req.get("timeout", 300):
                         if not approved.get("share"):
@@ -260,10 +250,6 @@ def controller() -> None:  # pragma: no cover - exige GNOME/portal reais
                     log({"capture": capture(req.get("name", "frame"))})
                 elif cmd == "sleep":
                     time.sleep(float(req.get("s", 1)))
-                elif cmd == "windows":
-                    log({"windows": [[a.get_name(), w.get_name(), w.get_role_name(),
-                                      w.get_state_set().contains(Atspi.StateType.ACTIVE)]
-                                     for a in kids(Atspi.get_desktop(0)) for w in kids(a)]})
                 elif cmd == "read":
                     log({"final": editor_texts()})
                 elif cmd == "quit":
@@ -339,6 +325,40 @@ def approve_portal() -> dict:  # pragma: no cover - exige portal real
                 share(app)
     done.setdefault("diag", {"pid": pid})
     return done
+
+
+def read_editor() -> dict:  # pragma: no cover - exige AT-SPI real
+    """Textos, abas e janela ativa do Editor de Texto (leitura, sem input)."""
+    import gi
+
+    gi.require_version("Atspi", "2.0")
+    from gi.repository import Atspi
+
+    def kids(n):
+        return [n.get_child_at_index(i) for i in range(n.get_child_count())]
+
+    texts, tabs, active = [], 0, ""
+    for app in kids(Atspi.get_desktop(0)):
+        if "editor" not in (app.get_name() or "").lower():
+            continue
+
+        def walk(n, depth=0):
+            nonlocal tabs
+            if depth > 80:
+                return
+            if n.get_role_name() == "page tab":
+                tabs += 1
+            if n.get_role_name() == "text" and "Text" in n.get_interfaces():
+                c = Atspi.Text.get_character_count(n)
+                texts.append(Atspi.Text.get_text(n, 0, min(c, 8192)) or "")
+            for c in kids(n):
+                walk(c, depth + 1)
+
+        for w in kids(app):
+            if w.get_state_set().contains(Atspi.StateType.ACTIVE):
+                active = w.get_name() or ""
+            walk(w)
+    return {"texts": texts, "tabs": tabs, "active": active}
 
 
 # --- orquestrador: roda no venv (uv) ------------------------------------------------------
@@ -436,7 +456,7 @@ def run_session(out: Path, cfg: dict, max_steps: int,
                cleanup_confirmed=not left)
     if watchdog:
         row["result"] = f"watchdog_{watchdog['reason']}"
-    elif not agent_log:
+    elif not agent_log or "nenhum frame recebido do PipeWire" in agent_log:
         row["result"] = "infra"  # a sessão falhou antes do agente; ver session.log
     return row
 
@@ -512,8 +532,15 @@ def main(argv: list[str] | None = None) -> int:  # pragma: no cover
     try:
         procs, urls = start_models(top, MODEL_ENTRIES)
         cfg = agent_config(urls, feats, args.vision_max_tokens, args.max_steps)
-        for n in range(1, args.runs + 1):
-            row = run_session(top / f"s{n:02d}", cfg, args.max_steps)
+        n, infra = 0, 0
+        while n < args.runs and infra <= args.runs:
+            row = run_session(top / f"s{n + 1:02d}" + (f"-infra{infra}" if infra else ""),
+                              cfg, args.max_steps)
+            if row["result"] in ("infra", "watchdog_deadline") and not row["decisions"]:
+                infra += 1  # sessão quebrou antes do agente decidir: repete, conta à parte
+                (top / "infra.json").write_text(json.dumps({"infra_sessions": infra}))
+                continue
+            n += 1
             row["n"] = n
             rows.append(row)
             print(json.dumps({k: row[k] for k in ("n", "result", "steps", "text_ok")}), flush=True)
@@ -539,5 +566,7 @@ if __name__ == "__main__":
         controller()
     elif sys.argv[1:2] == ["approve"]:
         print(json.dumps(approve_portal()))
+    elif sys.argv[1:2] == ["read"]:
+        print(json.dumps(read_editor(), ensure_ascii=False))
     else:
         raise SystemExit(main())

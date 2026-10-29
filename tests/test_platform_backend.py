@@ -104,6 +104,20 @@ class FocusRestoreTests(unittest.TestCase):
             self.assertEqual(wayland.WaylandBackend._active_title(), "")
 
 
+class UnicodeWarmupTests(unittest.TestCase):
+    def test_so_a_primeira_entrada_unicode_espera_mais(self):
+        be = wayland.WaylandBackend()
+        be.devices = 3
+        be._ensure = lambda: None
+        be._call = lambda req, timeout=15.0: {"ok": True}
+        with mock.patch.object(wayland.time, "sleep") as sleep:
+            be.input.type_text("áá")
+        waits = [c.args[0] for c in sleep.call_args_list]
+        self.assertIn(wayland.FIRST_UNICODE_COMMIT_S, waits)
+        self.assertEqual(waits.count(wayland.FIRST_UNICODE_COMMIT_S), 1)
+        self.assertIn(wayland.UNICODE_COMMIT_S, waits)
+
+
 class SeamTests(unittest.TestCase):
     def tearDown(self):
         platform_backend.disable()

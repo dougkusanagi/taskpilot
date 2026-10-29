@@ -62,9 +62,11 @@ def keysym_for_char(ch: str) -> int:
 POINTER_SETTLE_S = 0.08  # entre movimento/press/release do ponteiro
 POINTER_WARMUP_S = 0.5  # após o movimento inicial da sessão (medido no GNOME isolado)
 FOCUS_SETTLE_S = 0.6  # Esc da visão geral até a janela aparecer ativa no AT-SPI
-# IBus confirma Ctrl+Shift+U de forma assíncrona: "Olá" virou "Oál" com 0,12 s
-# (3 de 7 runs isolados em 29/10).
-UNICODE_COMMIT_S = 0.35
+# IBus confirma Ctrl+Shift+U de forma assíncrona ("Olá" virou "Oál"). Só a 1ª entrada
+# Unicode da sessão demora: com 0,35 s ela ainda saiu fora de ordem e as seguintes não
+# (reproduzido sem modelos no GNOME isolado, 29/10).
+UNICODE_COMMIT_S = 0.12
+FIRST_UNICODE_COMMIT_S = 1.0
 
 
 def key_events_for_char(ch: str) -> list[tuple[int, int]]:
@@ -239,6 +241,7 @@ class _Input:
 
     def __init__(self, be: WaylandBackend) -> None:
         self._be = be
+        self._unicode_warm = False
 
     def _c(self, req: dict) -> None:
         self._be._ensure()
@@ -312,4 +315,10 @@ class _Input:
             events = key_events_for_char(ch)
             for s, state in events:
                 self._c({"cmd": "keysym", "sym": s, "state": state})
-            time.sleep(UNICODE_COMMIT_S if len(events) > 2 else 0.015)
+            if len(events) <= 2:
+                time.sleep(0.015)
+            elif not self._unicode_warm:
+                self._unicode_warm = True
+                time.sleep(FIRST_UNICODE_COMMIT_S)
+            else:
+                time.sleep(UNICODE_COMMIT_S)
