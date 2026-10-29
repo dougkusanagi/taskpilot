@@ -1524,6 +1524,17 @@ def _intent_key(dec: Decision, planned: dict | None = None) -> str:
             f"{a.target}:{want}")
 
 
+def _already_active_note(action: Action, active_title: str) -> str:
+    """Nota quando `focus` pede a janela que já está ativa; '' caso contrário (puro)."""
+    if action.type != "focus" or not active_title:
+        return ""
+    want = (action.target or "").strip().lower().replace(".exe", "")
+    if len(want) < 3 or want.split("||")[0] not in active_title.lower():
+        return ""
+    return (f"{active_title!r} is already active; focus does nothing. Act INSIDE the window "
+            "(click, type, keys) for the next requirement")
+
+
 def _satisfied_note(ts, nxt: int) -> str:
     done = ", ".join(f"({i + 1})" for i in sorted(ts.requirement_evidence))
     return (f"requirement {done} already confirmed; repeating that action does not advance. "
@@ -1922,6 +1933,16 @@ def run(instruction: str, cfg: dict, dry_run: bool = False) -> dict:
             if (nxt is not None and dec.kind in ("action", "sequence")
                     and intent in ctx.get("satisfied_intents", set())):
                 if fail_step("repeticao", _satisfied_note(ts, nxt)):
+                    continue
+                result = "stuck"
+                break
+
+            # guard 2c: focar a janela que JÁ está ativa não muda nada (Ubuntu isolado
+            # 29/10: focus("Novo documento") gastou 1 passo em 10/10 runs, e 6 em um
+            # deles). Vira last_error sem consumir passo; o modelo age dentro da janela.
+            note = _already_active_note(dec.action, tm.get("uia_title", ""))
+            if dec.kind == "action" and note:
+                if fail_step("repeticao", note):
                     continue
                 result = "stuck"
                 break

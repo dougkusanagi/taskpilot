@@ -62,7 +62,9 @@ def keysym_for_char(ch: str) -> int:
 POINTER_SETTLE_S = 0.08  # entre movimento/press/release do ponteiro
 POINTER_WARMUP_S = 0.5  # após o movimento inicial da sessão (medido no GNOME isolado)
 FOCUS_SETTLE_S = 0.6  # Esc da visão geral até a janela aparecer ativa no AT-SPI
-UNICODE_COMMIT_S = 0.12  # IBus confirma Ctrl+Shift+U de forma assíncrona ("Olá" virou "Oál")
+# IBus confirma Ctrl+Shift+U de forma assíncrona: "Olá" virou "Oál" com 0,12 s
+# (3 de 7 runs isolados em 29/10).
+UNICODE_COMMIT_S = 0.35
 
 
 def key_events_for_char(ch: str) -> list[tuple[int, int]]:

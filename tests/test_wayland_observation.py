@@ -125,3 +125,21 @@ class ObservationTests(unittest.TestCase):
         self.assertEqual(result['items'][-1]['value'], 'Olá, Ubuntu!')
         self.assertIsNone(result['items'][-1]['bounds'])
         self.assertFalse(result['truncated'])
+
+
+class AlreadyActiveFocusTests(unittest.TestCase):
+    def test_focus_na_janela_ja_ativa_vira_nota(self):
+        from actions import Action
+        note = loop._already_active_note(Action(type='focus', target='Novo documento'),
+                                         'Novo documento (Rascunho) - Editor de Texto')
+        self.assertIn('already active', note)
+
+    def test_outra_janela_ou_outra_acao_nao_veta(self):
+        from actions import Action
+        title = 'Novo documento (Rascunho) - Editor de Texto'
+        self.assertEqual(loop._already_active_note(Action(type='focus', target='Calculadora'),
+                                                   title), '')
+        self.assertEqual(loop._already_active_note(Action(type='type', text='Novo documento'),
+                                                   title), '')
+        self.assertEqual(loop._already_active_note(Action(type='focus', target='No'), title), '')
+        self.assertEqual(loop._already_active_note(Action(type='focus', target='Novo'), ''), '')
